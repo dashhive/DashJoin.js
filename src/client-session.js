@@ -3,28 +3,14 @@
  */
 
 const HardDrive = require('hd.js');// TODO: .GetDataDir())) {
-const Set = require('./set.js');
-const NetMsgType = require('net-msg.js').NetMsgType;
-const Vector = require('./vector.js');
-const WalletImpl = require('wallet.js');
-const PoolState = require('./pool-state.js');
-const POOL_STATE_QUEUE = PoolState.POOL_STATE_QUEUE;
-const CoinJoinConstants = require('./coin-join-contants.js');
-const COINJOIN_AUTO_TIMEOUT_MIN = CoinJoinConstants.COINJOIN_AUTO_TIMEOUT_MIN;
-const COINJOIN_AUTO_TIMEOUT_MAX = CoinJoinConstants.COINJOIN_AUTO_TIMEOUT_MAX;
-const GetRandInt = require('./random.js').GetRandInt;
 
 let Lib = {'core_name': 'CCoinJoinClientManager'};
 module.exports = Lib;
 // std::map<const std::string, std::shared_ptr<CCoinJoinClientManager>> coinJoinClientManagers;
-Lib.NetMsgType = NetMsgType;
-Lib._shutdownRequested = false;
-Lib.ShutdownRequested = function(){
-	return Lib._shutdownRequested;
-};
+Lib.NetMsgType = require('net-msg.js').NetMsgType;
 
 //std::vector<COutPoint> vecMasternodesUsed;
-Lib.vecMasternodesUsed = new Vector.create();
+Lib.vecMasternodesUsed = require('./vector.js').create();
 // Keep track of the used Masternodes
 //orig: const std::unique_ptr<CMasternodeSync>& m_mn_sync;
 Lib.m_mn_sync = {};
@@ -32,7 +18,7 @@ Lib.m_mn_sync = {};
 Lib.CCoinJoinClientOptions = require('./options.js');
 
 //orig: std::deque<CCoinJoinClientSession> deqSessions GUARDED_BY(cs_deqsessions);
-Lib.deqSessions = new Vector.create(require('./client-session.js'));
+Lib.deqSessions = require('./vector.js').create();
 //    std::atomic<bool> fMixing{false};
 Lib.fMixing = false;
 Lib.IsMixing = function(){
@@ -46,7 +32,8 @@ Lib.nMinBlocksToWait = 1;
 // orig: bilingual_str strAutoDenomResult;
 Lib.strAutoDenomResult = '';
 //orig: CWallet& mixingWallet;
-Lib.mixingWallet = WalletImpl.loadFromJSON(require('./data/wallet.json'));
+Lib.walletImpl = require('wallet.js');
+Lib.mixingWallet = Lib.walletImpl.loadFromJSON(require('./data/wallet.json'));
 
 // Keep track of current block height
 //orig: int nCachedBlockHeight{0};
@@ -277,7 +264,6 @@ Lib.DoAutomaticDenominating = function(mempool, connman, fDryRun){
         return false;
     }
 
-		//FIXME: we need to port the deterministicMNManager 
     let nMnCountEnabled = Lib.deterministicMNManager.GetListAtChainTip().GetValidMNsCount();
 
     // If we've used 90% of the Masternode list then drop the oldest first ~30%
@@ -294,16 +280,14 @@ Lib.DoAutomaticDenominating = function(mempool, connman, fDryRun){
 
     let fResult = true;
     if (Lib.deqSessions.size() < Lib.CCoinJoinClientOptions.GetSessions()) {
-        Lib.deqSessions.emplace_back(Lib.mixingWallet, Lib.m_mn_sync);
+        deqSessions.emplace_back(mixingWallet, m_mn_sync);
     }
-    for (const session of Lib.deqSessions.contents) {
-        if (!Lib.CheckAutomaticBackup()){
-					return false;
-				}
+    for (auto& session : deqSessions) {
+        if (!CheckAutomaticBackup()) return false;
 
-        if (Lib.WaitForAnotherBlock()) {
-            Lib.strAutoDenomResult = "Last successful action was too recent.";
-            Lib.LogPrint(`CCoinJoinClientManager::DoAutomaticDenominating -- ${Lib.strAutoDenomResult.original}`);
+        if (WaitForAnotherBlock()) {
+            strAutoDenomResult = _("Last successful action was too recent.");
+            LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::DoAutomaticDenominating -- %s\n", strAutoDenomResult.original);
             return false;
         }
 
@@ -311,134 +295,5 @@ Lib.DoAutomaticDenominating = function(mempool, connman, fDryRun){
     }
 
     return fResult;
-};
-
-//orig: void CCoinJoinClientManager::AddUsedMasternode(const COutPoint& outpointMn)
-Lib.AddUsedMasternode = function(outpointMn) {
-    Lib.vecMasternodesUsed.push_back(outpointMn);
-};
-Lib.Shuffle = function(elements) {
-
-};
-Lib.excludeSet = {};
-//orig: CDeterministicMNCPtr CCoinJoinClientManager::GetRandomNotUsedMasternode()
-Lib.GetRandomNotUsedMasternode = function () {
-	const __FUNCTION__ = 'GetRandomNotUsedMasternode';
-	//TODO FIXME: get deterministicMNManager impl
-    let mnList = Lib.deterministicMNManager.GetListAtChainTip();
-
-    let nCountEnabled = mnList.GetValidMNsCount();
-    let nCountNotExcluded = nCountEnabled - Lib.vecMasternodesUsed.size();
-
-    Lib.LogPrint(`CCoinJoinClientManager::${__FUNCTION__} -- ${nCountEnabled} ` + 
-			`enabled masternodes, ${nCountNotExcluded} masternodes to choose from`
-		);
-    if (nCountNotExcluded < 1) {
-        return null;
-    }
-
-    // fill a vector
-    //std::vector<CDeterministicMNCPtr> vpMasternodesShuffled;
-		// TODO FIXME: need to do a deep dive on this
-		let vpMasternodesShuffled = [];
-    mnList.ForEachMNShared(true, function (dmn) {
-        vpMasternodesShuffled.push(dmn);
-    });
-
-    // shuffle pointers
-    vpMasternodesShuffled = Lib.Shuffle(vpMasternodesShuffled); //TODO: need a Shuffle function
-
-		//std::set<COutPoint> excludeSet(vecMasternodesUsed.begin(), vecMasternodesUsed.end());
-		let excludeSet = new Set.create(vecMasternodesUsed);
-    // loop through
-    for (const dmn of vpMasternodesShuffled) {
-			// count() returns the number of items that have that key in the set
-        if (excludeSet.count(dmn.collateralOutpoint)) {
-            continue;
-        }
-        Lib.LogPrint(
-					`CCoinJoinClientManager::${__FUNCTION__} -- found, masternode=${dmn.collateralOutpoint.ToStringShort()}`); // TODO: FIXME: do dmn.collateralOutpoint
-        return dmn;
-    }
-
-    Lib.LogPrint(`CCoinJoinClientManager::${__FUNCTION__} -- failed`);
-    return nullptr;
-};
-//orig: void CCoinJoinClientManager::ProcessPendingDsaRequest(CConnman& connman)
-Lib.ProcessPendingDsaRequest = function (connman) {
-    for (const session of Lib.deqSessions.contents) {
-        if (session.ProcessPendingDsaRequest(connman)) { // TODO: FIXME: must implement ProcessPendingDsaRequest
-            Lib.strAutoDenomResult = "Mixing in progress...";
-        }
-    }
-};
-//orig: bool CCoinJoinClientManager::TrySubmitDenominate(const CService& mnAddr, CConnman& connman)
-Lib.TrySubmitDenominate = function(mnAddr, connman) {
-    for (const session of Lib.deqSessions.contents) {
-        //CDeterministicMNCPtr mnMixing;
-				let mnMixing = null;
-        mnMixing = session.GetMixingMasternodeInfo(mnMixing);
-				if(mnMixing && mnMixing.pdmnState.addr == mnAddr && session.GetState() == POOL_STATE_QUEUE) {
-            session.SubmitDenominate(connman); // TODO FIXME: session needs SubmitDenominate
-            return true;
-        }
-    }
-    return false;
-};
-
-//orig: bool CCoinJoinClientManager::MarkAlreadyJoinedQueueAsTried(CCoinJoinQueue& dsq) const
-Lib.MarkAlreadyJoinedQueueAsTried = function(dsq) {
-    for (const session of Lib.deqSessions.contents) {
-        //CDeterministicMNCPtr mnMixing;
-				let mnMixing = null;
-        mnMixing = session.GetMixingMasternodeInfo(mnMixing);
-				if(mnMixing && mnMixing.collateralOutpoint == dsq.masternodeOutpoint) { // TODO: FIXME: need dsq.masternodeOutpoint to be coded
-            dsq.fTried = true; // TODO: FIXME: need fTried on dsq
-            return true;
-        }
-    }
-    return false;
-};
-//orig: void CCoinJoinClientManager::UpdatedBlockTip(const CBlockIndex* pindex)
-Lib.UpdatedBlockTip = function(pindex) {
-    Lib.nCachedBlockHeight = pindex.nHeight; // TODO FIXME: get nHeight
-    Lib.LogPrint(`CCoinJoinClientManager::UpdatedBlockTip -- nCachedBlockHeight: ${Lib.nCachedBlockHeight}`);
-};
-//orig: void CCoinJoinClientManager::DoMaintenance(CTxMemPool& mempool, CConnman& connman)
-Lib.DoMaintenance = function(mempool, connman) {
-    if (!Lib.CCoinJoinClientOptions.IsEnabled()) {
-			return;
-		}
-    if (Lib.m_mn_sync == null) {
-			return;
-		}
-	// TODO: FIXME: do IsBlockchainSynced()
-    if (!Lib.m_mn_sync.IsBlockchainSynced() || Lib.ShutdownRequested()) {
-			return;
-		}
-
-    let nTick = 0;
-    let nDoAutoNextRun = nTick + COINJOIN_AUTO_TIMEOUT_MIN;
-
-    nTick++;
-    Lib.CheckTimeout();
-    Lib.ProcessPendingDsaRequest(connman);
-    if (nDoAutoNextRun == nTick) {
-        Lib.DoAutomaticDenominating(mempool, connman);
-        nDoAutoNextRun = nTick + COINJOIN_AUTO_TIMEOUT_MIN + GetRandInt(COINJOIN_AUTO_TIMEOUT_MAX - COINJOIN_AUTO_TIMEOUT_MIN);
-    }
-};
-//orig: void CCoinJoinClientManager::GetJsonInfo(UniValue& obj) const
-Lib.GetJsonInfo = function(obj) {
-	let session_list = [];
-
-    for (const session of Lib.deqSessions.contents) {
-        if (session.GetState() != POOL_STATE_IDLE) {
-            session_list.push(session.GetJsonInfo());
-        }
-    }
-	return {
-		running: Lib.IsMixing(),
-    sessions: session_list,
-	};
 }
+
