@@ -5,6 +5,93 @@
 let Lib = {'core_name': 'CCoinJoin'};
 const { COIN } = require('./coin.js');
 const { COINJOIN_ENTRY_MAX_SIZE } = require('./coin-join-constants.js');
+const llmq = require('./llmq.js');
+
+let Validation = {};
+//orig: CChainState& ChainstateActive()
+Validation.ChainstateActiveCoinsTipGetCoin = function(outpoint,coin){
+//bool CChainState::LoadChainTip(const CChainParams& chainparams)
+//{
+//    AssertLockHeld(cs_main);
+//    const CCoinsViewCache& coins_cache = CoinsTip();
+//    assert(!coins_cache.GetBestBlock().IsNull()); // Never called when the coins view is empty
+//    const CBlockIndex* tip = m_chain.Tip();
+//
+//    if (tip && tip->GetBlockHash() == coins_cache.GetBestBlock()) {
+//        return true;
+//    }
+//
+//    // Load pointer to end of best chain
+//    CBlockIndex* pindex = LookupBlockIndex(coins_cache.GetBestBlock());
+//    if (!pindex) {
+//        return false;
+//    }
+//    m_chain.SetTip(pindex);
+//    PruneBlockIndexCandidates();
+//
+//    tip = m_chain.Tip();
+//    LogPrintf("Loaded best chain: hashBestChain=%s height=%d date=%s progress=%f\n",
+//        tip->GetBlockHash().ToString(),
+//        m_chain.Height(),
+//        FormatISO8601DateTime(tip->GetBlockTime()),
+//        GuessVerificationProgress(chainparams.TxData(), tip));
+//    return true;
+//}
+//
+  //return g_chainman.m_active_chainstate; // TODO: g_chainman.m_active_chainstate
+//bool CCoinsViewCache::GetCoin(const COutPoint &outpoint, Coin &coin) const {
+//    CCoinsMap::const_iterator it = FetchCoin(outpoint);
+//    if (it != cacheCoins.end()) {
+//        coin = it->second.coin;
+//        return !coin.IsSpent();
+//    }
+//    return false;
+//}
+//CCoinsMap::iterator CCoinsViewCache::FetchCoin(const COutPoint &outpoint) const {
+//    CCoinsMap::iterator it = cacheCoins.find(outpoint);
+//    if (it != cacheCoins.end())
+//        return it;
+//    Coin tmp;
+//    if (!base->GetCoin(outpoint, tmp))
+//        return cacheCoins.end();
+//    CCoinsMap::iterator ret = cacheCoins.emplace(std::piecewise_construct, std::forward_as_tuple(outpoint), std::forward_as_tuple(std::move(tmp))).first;
+//    if (ret->second.coin.IsSpent()) {
+//        // The parent only has an empty entry for this outpoint; we can consider our
+//        // version as fresh.
+//        ret->second.flags = CCoinsCacheEntry::FRESH;
+//    }
+//    cachedCoinsUsage += ret->second.coin.DynamicMemoryUsage();
+//    return ret;
+//}
+
+	
+	let ret = {
+		valid: false,
+	};
+	return ret;
+}
+
+
+//orig: bool GetUTXOCoin(const COutPoint& outpoint, Coin& coin)
+Validation.GetUTXOCoin = function(outpoint,coin) {
+	let utxoCoin = {};
+
+    //orig: if (!Lib.ChainstateActive().CoinsTip().GetCoin(outpoint, coin)){
+    utxoCoin.coin = Validation.ChainstateActiveCoinsTipGetCoin(outpoint, coin);
+    if (!utxoCoin.coin.valid){
+			utxoCoin.valid = false;
+			return utxoCoin;
+		}
+    if (coin.IsSpent()){
+			utxoCoin.valid = false;
+			return utxoCoin;
+		}
+		utxoCoin.out = {
+			nValue: coin.out.nValue,
+		};
+    return utxoCoin;
+}
+
 
 module.exports = Lib;
 // static members
@@ -123,59 +210,77 @@ Lib.GetMaxPoolAmount = function() {
 /// If the collateral is valid given by a client
 //orig: static bool IsCollateralValid(CTxMemPool& mempool, const CTransaction& txCollateral);
 Lib.IsCollateralValid = function(mempool, txCollateral){
+	/** TODO: FIXME: this function references a lot of currently unimplemented functionality.
+	 */
 	// TODO: FIXME: create CTransaction with .vout.empty()
     if (txCollateral.vout.empty()) {
 			return false;
 		}
-    if (txCollateral.nLockTime != 0) {
+	// TODO: implement CTransaction.nLockTime
+    if (txCollateral.nLockTime !== 0) {
 			return false;
 		}
 
     //CAmount nValueIn = 0;
     //CAmount nValueOut = 0;
 
+	// TODO: implement CAmount
 	
 	let nValueIn = 0; // TODO: convert to CAmount
 	let nValueOut = 0; // TODO: convert to CAmount
-    for (const auto& txout : txCollateral.vout) {
-        nValueOut += txout.nValue;
+	for (const txout of txCollateral.vout) { // TODO: implement .vout
+			nValueOut += txout.nValue; // TODO: implement .nValue
 
-        if (!txout.scriptPubKey.IsPayToPublicKeyHash() && !txout.scriptPubKey.IsUnspendable()) {
-            LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- Invalid Script, txCollateral=%s", txCollateral.ToString()); /* Continued */
-            return false;
-        }
-    }
+		// TODO: implement scriptPubKey.IsPayToPublicKeyHash()
+		// TODO: implement scriptPubKey.IsUnspendable()
+			if (!txout.scriptPubKey.IsPayToPublicKeyHash() && !txout.scriptPubKey.IsUnspendable()) {
+					Lib.LogPrint(`CCoinJoin::IsCollateralValid -- Invalid Script, txCollateral=${txCollateral.ToString()}`); // TODO: implement CTransaction::ToString()
+					return false;
+			}
+	}
 
-    for (const auto& txin : txCollateral.vin) {
-        Coin coin;
-        auto mempoolTx = mempool.get(txin.prevout.hash);
-        if (mempoolTx != nullptr) {
-            if (mempool.isSpent(txin.prevout) || !llmq::quorumInstantSendManager->IsLocked(txin.prevout.hash)) {
-                LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- spent or non-locked mempool input! txin=%s\n", txin.ToString());
+    for (const txin of txCollateral.vin) { // TODO: implement CTransaction::vin
+        //Coin coin;
+			let coin = 0;
+      let mempoolTx = mempool.get(txin.prevout.hash); // TODO: prevout.hash
+      let utxoCoin = Validation.GetUTXOCoin(txin.prevout, coin);
+        if (mempoolTx !== null) {
+            if (mempool.isSpent(txin.prevout) || !llmq.quorumInstantSendManager.IsLocked(txin.prevout.hash)) { // TODO: llmq, llmq.quorumInstantSendManager, llmq.IsLocked()
+                Lib.LogPrint(`CCoinJoin::IsCollateralValid -- spent or non-locked mempool input! txin=${txin.ToString()}`); // TODO: txin.ToString()
                 return false;
             }
-            nValueIn += mempoolTx->vout[txin.prevout.n].nValue;
-        } else if (GetUTXOCoin(txin.prevout, coin)) {
+            nValueIn += mempoolTx.vout[txin.prevout.n].nValue; // TODO: txin.prevout, txin.prevout.n
+        /*orig: } else if (Validation.GetUTXOCoin(txin.prevout, coin)) { 
             nValueIn += coin.out.nValue;
+						*/
+				} else if(utxoCoin.valid) {
+					nValueIn += utxoCoin.out.nValue;
         } else {
-            LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- Unknown inputs in collateral transaction, txCollateral=%s", txCollateral.ToString()); /* Continued */
+            Lib.LogPrint(`CCoinJoin::IsCollateralValid -- Unknown inputs in collateral transaction, txCollateral=${txCollateral.ToString()}`); /* Continued */
             return false;
         }
     }
 
     //collateral transactions are required to pay out a small fee to the miners
-    if (nValueIn - nValueOut < GetCollateralAmount()) {
-        LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- did not include enough fees in transaction: fees: %d, txCollateral=%s", nValueOut - nValueIn, txCollateral.ToString()); /* Continued */
+    if (nValueIn - nValueOut < Lib.GetCollateralAmount()) {
+        Lib.LogPrint(`CCoinJoin::IsCollateralValid -- did not include enough fees in transaction: fees: ${nValueOut - nValueIn}, txCollateral=${txCollateral.ToString()}`); /* Continued */
         return false;
     }
 
-    LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- %s", txCollateral.ToString()); /* Continued */
+    Lib.LogPrint(`CCoinJoin::IsCollateralValid -- ${txCollateral.ToString()}`); /* Continued */
 
     {
-        LOCK(cs_main);
-        CValidationState validationState;
-        if (!AcceptToMemoryPool(mempool, validationState, MakeTransactionRef(txCollateral), /*pfMissingInputs=*/nullptr, /*bypass_limits=*/false, /*nAbsurdFee=*/DEFAULT_MAX_RAW_TX_FEE, /*test_accept=*/true)) {
-            LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- didn't pass AcceptToMemoryPool()\n");
+        //CValidationState validationState;
+			let validationState = 0;
+        if (!Lib.AcceptToMemoryPool(
+			mempool, 
+				validationState, 
+				Lib.MakeTransactionRef(txCollateral),
+				/*pfMissingInputs=*/null,
+				/*bypass_limits=*/false,
+				/*nAbsurdFee=*/DEFAULT_MAX_RAW_TX_FEE, /** TODO FIXME: need this defined */
+				/*test_accept=*/true)) {
+            Lib.LogPrint(`CCoinJoin::IsCollateralValid -- didn't pass AcceptToMemoryPool()`);
             return false;
         }
     }

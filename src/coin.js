@@ -3,6 +3,8 @@
  */
 
 
+let COIN = 100000000;
 module.exports = {
-	COIN: 100000000,
+	COIN,
+	MAX_MONEY: 21000000 * COIN,
 };

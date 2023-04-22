@@ -9,6 +9,11 @@ const NetMsgType = require('net-msg.js').NetMsgType;
 const Vector = require('./vector.js');
 const COutPoint = require('./outpoint.js');
 const CoinJoin = require('./coin-join.js');
+const { 
+	COINJOIN_DENOM_OUTPUTS_THRESHOLD, 
+	MSG_POOL_MIN, 
+	MSG_POOL_MAX
+} = require('./coin-join-constants.js');
 
 let Lib = {'core_name': 'CCoinJoinClientSession'};
 module.exports = Lib;
@@ -85,6 +90,8 @@ Lib.CreateDenominated = function (nBalanceToDenominate, tallyItem=null,fCreateMi
 // Create denominations
 //orig: bool CCoinJoinClientSession::CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals)
 Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixingCollaterals) {
+	const func = 'CreateDenominatedExt';
+	const __func__ = func;
     if (!Lib.CCoinJoinClientOptions.IsEnabled()) {
 			return false;
 		}
@@ -92,36 +99,42 @@ Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixi
     // denominated input is always a single one, so we can check its amount directly and return early
 	// TODO: FIXME: make sure CompactTallyItem has vecInputCoins with a .size() function
 	// TODO: FIXME: make sure CompactTallyItem has .nAmount
-    if (tallyItem.vecInputCoins.size() == 1 && CCoinJoin.IsDenominatedAmount(tallyItem.nAmount)) {
+    if (tallyItem.vecInputCoins.size() == 1 && CoinJoin.IsDenominatedAmount(tallyItem.nAmount)) {
         return false;
     }
 
-    const auto pwallet = GetWallet(mixingWallet.GetName());
+    //const auto pwallet = GetWallet(mixingWallet.GetName());
 
+	let pwallet = Lib.mixingWallet;
     if (!pwallet) {
-        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Couldn't get wallet pointer\n", __func__);
+        Lib.LogPrint(`CCoinJoinClientSession::${func} -- Couldn't get wallet pointer`);
         return false;
     }
 
-    CTransactionBuilder txBuilder(pwallet, tallyItem);
+    //CTransactionBuilder txBuilder(pwallet, tallyItem);
+	let txBuilder = new CTransactionBuilder(pwallet,tallyItem); // TODO: CTransactionBuilder
 
-    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Start %s\n", __func__, txBuilder.ToString());
+    Lib.LogPrint(`CCoinJoinClientSession::${func} -- Start ${txBuilder.ToString()}`);
 
     // ****** Add an output for mixing collaterals ************ /
 
-    if (fCreateMixingCollaterals && !txBuilder.AddOutput(CCoinJoin::GetMaxCollateralAmount())) {
-        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Failed to add collateral output\n", __func__);
+    if (fCreateMixingCollaterals && !txBuilder.AddOutput(CoinJoin.GetMaxCollateralAmount())) {
+        Lib.LogPrint(`CCoinJoinClientSession::${func} -- Failed to add collateral output`);
         return false;
     }
 
     // ****** Add outputs for denoms ************ /
 
-    bool fAddFinal = true;
-    auto denoms = CCoinJoin::GetStandardDenominations();
+    //bool fAddFinal = true;
+    //auto denoms = CoinJoin::GetStandardDenominations();
 
-    std::map<CAmount, int> mapDenomCount;
-    for (auto nDenomValue : denoms) {
-        mapDenomCount.insert(std::pair<CAmount, int>(nDenomValue, mixingWallet.CountInputsWithAmount(nDenomValue)));
+	let fAddFinal = true;
+	let denoms = CoinJoin.GetStandardDenominations(); // TODO: 
+    //std::map<CAmount, int> mapDenomCount;
+	let mapDenomCount;
+    for (const nDenomValue of denoms) {
+        //mapDenomCount.insert(std::pair<CAmount, int>(nDenomValue, mixingWallet.CountInputsWithAmount(nDenomValue)));
+			mapDenomCount[nDenomValue] = Lib.mixingWallet.CountInputsWithAmount(); // TODO
     }
 
     // Will generate outputs for the createdenoms up to coinjoinmaxdenoms per denom
@@ -133,20 +146,23 @@ Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixi
     // Now, in this system, so long as we don't reach COINJOIN_DENOM_OUTPUTS_THRESHOLD outputs the process repeats in
     // the same transaction, creating up to nCoinJoinDenomsHardCap per denomination in a single transaction.
 
-    while (txBuilder.CouldAddOutput(CCoinJoin::GetSmallestDenomination()) && txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
-        for (auto it = denoms.rbegin(); it != denoms.rend(); ++it) {
-            CAmount nDenomValue = *it;
-            auto currentDenomIt = mapDenomCount.find(nDenomValue);
+    while (
+	txBuilder.CouldAddOutput(
+		CoinJoin.GetSmallestDenomination()
+	) && txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
+        //for (auto it = denoms.rbegin(); it != denoms.rend(); ++it) {
+			for(const it of denoms) {
+				let nDenomValue = it;
+        let currentDenomIt = mapDenomCount.find(nDenomValue);
 
-            int nOutputs = 0;
+        let nOutputs = 0;
 
-            const auto& strFunc = __func__;
-            auto needMoreOutputs = [&]() {
+            const strFunc = __func__;
+            let needMoreOutputs = function(){
                 if (txBuilder.CouldAddOutput(nDenomValue)) {
                     if (fAddFinal && nBalanceToDenominate > 0 && nBalanceToDenominate < nDenomValue) {
                         fAddFinal = false; // add final denom only once, only the smalest possible one
-                        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - FINAL - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
-                                                     strFunc, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                        Lib.LogPrint(`CCoinJoinClientSession::${strFunc} -- 1 - FINAL - nDenomValue: ${nDenomValue / COIN}, nBalanceToDenominate: ${nBalanceToDenominate / COIN}, nOutputs: ${nOutputs}, ${txBuilder.ToString()}`);
                         return true;
                     } else if (nBalanceToDenominate >= nDenomValue) {
                         return true;
@@ -156,17 +172,15 @@ Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixi
             };
 
             // add each output up to 11 times or until it can't be added again or until we reach nCoinJoinDenomsGoal
-            while (needMoreOutputs() && nOutputs <= 10 && currentDenomIt->second < CCoinJoinClientOptions::GetDenomsGoal()) {
+            while (needMoreOutputs() && nOutputs <= 10 && currentDenomIt.second < Lib.CCoinJoinClientOptions.GetDenomsGoal()) {
                 // Add output and subtract denomination amount
                 if (txBuilder.AddOutput(nDenomValue)) {
                     ++nOutputs;
-                    ++currentDenomIt->second;
+                    currentDenomIt.second += 1;
                     nBalanceToDenominate -= nDenomValue;
-                    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
-                                                 __func__, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                    Lib.LogPrint(`CCoinJoinClientSession::${__func__} -- 1 - nDenomValue: ${nDenomValue / COIN}, nBalanceToDenominate: ${nBalanceToDenominate}, nOutputs: ${nOutputs}, ${txBuilder.ToString()}`);
                 } else {
-                    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - Error: AddOutput failed for nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
-                                                 __func__, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                    Lib.LogPrint(`CCoinJoinClientSession::${__func__} -- 1 - Error: AddOutput failed for nDenomValue: ${nDenomValue / COIN}, nBalanceToDenominate: ${nBalanceToDenominate / COIN}, nOutputs: ${nOutputs}, ${txBuilder.ToString()}`);
                     return false;
                 }
 
@@ -175,51 +189,52 @@ Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixi
             if (txBuilder.GetAmountLeft() == 0 || nBalanceToDenominate <= 0) break;
         }
 
-        bool finished = true;
-        for (const auto [denom, count] : mapDenomCount) {
+        let finished = true;
+        //orig: for (const auto [denom, count] : mapDenomCount) {
+			for(const denom in mapDenomCount) {
             // Check if this specific denom could use another loop, check that there aren't nCoinJoinDenomsGoal of this
             // denom and that our nValueLeft/nBalanceToDenominate is enough to create one of these denoms, if so, loop again.
-            if (count < CCoinJoinClientOptions::GetDenomsGoal() && txBuilder.CouldAddOutput(denom) && nBalanceToDenominate > 0) {
+				let count = mapDenomCount[denom];
+            if (count < Lib.CCoinJoinClientOptions.GetDenomsGoal() && txBuilder.CouldAddOutput(denom) && nBalanceToDenominate > 0) {
                 finished = false;
-                LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - NOT finished - nDenomValue: %f, count: %d, nBalanceToDenominate: %f, %s\n",
-                                             __func__, (float) denom / COIN, count, (float) nBalanceToDenominate / COIN, txBuilder.ToString());
+                Lib.LogPrint(`CCoinJoinClientSession::${__func__} -- 1 - NOT finished - nDenomValue: ${denom / COIN}, count: ${count}, nBalanceToDenominate: ${nBalanceToDenominate / COIN}, ${txBuilder.ToString()}`);
                 break;
             }
-            LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - FINISHED - nDenomValue: %f, count: %d, nBalanceToDenominate: %f, %s\n",
-                                         __func__, (float) denom / COIN, count, (float) nBalanceToDenominate / COIN, txBuilder.ToString());
+            Lib.LogPrint(`CCoinJoinClientSession::${__func__} -- 1 - FINISHED - nDenomValue: ${denom / COIN}, count: ${count}, nBalanceToDenominate: ${nBalanceToDenominate / COIN}, ${txBuilder.ToString()}`);
         }
 
         if (finished) break;
     }
 
     // Now that nCoinJoinDenomsGoal worth of each denom have been created or the max number of denoms given the value of the input, do something with the remainder.
-    if (txBuilder.CouldAddOutput(CCoinJoin::GetSmallestDenomination()) && nBalanceToDenominate >= CCoinJoin::GetSmallestDenomination() && txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
-        CAmount nLargestDenomValue = denoms.front();
+    if (txBuilder.CouldAddOutput(CoinJoin.GetSmallestDenomination()) && nBalanceToDenominate >= CoinJoin.GetSmallestDenomination() && txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
+        let nLargestDenomValue = denoms[0];
 
-        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - Process remainder: %s\n", __func__, txBuilder.ToString());
+        Lib.LogPrint(`CCoinJoinClientSession::${__func__} -- 2 - Process remainder: ${txBuilder.ToString()}`);
 
-        auto countPossibleOutputs = [&](CAmount nAmount) -> int {
-            std::vector<CAmount> vecOutputs;
+        let countPossibleOutputs = function (nAmount) {
+            //orig: std::vector<CAmount> vecOutputs;
+					let vecOutputs = new Vector();
             while (true) {
                 // Create a potential output
                 vecOutputs.push_back(nAmount);
                 if (!txBuilder.CouldAddOutputs(vecOutputs) || txBuilder.CountOutputs() + vecOutputs.size() > COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
                     // If it's not possible to add it due to insufficient amount left or total number of outputs exceeds
                     // COINJOIN_DENOM_OUTPUTS_THRESHOLD drop the output again and stop trying.
-                    vecOutputs.pop_back();
+                    vecOutputs.pop_back(); // TODO:
                     break;
                 }
             }
-            return static_cast<int>(vecOutputs.size());
+            return vecOutputs.size();
         };
 
         // Go big to small
-        for (auto nDenomValue : denoms) {
+        for (const nDenomValue of denoms.contents) {
             if (nBalanceToDenominate <= 0) break;
-            int nOutputs = 0;
+            let nOutputs = 0;
 
             // Number of denoms we can create given our denom and the amount of funds we have left
-            int denomsToCreateValue = countPossibleOutputs(nDenomValue);
+            let denomsToCreateValue = countPossibleOutputs(nDenomValue);
             // Prefer overshooting the target balance by larger denoms (hence `+1`) instead of a more
             // accurate approximation by many smaller denoms. This is ok because when we get here we
             // should have nCoinJoinDenomsGoal of each smaller denom already. Also, without `+1`
@@ -227,37 +242,37 @@ Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixi
             // denoms, yet we can't mix the remaining nBalanceToDenominate because it's smaller than
             // nDenomValue (and thus denomsToCreateBal == 0), so the target would never get reached
             // even when there is enough funds for that.
-            int denomsToCreateBal = (nBalanceToDenominate / nDenomValue) + 1;
+            let denomsToCreateBal = (nBalanceToDenominate / nDenomValue) + 1;
             // Use the smaller value
-            int denomsToCreate = denomsToCreateValue > denomsToCreateBal ? denomsToCreateBal : denomsToCreateValue;
-            LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - nBalanceToDenominate: %f, nDenomValue: %f, denomsToCreateValue: %d, denomsToCreateBal: %d\n",
-                                         __func__, (float) nBalanceToDenominate / COIN, (float) nDenomValue / COIN, denomsToCreateValue, denomsToCreateBal);
-            auto it = mapDenomCount.find(nDenomValue);
-            for (const auto i : irange::range(denomsToCreate)) {
+            let denomsToCreate = denomsToCreateValue > denomsToCreateBal ? denomsToCreateBal : denomsToCreateValue;
+            Lib.LogPrint("CCoinJoinClientSession::%s -- 2 - nBalanceToDenominate: %f, nDenomValue: %f, denomsToCreateValue: %d, denomsToCreateBal: %d\n", __func__,  nBalanceToDenominate / COIN,  nDenomValue / COIN, denomsToCreateValue, denomsToCreateBal);
+            let it = mapDenomCount.find(nDenomValue);
+            //for (const auto i : irange::range(denomsToCreate)) {
+					for(const i of denomsToCreate){
                 // Never go above the cap unless it's the largest denom
-                if (nDenomValue != nLargestDenomValue && it->second >= CCoinJoinClientOptions::GetDenomsHardCap()) break;
+                if (nDenomValue != nLargestDenomValue && it.second >= Lib.CCoinJoinClientOptions.GetDenomsHardCap()) break;
 
                 // Increment helpers, add output and subtract denomination amount
                 if (txBuilder.AddOutput(nDenomValue)) {
                     nOutputs++;
-                    it->second++;
+                    it.second++; // TODO:
                     nBalanceToDenominate -= nDenomValue;
                 } else {
-                    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - Error: AddOutput failed at %d/%d, %s\n", __func__, i + 1, denomsToCreate, txBuilder.ToString());
+                    Lib.LogPrint("CCoinJoinClientSession::%s -- 2 - Error: AddOutput failed at %d/%d, %s\n", __func__, i + 1, denomsToCreate, txBuilder.ToString());
                     break;
                 }
-                LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
-                                             __func__, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                Lib.LogPrint( "CCoinJoinClientSession::%s -- 2 - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n", __func__,  nDenomValue / COIN,  nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
                 if (txBuilder.CountOutputs() >= COINJOIN_DENOM_OUTPUTS_THRESHOLD) break;
             }
             if (txBuilder.CountOutputs() >= COINJOIN_DENOM_OUTPUTS_THRESHOLD) break;
         }
     }
 
-    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 3 - nBalanceToDenominate: %f, %s\n", __func__, (float) nBalanceToDenominate / COIN, txBuilder.ToString());
+    Lib.LogPrint("CCoinJoinClientSession::%s -- 3 - nBalanceToDenominate: %f, %s\n", __func__,  nBalanceToDenominate / COIN, txBuilder.ToString());
 
-    for (const auto [denom, count] : mapDenomCount) {
-        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 3 - DONE - nDenomValue: %f, count: %d\n", __func__, (float) denom / COIN, count);
+    //for (const auto [denom, count] : mapDenomCount) {
+	for(const denom in mapDenomCount){
+        Lib.LogPrint("CCoinJoinClientSession::%s -- 3 - DONE - nDenomValue: %f, count: %d\n", __func__,  denom / COIN, count);
     }
 
     // No reasons to create mixing collaterals if we can't create denoms to mix
@@ -265,21 +280,20 @@ Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixi
         return false;
     }
 
-    bilingual_str strResult;
+    let strResult;
     if (!txBuilder.Commit(strResult)) {
-        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Commit failed: %s\n", __func__, strResult.original);
+        Lib.LogPrint("CCoinJoinClientSession::%s -- Commit failed: %s\n", __func__, strResult.original);
         return false;
     }
 
     // use the same nCachedLastSuccessBlock as for DS mixing to prevent race
-    coinJoinClientManagers.at(mixingWallet.GetName())->UpdatedSuccessBlock();
+    coinJoinClientManagers.at(mixingWallet.GetName()).UpdatedSuccessBlock();
 
-    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- txid: %s\n", __func__, strResult.original);
+    Lib.LogPrint("CCoinJoinClientSession::%s -- txid: %s\n", __func__, strResult.original);
 
     return true;
-}
-
 };
+
 
 /// Split up large inputs or make fee sized inputs
 //orig: bool MakeCollateralAmounts();
@@ -391,39 +405,46 @@ Lib.ProcessMessage = function(peer, connman, mempool,msg_type, vRecv){
 			let nMsgSessionID = vRecv.read('CTransaction');
 
         if (nSessionID != nMsgSessionID) {
-            LogPrint(BCLog::COINJOIN, "DSFINALTX -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n", nSessionID, nMsgSessionID);
+            Lib.LogPrint("DSFINALTX -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n", nSessionID, nMsgSessionID);
             return;
         }
 
-        LogPrint(BCLog::COINJOIN, "DSFINALTX -- txNew %s", txNew.ToString()); /* Continued */
+        Lib.LogPrint("DSFINALTX -- txNew %s", txNew.ToString()); /* Continued */
 
         // check to see if input is spent already? (and probably not confirmed)
-        SignFinalTransaction(mempool, txNew, peer, connman);
+        SignFinalTransaction(mempool, txNew, peer, connman); // TODO
 
-    } else if (msg_type == NetMsgType::DSCOMPLETE) {
+    } else if (msg_type == Lib.NetMsgType.DSCOMPLETE) {
         if (!mixingMasternode) return;
-        if (mixingMasternode->pdmnState->addr != peer.addr) {
-            LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- message doesn't match current Masternode: infoMixingMasternode=%s  addr=%s\n", mixingMasternode->pdmnState->addr.ToString(), peer.addr.ToString());
+        if (mixingMasternode.pdmnState.addr != peer.addr) { // TODO
+            Lib.LogPrint("DSCOMPLETE -- message doesn't match current Masternode: infoMixingMasternode=%s  addr=%s\n", mixingMasternode.pdmnState.addr.ToString(), peer.addr.ToString());
             return;
         }
 
-        int nMsgSessionID;
-        PoolMessage nMsgMessageID;
-        vRecv >> nMsgSessionID >> nMsgMessageID;
+        let nMsgSessionID;
+        //PoolMessage nMsgMessageID;
+			let nMsgSessionID;
+        //orig: vRecv >> nMsgSessionID >> nMsgMessageID;
+			nMsgMessageID = vRecv.read('PoolMessage'); // TODO:
+			/** 
+			 * THIS SECOND LINE IS NOT A MISTAKE.
+			 * We are trying to emulate reading nMsgSessionID twice
+			 */
+			nMsgMessageID = vRecv.read('PoolMessage'); // TODO:
 
         if (nMsgMessageID < MSG_POOL_MIN || nMsgMessageID > MSG_POOL_MAX) {
-            LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- nMsgMessageID is out of bounds: %d\n", nMsgMessageID);
+            Lib.LogPrint("DSCOMPLETE -- nMsgMessageID is out of bounds: %d\n", nMsgMessageID);
             return;
         }
 
-        if (nSessionID != nMsgSessionID) {
-            LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n", nSessionID, nMsgSessionID);
+        if (nSessionID !== nMsgSessionID) {
+            Lib.LogPrint("DSCOMPLETE -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n", nSessionID, nMsgSessionID);
             return;
         }
 
-        LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- nMsgSessionID %d  nMsgMessageID %d (%s)\n", nMsgSessionID, nMsgMessageID, CCoinJoin::GetMessageByID(nMsgMessageID).translated);
+        LogPrint("DSCOMPLETE -- nMsgSessionID %d  nMsgMessageID %d (%s)\n", nMsgSessionID, nMsgMessageID, CoinJoin.GetMessageByID(nMsgMessageID).translated);
 
-        CompletedTransaction(nMsgMessageID);
+        Lib.CompletedTransaction(nMsgMessageID);
     }
 }
 
