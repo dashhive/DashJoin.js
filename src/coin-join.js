@@ -123,7 +123,64 @@ Lib.GetMaxPoolAmount = function() {
 /// If the collateral is valid given by a client
 //orig: static bool IsCollateralValid(CTxMemPool& mempool, const CTransaction& txCollateral);
 Lib.IsCollateralValid = function(mempool, txCollateral){
+	// TODO: FIXME: create CTransaction with .vout.empty()
+    if (txCollateral.vout.empty()) {
+			return false;
+		}
+    if (txCollateral.nLockTime != 0) {
+			return false;
+		}
 
+    //CAmount nValueIn = 0;
+    //CAmount nValueOut = 0;
+
+	
+	let nValueIn = 0; // TODO: convert to CAmount
+	let nValueOut = 0; // TODO: convert to CAmount
+    for (const auto& txout : txCollateral.vout) {
+        nValueOut += txout.nValue;
+
+        if (!txout.scriptPubKey.IsPayToPublicKeyHash() && !txout.scriptPubKey.IsUnspendable()) {
+            LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- Invalid Script, txCollateral=%s", txCollateral.ToString()); /* Continued */
+            return false;
+        }
+    }
+
+    for (const auto& txin : txCollateral.vin) {
+        Coin coin;
+        auto mempoolTx = mempool.get(txin.prevout.hash);
+        if (mempoolTx != nullptr) {
+            if (mempool.isSpent(txin.prevout) || !llmq::quorumInstantSendManager->IsLocked(txin.prevout.hash)) {
+                LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- spent or non-locked mempool input! txin=%s\n", txin.ToString());
+                return false;
+            }
+            nValueIn += mempoolTx->vout[txin.prevout.n].nValue;
+        } else if (GetUTXOCoin(txin.prevout, coin)) {
+            nValueIn += coin.out.nValue;
+        } else {
+            LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- Unknown inputs in collateral transaction, txCollateral=%s", txCollateral.ToString()); /* Continued */
+            return false;
+        }
+    }
+
+    //collateral transactions are required to pay out a small fee to the miners
+    if (nValueIn - nValueOut < GetCollateralAmount()) {
+        LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- did not include enough fees in transaction: fees: %d, txCollateral=%s", nValueOut - nValueIn, txCollateral.ToString()); /* Continued */
+        return false;
+    }
+
+    LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- %s", txCollateral.ToString()); /* Continued */
+
+    {
+        LOCK(cs_main);
+        CValidationState validationState;
+        if (!AcceptToMemoryPool(mempool, validationState, MakeTransactionRef(txCollateral), /*pfMissingInputs=*/nullptr, /*bypass_limits=*/false, /*nAbsurdFee=*/DEFAULT_MAX_RAW_TX_FEE, /*test_accept=*/true)) {
+            LogPrint(BCLog::COINJOIN, "CCoinJoin::IsCollateralValid -- didn't pass AcceptToMemoryPool()\n");
+            return false;
+        }
+    }
+
+    return true;
 };
 //orig: static constexpr CAmount GetCollateralAmount() { return GetSmallestDenomination() / 10; }
 Lib.GetCollateralAmount = function() {
@@ -188,9 +245,19 @@ Lib.NotifyChainLock = function(pindex, clhandler, mn_sync){
 };
 
 //orig: static void UpdateDSTXConfirmedHeight(const CTransactionRef& tx, int nHeight);
-static void UpdateDSTXConfirmedHeight(const CTransactionRef& tx, int nHeight);
-static void TransactionAddedToMempool(const CTransactionRef& tx) LOCKS_EXCLUDED(cs_mapdstx);
-static void BlockConnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindex) LOCKS_EXCLUDED(cs_mapdstx);
-static void BlockDisconnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex*) LOCKS_EXCLUDED(cs_mapdstx);
+Lib.UpdateDSTXConfirmedHeight = function (tx, nHeight){
 
 };
+//orig: static void TransactionAddedToMempool(const CTransactionRef& tx) LOCKS_EXCLUDED(cs_mapdstx);
+Lib.TransactionAddedToMempool = function(tx) {
+
+};
+//orig: static void BlockConnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindex) LOCKS_EXCLUDED(cs_mapdstx);
+Lib.BlockConnected = function(pblock, pindex) {
+
+};
+//orig: static void BlockDisconnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex*) LOCKS_EXCLUDED(cs_mapdstx);
+Lib.BlockDisconnected = function(pblock, CBlockIndex) {
+
+};
+
