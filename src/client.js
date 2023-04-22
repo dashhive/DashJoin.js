@@ -10,8 +10,7 @@ module.exports = Lib;
 Lib.NetMsgType = require('net-msg.js').NetMsgType;
 
 //std::vector<COutPoint> vecMasternodesUsed;
-Lib.vecMasternodesUsed = [];
-Lib.CCoinJoinClientManager = {};
+Lib.vecMasternodesUsed = require('./vector.js').create();
 // Keep track of the used Masternodes
 //orig: const std::unique_ptr<CMasternodeSync>& m_mn_sync;
 Lib.m_mn_sync = {};
@@ -19,11 +18,11 @@ Lib.m_mn_sync = {};
 Lib.CCoinJoinClientOptions = require('./options.js');
 
 //orig: std::deque<CCoinJoinClientSession> deqSessions GUARDED_BY(cs_deqsessions);
-Lib.deqSessions = {};
+Lib.deqSessions = require('./vector.js').create();
 //    std::atomic<bool> fMixing{false};
-Lib.isMixing = false;
+Lib.fMixing = false;
 Lib.IsMixing = function(){
-	return Lib.isMixing;
+	return Lib.fMixing;
 };
 // orig: int nCachedLastSuccessBlock{0};
 Lib.nCachedLastSuccessBlock = 0;
@@ -51,6 +50,26 @@ Lib.WaitForAnotherBlock = function() {
 	}
 
 	return Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock < Lib.nMinBlocksToWait;
+};
+
+Lib.StartMixing = function() {
+	return Lib.fMixing = true;
+}
+
+Lib.StopMixing = function() {
+	Lib.fMixing = false;
+}
+
+Lib.IsMixing = function() {
+	return Lib.fMixing;
+}
+Lib.ResetPool = function(){
+	Lib.nCachedLastSuccessBlock = 0;
+	Lib.vecMasternodesUsed.clear();
+	for(const session of Lib.deqSessions.contents) {
+		session.ResetPool();
+	}
+	Lib.deqSessions.clear();
 };
 
 // Make sure we have enough keys since last backup
@@ -143,57 +162,138 @@ Lib.ProcessMessage = function(/*CNode& */peer,
 	if(!Lib.CCoinJoinClientOptions.IsEnabled()) {
 		return;
 	}
-	if(!Lib.m_mn_sync->IsBlockchainSynced()) {
+	if(!Lib.m_mn_sync.IsBlockchainSynced()) {
 		return;
 	}
 
 	if(!HardDrive.CheckDiskSpace(HardDrive.GetDataDir())) {
-		ResetPool();
-		StopMixing();
-		LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::ProcessMessage -- Not enough disk space, disabling CoinJoin.\n");
+		Lib.ResetPool();
+		Lib.StopMixing();
+		Lib.LogPrint("CCoinJoinClientManager::ProcessMessage -- Not enough disk space, disabling CoinJoin.");
 		return;
 	}
 
-	if(msg_type == NetMsgType::DSSTATUSUPDATE ||
-	    msg_type == NetMsgType::DSFINALTX ||
-	    msg_type == NetMsgType::DSCOMPLETE) {
-		AssertLockNotHeld(cs_deqsessions);
-		LOCK(cs_deqsessions);
-		for(auto& session : deqSessions) {
+	if(msg_type == Lib.NetMsgType.DSSTATUSUPDATE ||
+	    msg_type == Lib.NetMsgType.DSFINALTX ||
+	    msg_type == Lib.NetMsgType.DSCOMPLETE) {
+		for(const session of Lib.deqSessions.contents){
 			session.ProcessMessage(peer, connman, mempool, msg_type, vRecv);
 		}
 	}
 }
 
+//orig: bilingual_str CCoinJoinClientManager::GetStatuses()
+Lib.GetStatuses = function(){
+    let strStatus;
+    let fWaitForBlock = Lib.WaitForAnotherBlock();
 
+    for (const session of Lib.deqSessions.contents) {
+        strStatus = strStatus + session.GetStatus(fWaitForBlock) + "; ";
+    }
+    return strStatus;
 };
-//bool StartMixing();
-//void StopMixing();
-//bool IsMixing() const;
-//void ResetPool() LOCKS_EXCLUDED(cs_deqsessions);
 
-//bilingual_str GetStatuses() LOCKS_EXCLUDED(cs_deqsessions);
-//std::string GetSessionDenoms() LOCKS_EXCLUDED(cs_deqsessions);
+//std::string CCoinJoinClientManager::GetSessionDenoms()
+Lib.GetSessionDenoms = function () {
+    let strSessionDenoms;
 
-//bool GetMixingMasternodesInfo(std::vector<CDeterministicMNCPtr>& vecDmnsRet) const LOCKS_EXCLUDED(cs_deqsessions);
+    for (const session of Lib.deqSessions.contents) {
+        strSessionDenoms += Lib.CCoinJoin.DenominationToString(session.nSessionDenom);
+        strSessionDenoms += "; ";
+    }
+    return strSessionDenoms.length === 0 ? "N/A" : strSessionDenoms;
+};
 
-/// Passively run mixing in the background according to the configuration in settings
-//bool DoAutomaticDenominating(CTxMemPool& mempool, CConnman& connman, bool fDryRun = false) LOCKS_EXCLUDED(cs_deqsessions);
+//orig: bool CCoinJoinClientManager::GetMixingMasternodesInfo(std::vector<CDeterministicMNCPtr>& vecDmnsRet) const
+Lib.GetMixingMasternodesInfo = function() {
+	let vecDmnsRet = [];
+    for (const session of Lib.deqSessions.contents) {
+        //CDeterministicMNCPtr dmn;
+				let dmn = session.GetMixingMasternodeInfo();
+        if(dmn){
+					vecDmnsRet.push(dmn);
+        }
+    }
+    return vecDmnsRet.length > 0;
+};
 
-//bool TrySubmitDenominate(const CService& mnAddr, CConnman& connman) LOCKS_EXCLUDED(cs_deqsessions);
-//bool MarkAlreadyJoinedQueueAsTried(CCoinJoinQueue& dsq) const LOCKS_EXCLUDED(cs_deqsessions);
+//orig: void CCoinJoinClientManager::CheckTimeout()
+Lib.CheckTimeout = function(){
+    if (!Lib.CCoinJoinClientOptions.IsEnabled() || !Lib.IsMixing()){
+			return;
+		}
+    for (const session of Lib.deqSessions.contents) {
+        if (session.CheckTimeout()) {
+            strAutoDenomResult = "Session timed out.";
+        }
+    }
+};
 
-//void CheckTimeout() LOCKS_EXCLUDED(cs_deqsessions);
+//orig: void CCoinJoinClientManager::UpdatedSuccessBlock()
+Lib.UpdatedSuccessBlock = function(){
+    Lib.nCachedLastSuccessBlock = Lib.nCachedBlockHeight;
+};
 
-//void ProcessPendingDsaRequest(CConnman& connman) LOCKS_EXCLUDED(cs_deqsessions);
+//orig: bool CCoinJoinClientManager::WaitForAnotherBlock() const
+Lib.WaitForAnotherBlock = function(){
+    if (!Lib.m_mn_sync->IsBlockchainSynced()){
+			return true;
+		}
 
-//void AddUsedMasternode(const COutPoint& outpointMn);
-//CDeterministicMNCPtr GetRandomNotUsedMasternode();
+    if (Lib.CCoinJoinClientOptions.IsMultiSessionEnabled()){
+			return false;
+		}
 
-//void UpdatedSuccessBlock();
+    return Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock < Lib.nMinBlocksToWait;
+};
 
-//void UpdatedBlockTip(const CBlockIndex* pindex);
 
-//void DoMaintenance(CTxMemPool& mempool, CConnman& connman);
+//orig: bool CCoinJoinClientManager::DoAutomaticDenominating(CTxMemPool& mempool, CConnman& connman, bool fDryRun)
+Lib.DoAutomaticDenominating = function(mempool, connman, fDryRun){
+    if (!Lib.CCoinJoinClientOptions.IsEnabled() || !Lib.IsMixing()) {
+			return false;
+		}
 
-//void GetJsonInfo(UniValue& obj) const LOCKS_EXCLUDED(cs_deqsessions);
+    if (!Lib.m_mn_sync->IsBlockchainSynced()) {
+        Lib.strAutoDenomResult = "Can't mix while sync in progress.";
+        return false;
+    }
+
+    if (!fDryRun && Lib.mixingWallet.IsLocked(true)) {
+        Lib.strAutoDenomResult = "Wallet is locked.";
+        return false;
+    }
+
+    let nMnCountEnabled = Lib.deterministicMNManager.GetListAtChainTip().GetValidMNsCount();
+
+    // If we've used 90% of the Masternode list then drop the oldest first ~30%
+    let nThreshold_high = Lib.nMnCountEnabled * 0.9;
+    let nThreshold_low = Lib.nThreshold_high * 0.7;
+    Lib.LogPrint(
+			`Checking vecMasternodesUsed: size: ${Lib.vecMasternodesUsed.size()}, threshold: ${nThreshold_high}`
+		);
+
+    if (Lib.vecMasternodesUsed.size() > nThreshold_high) {
+        Lib.vecMasternodesUsed.erase(0, vecMasternodesUsed.size() - nThreshold_low);
+        Lib.LogPrint(`vecMasternodesUsed: new size: ${Lib.vecMasternodesUsed.size()}, threshold: ${nThreshold_high}`);
+    }
+
+    let fResult = true;
+    if (Lib.deqSessions.size() < Lib.CCoinJoinClientOptions.GetSessions()) {
+        deqSessions.emplace_back(mixingWallet, m_mn_sync);
+    }
+    for (auto& session : deqSessions) {
+        if (!CheckAutomaticBackup()) return false;
+
+        if (WaitForAnotherBlock()) {
+            strAutoDenomResult = _("Last successful action was too recent.");
+            LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::DoAutomaticDenominating -- %s\n", strAutoDenomResult.original);
+            return false;
+        }
+
+        fResult &= session.DoAutomaticDenominating(mempool, connman, fDryRun);
+    }
+
+    return fResult;
+}
+
