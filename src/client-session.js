@@ -1,299 +1,502 @@
 /**
- * A port of DASH core's CCoinJoinClientManager
- */
+* A port of DASH core's CCoinJoinClientSession
+*/
 
 const HardDrive = require('hd.js');// TODO: .GetDataDir())) {
+const MasterNodeSync = require('master-node-sync.js');
+const WalletImpl = require('wallet.js');
+const NetMsgType = require('net-msg.js').NetMsgType;
+const Vector = require('./vector.js');
+const COutPoint = require('./outpoint.js');
+const CoinJoin = require('./coin-join.js');
 
-let Lib = {'core_name': 'CCoinJoinClientManager'};
+let Lib = {'core_name': 'CCoinJoinClientSession'};
 module.exports = Lib;
-// std::map<const std::string, std::shared_ptr<CCoinJoinClientManager>> coinJoinClientManagers;
-Lib.NetMsgType = require('net-msg.js').NetMsgType;
-
-//std::vector<COutPoint> vecMasternodesUsed;
-Lib.vecMasternodesUsed = require('./vector.js').create();
+//class CCoinJoinClientSession : public CCoinJoinBaseSession
 // Keep track of the used Masternodes
 //orig: const std::unique_ptr<CMasternodeSync>& m_mn_sync;
-Lib.m_mn_sync = {};
+Lib.m_mn_sync = new MasterNodeSync();
 
-Lib.CCoinJoinClientOptions = require('./options.js');
-
-//orig: std::deque<CCoinJoinClientSession> deqSessions GUARDED_BY(cs_deqsessions);
-Lib.deqSessions = require('./vector.js').create();
-//    std::atomic<bool> fMixing{false};
-Lib.fMixing = false;
-Lib.IsMixing = function(){
-	return Lib.fMixing;
-};
-// orig: int nCachedLastSuccessBlock{0};
-Lib.nCachedLastSuccessBlock = 0;
-// how many blocks to wait for after one successful mixing tx in non-multisession mode
-//orig: int nMinBlocksToWait{1}; // how many blocks to wait for after one successful mixing tx in non-multisession mode
-Lib.nMinBlocksToWait = 1;
-// orig: bilingual_str strAutoDenomResult;
+Lib.NetMsgType = NetMsgType;
+	// orig: std::vector<COutPoint> vecOutPointLocked;
+Lib.vecOutPointLocked = new Vector(new COutPoint());
+	//orig: bilingual_str strLastMessage;
+Lib.strLastMessage = '';
+	//orig: bilingual_str strAutoDenomResult;
 Lib.strAutoDenomResult = '';
+
+	//orig: CDeterministicMNCPtr mixingMasternode;
+Lib.mixingMasternode = {}; // TODO: FIXME: 
+	//orig: CMutableTransaction txMyCollateral; // client side collateral
+Lib.txMyCollateral = 0; // TODO: FIXME
+	//orig: CPendingDsaRequest pendingDsaRequest;
+Lib.pendingDsaRequest = {}; //TODO: FIXME
+
+//orig: CKeyHolderStorage keyHolderStorage; // storage for keys used in PrepareDenominate
+Lib.keyHolderStorage = [];
+
 //orig: CWallet& mixingWallet;
-Lib.walletImpl = require('wallet.js');
-Lib.mixingWallet = Lib.walletImpl.loadFromJSON(require('./data/wallet.json'));
+Lib.mixingWallet = new WalletImpl();
 
-// Keep track of current block height
-//orig: int nCachedBlockHeight{0};
-Lib.nCachedBlockHeight = 0;
-// orig: bool WaitForAnotherBlock() const;
-Lib.WaitForAnotherBlock = function() {
-	/** Returns true/false */
-	if(!Lib.m_mn_sync.IsBlockchainSynced()) {
-		return true;
-	}
-
-	if(Lib.CCoinJoinClientOptions.IsMultiSessionEnabled()) {
-		return false;
-	}
-
-	return Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock < Lib.nMinBlocksToWait;
-};
-
-Lib.StartMixing = function() {
-	return Lib.fMixing = true;
-}
-
-Lib.StopMixing = function() {
-	Lib.fMixing = false;
-}
-
-Lib.IsMixing = function() {
-	return Lib.fMixing;
-}
-Lib.ResetPool = function(){
-	Lib.nCachedLastSuccessBlock = 0;
-	Lib.vecMasternodesUsed.clear();
-	for(const session of Lib.deqSessions.contents) {
-		session.ResetPool();
-	}
-	Lib.deqSessions.clear();
-};
-
-// Make sure we have enough keys since last backup
-//orig: bool CheckAutomaticBackup();
-/**
- * @return bool
- */
-Lib.CheckAutomaticBackup = function() {
-	/**
-	 * Returns bool
-	 */
-	if(!Lib.CCoinJoinClientOptions.IsEnabled() || !Lib.IsMixing()) {
-		return false;
-	}
-
-	//TODO
-//	switch(Lib.nWalletBackups) {
-//		case 0:
-//			strAutoDenomResult = _("Automatic backups disabled") + Untranslated(", ") + _("no mixing available.");
-//			LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- %s\n", strAutoDenomResult.original);
-//			StopMixing();
-//			mixingWallet.nKeysLeftSinceAutoBackup = 0; // no backup, no "keys since last backup"
-//			return false;
-//		case -1:
-//			// Automatic backup failed, nothing else we can do until user fixes the issue manually.
-//			// There is no way to bring user attention in daemon mode, so we just update status and
-//			// keep spamming if debug is on.
-//			strAutoDenomResult = _("ERROR! Failed to create automatic backup") + Untranslated(", ") + _("see debug.log for details.");
-//			LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- %s\n", strAutoDenomResult.original);
-//			return false;
-//		case -2:
-//			// We were able to create automatic backup but keypool was not replenished because wallet is locked.
-//			// There is no way to bring user attention in daemon mode, so we just update status and
-//			// keep spamming if debug is on.
-//			strAutoDenomResult = _("WARNING! Failed to replenish keypool, please unlock your wallet to do so.") + Untranslated(", ") + _("see debug.log for details.");
-//			LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- %s\n", strAutoDenomResult.original);
-//			return false;
-//	}
-//
-//	if(mixingWallet.nKeysLeftSinceAutoBackup < COINJOIN_KEYS_THRESHOLD_STOP) {
-//		// We should never get here via mixing itself but probably something else is still actively using keypool
-//		strAutoDenomResult = strprintf(_("Very low number of keys left: %d") + Untranslated(", ") + _("no mixing available."), mixingWallet.nKeysLeftSinceAutoBackup);
-//		LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- %s\n", strAutoDenomResult.original);
-//		// It's getting really dangerous, stop mixing
-//		StopMixing();
-//		return false;
-//	} else if(mixingWallet.nKeysLeftSinceAutoBackup < COINJOIN_KEYS_THRESHOLD_WARNING) {
-//		// Low number of keys left, but it's still more or less safe to continue
-//		strAutoDenomResult = strprintf(_("Very low number of keys left: %d"), mixingWallet.nKeysLeftSinceAutoBackup);
-//		LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- %s\n", strAutoDenomResult.original);
-//
-//		if(fCreateAutoBackups) {
-//			LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- Trying to create new backup.\n");
-//			bilingual_str errorString;
-//			std::vector<bilingual_str> warnings;
-//
-//			if(!mixingWallet.AutoBackupWallet("", errorString, warnings)) {
-//				if(!warnings.empty()) {
-//					// There were some issues saving backup but yet more or less safe to continue
-//					LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- WARNING! Something went wrong on automatic backup: %s\n", Join(warnings, Untranslated("\n")).translated);
-//				}
-//				if(!errorString.original.empty()) {
-//					// Things are really broken
-//					strAutoDenomResult = _("ERROR! Failed to create automatic backup") + Untranslated(": ") + errorString;
-//					LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- %s\n", strAutoDenomResult.original);
-//					return false;
-//				}
-//			}
-//		} else {
-//			// Wait for something else (e.g. GUI action) to create automatic backup for us
-//			return false;
-//		}
-//	}
-//
-//	LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::CheckAutomaticBackup -- Keys left since latest backup: %d\n", mixingWallet.nKeysLeftSinceAutoBackup);
-//
-	return true;
-}
-
-//int nCachedNumBlocks{std::numeric_limits<int>::max()};    // used for the overview screen
-Lib.nCachedNumBlocks = 9999; /** FIXME: use numeric_limits::max */
-//bool fCreateAutoBackups{true}; // builtin support for automatic backups
-Lib.fCreateAutoBackups = true;  // builtin support for automatic backups
-//void ProcessMessage(CNode& peer, CConnman& connman, const CTxMemPool& mempool, std::string_view msg_type, CDataStream& vRecv) LOCKS_EXCLUDED(cs_deqsessions);
-Lib.ProcessMessage = function(/*CNode& */peer, 
-	/*CConnman& */ connman, 
-	/*const CTxMemPool&*/ mempool, 
-	/*std::string_view*/ msg_type,
-	/*CDataStream&*/ vRecv) {
-	if(!Lib.CCoinJoinClientOptions.IsEnabled()) {
-		return;
-	}
-	if(!Lib.m_mn_sync.IsBlockchainSynced()) {
-		return;
-	}
-
-	if(!HardDrive.CheckDiskSpace(HardDrive.GetDataDir())) {
-		Lib.ResetPool();
-		Lib.StopMixing();
-		Lib.LogPrint("CCoinJoinClientManager::ProcessMessage -- Not enough disk space, disabling CoinJoin.");
-		return;
-	}
-
-	if(msg_type == Lib.NetMsgType.DSSTATUSUPDATE ||
-	    msg_type == Lib.NetMsgType.DSFINALTX ||
-	    msg_type == Lib.NetMsgType.DSCOMPLETE) {
-		for(const session of Lib.deqSessions.contents){
-			session.ProcessMessage(peer, connman, mempool, msg_type, vRecv);
+/// Create denominations
+//orig: bool CreateDenominated(CAmount nBalanceToDenominate);
+//orig: bool CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals);
+Lib.CreateDenominated = function (nBalanceToDenominate, tallyItem=null,fCreateMixingCollaterals=null){
+// Create denominations by looping through inputs grouped by addresses
+//bool CCoinJoinClientSession::CreateDenominated(CAmount nBalanceToDenominate)
+//{
+    if (!Lib.CCoinJoinClientOptions.IsEnabled()) {
+			return false;
 		}
-	}
-}
 
-//orig: bilingual_str CCoinJoinClientManager::GetStatuses()
-Lib.GetStatuses = function(){
-    let strStatus;
-    let fWaitForBlock = Lib.WaitForAnotherBlock();
-
-    for (const session of Lib.deqSessions.contents) {
-        strStatus = strStatus + session.GetStatus(fWaitForBlock) + "; ";
+    // NOTE: We do not allow txes larger than 100 kB, so we have to limit number of inputs here.
+    // We still want to consume a lot of inputs to avoid creating only smaller denoms though.
+    // Knowing that each CTxIn is at least 148 B big, 400 inputs should take 400 x ~148 B = ~60 kB.
+    // This still leaves more than enough room for another data of typical CreateDenominated tx.
+    //orig: std::vector<CompactTallyItem> vecTally = mixingWallet.SelectCoinsGroupedByAddresses(true, true, true, 400);
+    let vecTally = new Vector();
+		vecTally.contents = Lib.mixingWallet.SelectCoinsGroupedByAddresses(true, true, true, 400); // FIXME: add to wallet.js
+    if (vecTally.contents.length === 0) {
+        Lib.LogPrint("CCoinJoinClientSession::CreateDenominated -- SelectCoinsGroupedByAddresses can't find any inputs!");
+        return false;
     }
-    return strStatus;
+
+    // Start from the largest balances first to speed things up by creating txes with larger/largest denoms included
+    //orig: std::sort(vecTally.begin(), vecTally.end(), [](const CompactTallyItem& a, const CompactTallyItem& b) {
+        //return a.nAmount > b.nAmount;
+    //});
+		vecTally = Lib.sort(vecTally,function(a, b) {
+        return a.nAmount > b.nAmount;
+    });
+
+   	let fCreateMixingCollaterals = !Lib.mixingWallet.HasCollateralInputs(); // FIXME: add to wallet.js
+
+    for (const item of vecTally.contents) {
+        if (!Lib.CreateDenominated(nBalanceToDenominate, item, fCreateMixingCollaterals)) {
+					continue;
+				}
+        return true;
+    }
+
+    Lib.LogPrint("CCoinJoinClientSession::CreateDenominated -- failed!");
+    return false;
 };
 
-//std::string CCoinJoinClientManager::GetSessionDenoms()
-Lib.GetSessionDenoms = function () {
-    let strSessionDenoms;
+// Create denominations
+//orig: bool CCoinJoinClientSession::CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals)
+Lib.CreateDenominatedExt = function(nBalanceToDenominate, tallyItem, fCreateMixingCollaterals) {
+    if (!Lib.CCoinJoinClientOptions.IsEnabled()) {
+			return false;
+		}
 
-    for (const session of Lib.deqSessions.contents) {
-        strSessionDenoms += Lib.CCoinJoin.DenominationToString(session.nSessionDenom);
-        strSessionDenoms += "; ";
+    // denominated input is always a single one, so we can check its amount directly and return early
+	// TODO: FIXME: make sure CompactTallyItem has vecInputCoins with a .size() function
+	// TODO: FIXME: make sure CompactTallyItem has .nAmount
+    if (tallyItem.vecInputCoins.size() == 1 && CCoinJoin.IsDenominatedAmount(tallyItem.nAmount)) {
+        return false;
     }
-    return strSessionDenoms.length === 0 ? "N/A" : strSessionDenoms;
-};
 
-//orig: bool CCoinJoinClientManager::GetMixingMasternodesInfo(std::vector<CDeterministicMNCPtr>& vecDmnsRet) const
-Lib.GetMixingMasternodesInfo = function() {
-	let vecDmnsRet = [];
-    for (const session of Lib.deqSessions.contents) {
-        //CDeterministicMNCPtr dmn;
-				let dmn = session.GetMixingMasternodeInfo();
-        if(dmn){
-					vecDmnsRet.push(dmn);
+    const auto pwallet = GetWallet(mixingWallet.GetName());
+
+    if (!pwallet) {
+        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Couldn't get wallet pointer\n", __func__);
+        return false;
+    }
+
+    CTransactionBuilder txBuilder(pwallet, tallyItem);
+
+    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Start %s\n", __func__, txBuilder.ToString());
+
+    // ****** Add an output for mixing collaterals ************ /
+
+    if (fCreateMixingCollaterals && !txBuilder.AddOutput(CCoinJoin::GetMaxCollateralAmount())) {
+        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Failed to add collateral output\n", __func__);
+        return false;
+    }
+
+    // ****** Add outputs for denoms ************ /
+
+    bool fAddFinal = true;
+    auto denoms = CCoinJoin::GetStandardDenominations();
+
+    std::map<CAmount, int> mapDenomCount;
+    for (auto nDenomValue : denoms) {
+        mapDenomCount.insert(std::pair<CAmount, int>(nDenomValue, mixingWallet.CountInputsWithAmount(nDenomValue)));
+    }
+
+    // Will generate outputs for the createdenoms up to coinjoinmaxdenoms per denom
+
+    // This works in the way creating PS denoms has traditionally worked, assuming enough funds,
+    // it will start with the smallest denom then create 11 of those, then go up to the next biggest denom create 11
+    // and repeat. Previously, once the largest denom was reached, as many would be created were created as possible and
+    // then any remaining was put into a change address and denominations were created in the same manner a block later.
+    // Now, in this system, so long as we don't reach COINJOIN_DENOM_OUTPUTS_THRESHOLD outputs the process repeats in
+    // the same transaction, creating up to nCoinJoinDenomsHardCap per denomination in a single transaction.
+
+    while (txBuilder.CouldAddOutput(CCoinJoin::GetSmallestDenomination()) && txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
+        for (auto it = denoms.rbegin(); it != denoms.rend(); ++it) {
+            CAmount nDenomValue = *it;
+            auto currentDenomIt = mapDenomCount.find(nDenomValue);
+
+            int nOutputs = 0;
+
+            const auto& strFunc = __func__;
+            auto needMoreOutputs = [&]() {
+                if (txBuilder.CouldAddOutput(nDenomValue)) {
+                    if (fAddFinal && nBalanceToDenominate > 0 && nBalanceToDenominate < nDenomValue) {
+                        fAddFinal = false; // add final denom only once, only the smalest possible one
+                        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - FINAL - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
+                                                     strFunc, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                        return true;
+                    } else if (nBalanceToDenominate >= nDenomValue) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            // add each output up to 11 times or until it can't be added again or until we reach nCoinJoinDenomsGoal
+            while (needMoreOutputs() && nOutputs <= 10 && currentDenomIt->second < CCoinJoinClientOptions::GetDenomsGoal()) {
+                // Add output and subtract denomination amount
+                if (txBuilder.AddOutput(nDenomValue)) {
+                    ++nOutputs;
+                    ++currentDenomIt->second;
+                    nBalanceToDenominate -= nDenomValue;
+                    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
+                                                 __func__, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                } else {
+                    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - Error: AddOutput failed for nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
+                                                 __func__, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                    return false;
+                }
+
+            }
+
+            if (txBuilder.GetAmountLeft() == 0 || nBalanceToDenominate <= 0) break;
+        }
+
+        bool finished = true;
+        for (const auto [denom, count] : mapDenomCount) {
+            // Check if this specific denom could use another loop, check that there aren't nCoinJoinDenomsGoal of this
+            // denom and that our nValueLeft/nBalanceToDenominate is enough to create one of these denoms, if so, loop again.
+            if (count < CCoinJoinClientOptions::GetDenomsGoal() && txBuilder.CouldAddOutput(denom) && nBalanceToDenominate > 0) {
+                finished = false;
+                LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - NOT finished - nDenomValue: %f, count: %d, nBalanceToDenominate: %f, %s\n",
+                                             __func__, (float) denom / COIN, count, (float) nBalanceToDenominate / COIN, txBuilder.ToString());
+                break;
+            }
+            LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 1 - FINISHED - nDenomValue: %f, count: %d, nBalanceToDenominate: %f, %s\n",
+                                         __func__, (float) denom / COIN, count, (float) nBalanceToDenominate / COIN, txBuilder.ToString());
+        }
+
+        if (finished) break;
+    }
+
+    // Now that nCoinJoinDenomsGoal worth of each denom have been created or the max number of denoms given the value of the input, do something with the remainder.
+    if (txBuilder.CouldAddOutput(CCoinJoin::GetSmallestDenomination()) && nBalanceToDenominate >= CCoinJoin::GetSmallestDenomination() && txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
+        CAmount nLargestDenomValue = denoms.front();
+
+        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - Process remainder: %s\n", __func__, txBuilder.ToString());
+
+        auto countPossibleOutputs = [&](CAmount nAmount) -> int {
+            std::vector<CAmount> vecOutputs;
+            while (true) {
+                // Create a potential output
+                vecOutputs.push_back(nAmount);
+                if (!txBuilder.CouldAddOutputs(vecOutputs) || txBuilder.CountOutputs() + vecOutputs.size() > COINJOIN_DENOM_OUTPUTS_THRESHOLD) {
+                    // If it's not possible to add it due to insufficient amount left or total number of outputs exceeds
+                    // COINJOIN_DENOM_OUTPUTS_THRESHOLD drop the output again and stop trying.
+                    vecOutputs.pop_back();
+                    break;
+                }
+            }
+            return static_cast<int>(vecOutputs.size());
+        };
+
+        // Go big to small
+        for (auto nDenomValue : denoms) {
+            if (nBalanceToDenominate <= 0) break;
+            int nOutputs = 0;
+
+            // Number of denoms we can create given our denom and the amount of funds we have left
+            int denomsToCreateValue = countPossibleOutputs(nDenomValue);
+            // Prefer overshooting the target balance by larger denoms (hence `+1`) instead of a more
+            // accurate approximation by many smaller denoms. This is ok because when we get here we
+            // should have nCoinJoinDenomsGoal of each smaller denom already. Also, without `+1`
+            // we can end up in a situation when there is already nCoinJoinDenomsHardCap of smaller
+            // denoms, yet we can't mix the remaining nBalanceToDenominate because it's smaller than
+            // nDenomValue (and thus denomsToCreateBal == 0), so the target would never get reached
+            // even when there is enough funds for that.
+            int denomsToCreateBal = (nBalanceToDenominate / nDenomValue) + 1;
+            // Use the smaller value
+            int denomsToCreate = denomsToCreateValue > denomsToCreateBal ? denomsToCreateBal : denomsToCreateValue;
+            LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - nBalanceToDenominate: %f, nDenomValue: %f, denomsToCreateValue: %d, denomsToCreateBal: %d\n",
+                                         __func__, (float) nBalanceToDenominate / COIN, (float) nDenomValue / COIN, denomsToCreateValue, denomsToCreateBal);
+            auto it = mapDenomCount.find(nDenomValue);
+            for (const auto i : irange::range(denomsToCreate)) {
+                // Never go above the cap unless it's the largest denom
+                if (nDenomValue != nLargestDenomValue && it->second >= CCoinJoinClientOptions::GetDenomsHardCap()) break;
+
+                // Increment helpers, add output and subtract denomination amount
+                if (txBuilder.AddOutput(nDenomValue)) {
+                    nOutputs++;
+                    it->second++;
+                    nBalanceToDenominate -= nDenomValue;
+                } else {
+                    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - Error: AddOutput failed at %d/%d, %s\n", __func__, i + 1, denomsToCreate, txBuilder.ToString());
+                    break;
+                }
+                LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 2 - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
+                                             __func__, (float) nDenomValue / COIN, (float) nBalanceToDenominate / COIN, nOutputs, txBuilder.ToString());
+                if (txBuilder.CountOutputs() >= COINJOIN_DENOM_OUTPUTS_THRESHOLD) break;
+            }
+            if (txBuilder.CountOutputs() >= COINJOIN_DENOM_OUTPUTS_THRESHOLD) break;
         }
     }
-    return vecDmnsRet.length > 0;
+
+    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 3 - nBalanceToDenominate: %f, %s\n", __func__, (float) nBalanceToDenominate / COIN, txBuilder.ToString());
+
+    for (const auto [denom, count] : mapDenomCount) {
+        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- 3 - DONE - nDenomValue: %f, count: %d\n", __func__, (float) denom / COIN, count);
+    }
+
+    // No reasons to create mixing collaterals if we can't create denoms to mix
+    if ((fCreateMixingCollaterals && txBuilder.CountOutputs() == 1) || txBuilder.CountOutputs() == 0) {
+        return false;
+    }
+
+    bilingual_str strResult;
+    if (!txBuilder.Commit(strResult)) {
+        LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- Commit failed: %s\n", __func__, strResult.original);
+        return false;
+    }
+
+    // use the same nCachedLastSuccessBlock as for DS mixing to prevent race
+    coinJoinClientManagers.at(mixingWallet.GetName())->UpdatedSuccessBlock();
+
+    LogPrint(BCLog::COINJOIN, "CCoinJoinClientSession::%s -- txid: %s\n", __func__, strResult.original);
+
+    return true;
+}
+
 };
 
-//orig: void CCoinJoinClientManager::CheckTimeout()
-Lib.CheckTimeout = function(){
-    if (!Lib.CCoinJoinClientOptions.IsEnabled() || !Lib.IsMixing()){
+/// Split up large inputs or make fee sized inputs
+//orig: bool MakeCollateralAmounts();
+//orig: bool MakeCollateralAmounts(const CompactTallyItem& tallyItem, bool fTryDenominated);
+Lib.MakeCollateralAmounts = function(tallyItem=null,fTryDenominated = null) {
+
+};
+
+//orig: bool CreateCollateralTransaction(CMutableTransaction& txCollateral, std::string& strReason);
+Lib.CreateCollateralTransaction = function(txCollateral, strReason){
+
+};
+
+//orig: bool JoinExistingQueue(CAmount nBalanceNeedsAnonymized, CConnman& connman);
+Lib.JoinExistingQueue = function(nBalanceNeedsAnonymized, connman){
+
+};
+//orig: bool StartNewQueue(CAmount nBalanceNeedsAnonymized, CConnman& connman);
+Lib.StartNewQueue = function(nBalanceNeedsAnonymized, connman){
+
+};
+
+/// step 0: select denominated inputs and txouts
+//orig: bool SelectDenominate(std::string& strErrorRet, std::vector<CTxDSIn>& vecTxDSInRet);
+Lib.SelectDenominate = function(strErrorRet, svecTxDSInRet){
+
+};
+/// step 1: prepare denominated inputs and outputs
+//orig: bool PrepareDenominate(int nMinRounds, int nMaxRounds, std::string& strErrorRet, const std::vector<CTxDSIn>& vecTxDSIn, std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsRet, bool fDryRun = false);
+Lib.PrepareDenominate = function(nMinRounds, nMaxRounds, strErrorRet, vecTxDSIn, vecPSInOutPairsRet, fDryRun = false){
+
+};
+/// step 2: send denominated inputs and outputs prepared in step 1
+//orig: bool SendDenominate(const std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsIn, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);
+Lib.SendDenominate = function(vecPSInOutPairsIn, connman){
+
+};
+
+/// Process Masternode updates about the progress of mixing
+//orig: void ProcessPoolStateUpdate(CCoinJoinStatusUpdate psssup);
+Lib.ProcessPoolStateUpdate = function(psssup){
+
+};
+// Set the 'state' value, with some logging and capturing when the state changed
+//orig: void SetState(PoolState nStateNew);
+Lib.SetState = function(nStateNew){
+
+};
+
+//orig: void CompletedTransaction(PoolMessage nMessageID);
+Lib.CompletedTransaction = function(nMessageID){
+
+};
+
+/// As a client, check and sign the final transaction
+//orig: bool SignFinalTransaction(const CTxMemPool& mempool, const CTransaction& finalTransactionNew, CNode& peer, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);
+Lib.SignFinalTransaction = function(mempool, finalTransactionNew, peer, connman){
+
+};
+
+//orig: void RelayIn(const CCoinJoinEntry& entry, CConnman& connman) const;
+Lib.RelayIn = function (entry,connman){
+
+};
+
+//orig: void SetNull() EXCLUSIVE_LOCKS_REQUIRED(cs_coinjoin);
+Lib.SetNull = function(){
+
+};
+
+//orig: void ProcessMessage(CNode& peer, CConnman& connman, const CTxMemPool& mempool, std::string_view msg_type, CDataStream& vRecv);
+Lib.ProcessMessage = function(peer, connman, mempool,msg_type, vRecv){
+    // TODO: make easier to check: if (!CCoinJoinClientOptions::IsEnabled()) return;
+    if (!Lib.m_mn_sync.IsBlockchainSynced()){
 			return;
 		}
-    for (const session of Lib.deqSessions.contents) {
-        if (session.CheckTimeout()) {
-            strAutoDenomResult = "Session timed out.";
-        }
-    }
-};
 
-//orig: void CCoinJoinClientManager::UpdatedSuccessBlock()
-Lib.UpdatedSuccessBlock = function(){
-    Lib.nCachedLastSuccessBlock = Lib.nCachedBlockHeight;
-};
-
-//orig: bool CCoinJoinClientManager::WaitForAnotherBlock() const
-Lib.WaitForAnotherBlock = function(){
-    if (!Lib.m_mn_sync->IsBlockchainSynced()){
-			return true;
-		}
-
-    if (Lib.CCoinJoinClientOptions.IsMultiSessionEnabled()){
-			return false;
-		}
-
-    return Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock < Lib.nMinBlocksToWait;
-};
-
-
-//orig: bool CCoinJoinClientManager::DoAutomaticDenominating(CTxMemPool& mempool, CConnman& connman, bool fDryRun)
-Lib.DoAutomaticDenominating = function(mempool, connman, fDryRun){
-    if (!Lib.CCoinJoinClientOptions.IsEnabled() || !Lib.IsMixing()) {
-			return false;
-		}
-
-    if (!Lib.m_mn_sync->IsBlockchainSynced()) {
-        Lib.strAutoDenomResult = "Can't mix while sync in progress.";
-        return false;
-    }
-
-    if (!fDryRun && Lib.mixingWallet.IsLocked(true)) {
-        Lib.strAutoDenomResult = "Wallet is locked.";
-        return false;
-    }
-
-    let nMnCountEnabled = Lib.deterministicMNManager.GetListAtChainTip().GetValidMNsCount();
-
-    // If we've used 90% of the Masternode list then drop the oldest first ~30%
-    let nThreshold_high = Lib.nMnCountEnabled * 0.9;
-    let nThreshold_low = Lib.nThreshold_high * 0.7;
-    Lib.LogPrint(
-			`Checking vecMasternodesUsed: size: ${Lib.vecMasternodesUsed.size()}, threshold: ${nThreshold_high}`
-		);
-
-    if (Lib.vecMasternodesUsed.size() > nThreshold_high) {
-        Lib.vecMasternodesUsed.erase(0, vecMasternodesUsed.size() - nThreshold_low);
-        Lib.LogPrint(`vecMasternodesUsed: new size: ${Lib.vecMasternodesUsed.size()}, threshold: ${nThreshold_high}`);
-    }
-
-    let fResult = true;
-    if (Lib.deqSessions.size() < Lib.CCoinJoinClientOptions.GetSessions()) {
-        deqSessions.emplace_back(mixingWallet, m_mn_sync);
-    }
-    for (auto& session : deqSessions) {
-        if (!CheckAutomaticBackup()) return false;
-
-        if (WaitForAnotherBlock()) {
-            strAutoDenomResult = _("Last successful action was too recent.");
-            LogPrint(BCLog::COINJOIN, "CCoinJoinClientManager::DoAutomaticDenominating -- %s\n", strAutoDenomResult.original);
-            return false;
+    if (msg_type == Lib.NetMsgType.DSSTATUSUPDATE) {
+        if (!Lib.mixingMasternode) {
+					return;
+				}
+			// TODO FIXME: make pdmnState.addr
+			// TODO FIXME: make peer.addr
+        if (Lib.mixingMasternode.pdmnState.addr != peer.addr) {
+            return;
         }
 
-        fResult &= session.DoAutomaticDenominating(mempool, connman, fDryRun);
-    }
+			/**
+			 * TODO: FIXME: figure out how to unserialize a message off the wire
+			 * and parse it as a CCoinJoinStatusUpdate
+			 */
+        let psssup = vRecv.read('CCoinJoinStatusUpdate');
 
-    return fResult;
+        Lib.ProcessPoolStateUpdate(psssup);
+
+    } else if (msg_type == Lib.NetMsgType::DSFINALTX) {
+        if (!Lib.mixingMasternode) {
+					return;
+				}
+        if (Lib.mixingMasternode.pdmnState.addr != peer.addr) {
+            return;
+        }
+
+			/**
+        int nMsgSessionID;
+        vRecv >> nMsgSessionID;
+        CTransaction txNew(deserialize, vRecv);
+				*/
+			let nMsgSessionID = vRecv.read('CTransaction');
+
+        if (nSessionID != nMsgSessionID) {
+            LogPrint(BCLog::COINJOIN, "DSFINALTX -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n", nSessionID, nMsgSessionID);
+            return;
+        }
+
+        LogPrint(BCLog::COINJOIN, "DSFINALTX -- txNew %s", txNew.ToString()); /* Continued */
+
+        // check to see if input is spent already? (and probably not confirmed)
+        SignFinalTransaction(mempool, txNew, peer, connman);
+
+    } else if (msg_type == NetMsgType::DSCOMPLETE) {
+        if (!mixingMasternode) return;
+        if (mixingMasternode->pdmnState->addr != peer.addr) {
+            LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- message doesn't match current Masternode: infoMixingMasternode=%s  addr=%s\n", mixingMasternode->pdmnState->addr.ToString(), peer.addr.ToString());
+            return;
+        }
+
+        int nMsgSessionID;
+        PoolMessage nMsgMessageID;
+        vRecv >> nMsgSessionID >> nMsgMessageID;
+
+        if (nMsgMessageID < MSG_POOL_MIN || nMsgMessageID > MSG_POOL_MAX) {
+            LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- nMsgMessageID is out of bounds: %d\n", nMsgMessageID);
+            return;
+        }
+
+        if (nSessionID != nMsgSessionID) {
+            LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n", nSessionID, nMsgSessionID);
+            return;
+        }
+
+        LogPrint(BCLog::COINJOIN, "DSCOMPLETE -- nMsgSessionID %d  nMsgMessageID %d (%s)\n", nMsgSessionID, nMsgMessageID, CCoinJoin::GetMessageByID(nMsgMessageID).translated);
+
+        CompletedTransaction(nMsgMessageID);
+    }
 }
 
+
+};
+
+//orig: void UnlockCoins();
+Lib.UnlockCoins = function(){
+
+};
+
+//orig: void ResetPool() LOCKS_EXCLUDED(cs_coinjoin);
+Lib.ResetPool = function(){
+
+};
+
+//orig: bilingual_str GetStatus(bool fWaitForBlock) const;
+Lib.GetStatus = function(fWaitForBlock){
+
+};
+
+//orig: bool GetMixingMasternodeInfo(CDeterministicMNCPtr& ret) const;
+Lib.GetMixingMasternodeInfo = function(ret) {
+
+};
+
+/// Passively run mixing in the background according to the configuration in settings
+//orig: bool DoAutomaticDenominating(CTxMemPool& mempool, CConnman& connman, bool fDryRun = false) LOCKS_EXCLUDED(cs_coinjoin);
+Lib.DoAutomaticDenominating = function(mempool, connman,fDryRun = false) {
+
+};
+
+/// As a client, submit part of a future mixing transaction to a Masternode to start the process
+//orig: bool SubmitDenominate(CConnman& connman);
+Lib.SubmitDenominate = function(connman){
+
+};
+
+//orig: bool ProcessPendingDsaRequest(CConnman& connman);
+Lib.ProcessPendingDsaRequest = function (connman){
+
+};
+
+//orig: bool CheckTimeout();
+Lib.CheckTimeout = function(){
+
+};
+
+//orig: void GetJsonInfo(UniValue& obj) const;
+Lib.GetJsonInfo = function(obj) {
+
+};
+
+
+///=--=--------------------------------------------------
+// this is the base class that the above code is supposed to
+// be based on. so we need to add member vars and functions
+//
+// base class
+//class CCoinJoinBaseManager
+//{
+//protected:
+    //mutable Mutex cs_vecqueue;
+
+    // The current mixing sessions in progress on the network
+    //orig: std::vector<CCoinJoinQueue> vecCoinJoinQueue GUARDED_BY(cs_vecqueue);
+
+    Lib.vecCoinJoinQueue = 
+    void SetNull() LOCKS_EXCLUDED(cs_vecqueue);
+    void CheckQueue() LOCKS_EXCLUDED(cs_vecqueue);
+
+public:
+    CCoinJoinBaseManager() = default;
+
+    int GetQueueSize() const LOCKS_EXCLUDED(cs_vecqueue) { LOCK(cs_vecqueue); return vecCoinJoinQueue.size(); }
+    bool GetQueueItemAndTry(CCoinJoinQueue& dsqRet) LOCKS_EXCLUDED(cs_vecqueue);

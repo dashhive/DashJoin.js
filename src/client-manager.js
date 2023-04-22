@@ -5,6 +5,7 @@
 const HardDrive = require('hd.js');// TODO: .GetDataDir())) {
 const Set = require('./set.js');
 const NetMsgType = require('net-msg.js').NetMsgType;
+const MasterNodeSync = require('master-node-sync.js');
 const Vector = require('./vector.js');
 const WalletImpl = require('wallet.js');
 const PoolState = require('./pool-state.js');
@@ -13,6 +14,8 @@ const CoinJoinConstants = require('./coin-join-contants.js');
 const COINJOIN_AUTO_TIMEOUT_MIN = CoinJoinConstants.COINJOIN_AUTO_TIMEOUT_MIN;
 const COINJOIN_AUTO_TIMEOUT_MAX = CoinJoinConstants.COINJOIN_AUTO_TIMEOUT_MAX;
 const GetRandInt = require('./random.js').GetRandInt;
+const COutPoint = require('./outpoint.js');
+const CCoinJoinClientSession = require('./client-session.js');
 
 let Lib = {'core_name': 'CCoinJoinClientManager'};
 module.exports = Lib;
@@ -24,15 +27,15 @@ Lib.ShutdownRequested = function(){
 };
 
 //std::vector<COutPoint> vecMasternodesUsed;
-Lib.vecMasternodesUsed = new Vector.create();
+Lib.vecMasternodesUsed = new Vector(new COutPoint());
 // Keep track of the used Masternodes
 //orig: const std::unique_ptr<CMasternodeSync>& m_mn_sync;
-Lib.m_mn_sync = {};
+Lib.m_mn_sync = new MasterNodeSync();
 
 Lib.CCoinJoinClientOptions = require('./options.js');
 
 //orig: std::deque<CCoinJoinClientSession> deqSessions GUARDED_BY(cs_deqsessions);
-Lib.deqSessions = new Vector.create(require('./client-session.js'));
+Lib.deqSessions = new Vector(new CCoinJoinClientSession());
 //    std::atomic<bool> fMixing{false};
 Lib.fMixing = false;
 Lib.IsMixing = function(){
@@ -46,7 +49,7 @@ Lib.nMinBlocksToWait = 1;
 // orig: bilingual_str strAutoDenomResult;
 Lib.strAutoDenomResult = '';
 //orig: CWallet& mixingWallet;
-Lib.mixingWallet = WalletImpl.loadFromJSON(require('./data/wallet.json'));
+Lib.mixingWallet = new WalletImpl();
 
 // Keep track of current block height
 //orig: int nCachedBlockHeight{0};

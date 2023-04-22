@@ -1,8 +1,8 @@
 /**
- * A port of DASH core's CoinJoin client
+ * A port of DASH core's COutPoint
  */
 
-function Vector(_optional_prototype = null){
+function COutPoint(_optional_prototype = null){
 	this.contents = [];
 	this.proto = _optional_prototype || {};
 	let self = this;
@@ -32,5 +32,8 @@ function Vector(_optional_prototype = null){
 		this.push_back = function(...args) {
 			self.contents.push(self.proto.create(...args));
 		};
+	this.create = (...args) => {
+		console.debug('COutPoint create factory method');
+	};
 }
-module.exports = Vector;
+module.exports = COutPoint;
