@@ -7,8 +7,8 @@
  * output's public key.
  */
 
-let COutPoint = require("./coutpoint.js");
-let CScript = require("./cscript.js");
+let COutPoint = function(){} ; //TODO: require("./coutpoint.js");
+let CScript = function(){} ; // TODO: require("./cscript.js");
 /* Setting nSequence to this value for every input in a transaction
  * disables nLockTime. */
 const /*uint32_t*/ SEQUENCE_FINAL = 0xffffffff;
@@ -45,25 +45,28 @@ module.exports = {
 
 //explicit CTxIn(COutPoint prevoutIn, CScript scriptSigIn=CScript(), uint32_t nSequenceIn=SEQUENCE_FINAL);
 //CTxIn(uint256 hashPrevTx, uint32_t nOut, CScript scriptSigIn=CScript(), uint32_t nSequenceIn=SEQUENCE_FINAL);
-function CTxIn({
-  hashPrevTx = null,
-  nOut = null,
-  prevoutIn = null,
-  scriptSigIn = null,
-  nSequenceIn = SEQUENCE_FINAL,
+function CTxIn(args = {
+  hashPrevTx : null,
+  nOut : null,
+  prevoutIn : null,
+  scriptSigIn : null,
+  nSequenceIn : SEQUENCE_FINAL,
 }) {
+	//console.debug({args});
   this.prevout = new COutPoint();
   this.scriptSig = new CScript();
   this.nSequence = SEQUENCE_FINAL;
+	this.constructorId = 0;
 
 	/**
 	 * Support for this constructor:
 	 * CTxIn::CTxIn(COutPoint prevoutIn, CScript scriptSigIn, uint32_t nSequenceIn)
 	 */
-	if(prevoutIn !== null && scriptSigIn !== null && nSequenceIn !== null){
-		this.prevout = prevoutIn;
-		this.scriptSig = scriptSigIn;
-		this.nSequence = nSequenceIn;
+	if(args.prevoutIn !== null && args.scriptSigIn !== null && args.nSequenceIn !== null){
+		this.constructorId = 2;
+		this.prevout = args.prevoutIn;
+		this.scriptSig = args.scriptSigIn;
+		this.nSequence = args.nSequenceIn;
 	}
   let self = this;
   this.compare = function (other) {
