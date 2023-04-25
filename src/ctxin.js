@@ -7,8 +7,8 @@
  * output's public key.
  */
 
-let COutPoint = function(){} ; //TODO: require("./coutpoint.js");
-let CScript = function(){} ; // TODO: require("./cscript.js");
+let COutPoint = require("./coutpoint.js");
+let CScript = require("./cscript.js");
 /* Setting nSequence to this value for every input in a transaction
  * disables nLockTime. */
 const /*uint32_t*/ SEQUENCE_FINAL = 0xffffffff;
@@ -52,6 +52,7 @@ function CTxIn(args = {
   scriptSigIn : null,
   nSequenceIn : SEQUENCE_FINAL,
 }) {
+  let self = this;
 	//console.debug({args});
   this.prevout = new COutPoint();
   this.scriptSig = new CScript();
@@ -62,35 +63,46 @@ function CTxIn(args = {
 	 * Support for this constructor:
 	 * CTxIn::CTxIn(COutPoint prevoutIn, CScript scriptSigIn, uint32_t nSequenceIn)
 	 */
-	if(args.prevoutIn !== null && args.scriptSigIn !== null && args.nSequenceIn !== null){
+	if(null !== args.prevoutIn  && null !== args.scriptSigIn  && null !== args.nSequenceIn){
 		this.constructorId = 2;
-		this.prevout = args.prevoutIn;
-		this.scriptSig = args.scriptSigIn;
+		this.prevout = new COutPoint({hashIn: args.prevoutIn});
+		this.scriptSig = new CScript({cscript: args.scriptSigIn});
 		this.nSequence = args.nSequenceIn;
 	}
-  let self = this;
+	/**
+	 * Support for this constructor:
+		CTxIn::CTxIn(uint256 hashPrevTx, uint32_t nOut, CScript scriptSigIn, uint32_t nSequenceIn)
+		*/
+	if(null !== args.hashPrevTx && null !== args.nOut && null !== args.scriptSigIn && null !== args.nSequenceIn) {
+		this.constructorId = 3;
+    this.prevout = new COutPoint({hashIn: args.hashPrevTx, nIn: args.nOut});
+    this.scriptSig = new CScript({cscript: args.scriptSigIn });
+    this.nSequence = args.nSequenceIn;
+	}
   this.compare = function (other) {
     return (
-      self.prevout == other.prevout &&
-      self.scriptSig == other.scriptSig &&
-      self.nSequence == other.nSequence
+      self.prevout.equals(other.prevout) &&
+      self.scriptSig.equals(other.scriptSig) &&
+      self.nSequence.equals(other.nSequence)
     );
   };
+	this.equals = this.compare;
 
   this.lessThan = function (other) {
-    return self.prevout < other.prevout;
+    return self.prevout.lessThan(other.prevout);
   };
   this.ToString = function () {
     let str;
     str += "CTxIn(";
     str += self.prevout.ToString();
     if (self.prevout.IsNull()) {
-      str += ", coinbase " + HexStr(self.scriptSig);
+      str += ", coinbase " + self.scriptSig.ToHexStr();
     } else {
-      (str += ", scriptSig="), HexStr(self.scriptSig).substr(0, 24);
+      str += ", scriptSig=" + self.scriptSig.ToHexStr().substr(0, 24);
     }
-    if (self.nSequence != SEQUENCE_FINAL)
+    if (self.nSequence != SEQUENCE_FINAL){
       str += ", nSequence=" + self.nSequence;
+		}
     str += ")";
     return str;
   };
