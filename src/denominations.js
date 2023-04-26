@@ -1,22 +1,14 @@
 let Lib = {};
 const ONLY_READY_TO_MIX = "";
-const CoinType = {
-  ALL_COINS: 0,
-  ONLY_FULLY_MIXED: 1,
-  ONLY_READY_TO_MIX: 2,
-  ONLY_NONDENOMINATED: 3,
-  ONLY_MASTERNODE_COLLATERAL: 4, // find masternode outputs including locked ones (use with caution)
-  ONLY_COINJOIN_COLLATERAL: 5,
-  // Attributes
-  MIN_COIN_TYPE: 0,
-  MAX_COIN_TYPE: 5,
-};
+const { MAX_MONEY } = require('./coin.js');
+const CoinType = require('./cointype-constants.js');
 
 const CCoinJoin = require("./coin-join.js");
 const { SEQUENCE_FINAL } = require("./ctxin-constants.js");
 const Vector = require('./vector.js');
 const COutPoint = require('./coutpoint.js');
 const COutput = require('./coutput.js');
+const CCoinControl = require('./coincontrol.js');
 module.exports = {
   Lib,
   constants: {
@@ -43,11 +35,22 @@ Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
   //std::vector<COutput> vCoins;
   let vCoins = new Vector(COutput);
   //CCoinControl coin_control;
-  let coin_control = {
-    nCoinType: CoinType.ONLY_READY_TO_MIX,
-    m_avoid_address_reuse: true, // FIXME: pull this value from user's wallet settings
-  };
-  vCoins = Lib.AvailableCoins(wallet, true, coin_control);
+  let coin_control = new CCoinControl({
+		wallet,
+	});
+  nMinimumAmount,
+  nMaximumAmount,
+  nMinimumSumAmount,
+  nMaximumCount,
+  nMinDepth,
+  nMaxDepth,
+  allow_used_addresses,
+  vCoins = Lib.AvailableCoins({
+		wallet, 
+		fOnlySafe: true, 
+		coinControl: coin_control,
+		//nMinimumAmount: 
+	});
   // larger denoms first
   vCoins = Lib.sort(vCoins, Lib.CompareByPriority);
 
@@ -86,24 +89,6 @@ Lib.findWalletTxByHash = function (hash) {
   return null;
 };
 
-//orig: std::unordered_set<const CWalletTx*, WalletTxHasher> CWallet::GetSpendableTXs() const {
-Lib.GetSpendableTXs = function (wallet) {
-  //std::unordered_set<const CWalletTx*, WalletTxHasher> ret;
-  let ret = {};
-  for (let outpoint of Lib.getWalletUTXOs(wallet)) {
-    let jt = Lib.findWalletTxByHash(outpoint.hash);
-    if (jt !== null) {
-      ret[jt] = 1;
-    }
-
-    // setWalletUTXO is sorted by COutPoint, which means that all UTXOs for the same TX are neighbors
-    // skip entries until we encounter a new TX
-    //while(it != setWalletUTXO.end() && it->hash == outpoint.hash) {
-    //	++it;
-    //}
-  }
-  return ret;
-};
 
 //orig: bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
 Lib.IsFinalTx = function (tx, nBlockHeight, nBlockTime) {
@@ -193,22 +178,21 @@ Lib.GetDepthInMainChain = function(coin){
 //const uint64_t nMaximumCount,
 //const int nMinDepth,
 //const int nMaxDepth) const {
-Lib.AvailableCoins = function (
+Lib.AvailableCoins = function ({
   wallet,
-  fOnlySafe, // bool
-  coinControl, // CCoinControl*
-  nMinimumAmount,
-  nMaximumAmount,
-  nMinimumSumAmount,
-  nMaximumCount,
-  nMinDepth,
-  nMaxDepth,
-  allow_used_addresses,
-	nCoinType = CoinType.ALL_COINS
-) {
-  let vCoins = new Vector(COutput);
+  fOnlySafe: true,
+  coinControl: null,
+  nMinimumAmount: 1,
+  nMaximumAmount: MAX_MONEY,
+  nMinimumSumAmount: MAX_MONEY,
+  nMaximumCount: 0,
+  nMinDepth: 0,
+  nMaxDepth: 9999999,
+  allow_used_addresses: false,
+	nCoinType: CoinType.ALL_COINS,
+}) {
   let ret = {
-    vCoins: [],
+    vCoins: new Vector(COutput);
   };
   //let nCoinType = coinControl ? coinControl.nCoinType : CoinType.ALL_COINS;
 
@@ -217,34 +201,18 @@ Lib.AvailableCoins = function (
   // a coin control object is provided, and has the avoid address reuse flag set to false, do we allow already used addresses
   //let allow_used_addresses = !Lib.IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE) || (coinControl && !coinControl.m_avoid_address_reuse);
 
-  for (let pcoin of Lib.GetSpendableTXs(wallet)) {
+  for (let pcoin of wallet.GetSpendableTXs({
+		onlySafe: fOnlySafe,
+		minDepth: nMinDepth,
+		maxDepth: nMaxDepth,
+		isMatureCoinBase: true,
+		coinType: nCoinType,
+		minAmount: nMinimumAmount,
+		maxAmount: nMaximumAmount,
+		allowUsed: allow_used_addresses,
+	})) {
     let wtxid = pcoin.GetHash();
-
-    //if (!Lib.checkFinalTx(wallet, pcoin.tx)) {
-    //  continue;
-    //}
-
-    //if (Lib.IsImmatureCoinBase(pcoin)) {
-    //  continue;
-    //}
-
     let nDepth = Lib.GetDepthInMainChain(pcoin);
-
-    // We should not consider coins which aren't at least in our mempool
-    // It's possible for these to be conflicted via ancestors which we may never be able to detect
-    //if (nDepth == 0 && !pcoin.InMempool()) {
-    //  continue;
-    //}
-
-    let safeTx = pcoin.IsTrusted();
-
-    if (fOnlySafe && !safeTx) {
-      continue;
-    }
-
-    if (nDepth < nMinDepth || nDepth > nMaxDepth) {
-      continue;
-    }
 
     for (let i = 0; i < pcoin.tx.vout.size(); i++) {
       let found = false;
@@ -307,9 +275,6 @@ Lib.AvailableCoins = function (
         continue;
       }
 
-      if (!allow_used_addresses && Lib.IsSpentKey(wtxid, i)) {
-        continue;
-      }
 			// TODO: complete this
       //let provider = Lib.GetSigningProvider(pcoin.tx.vout[i].scriptPubKey);
       //let solvable = provider
@@ -322,7 +287,7 @@ Lib.AvailableCoins = function (
       //    coinControl.fAllowWatchOnly &&
       //    solvable);
 
-      vCoins.push_back({
+      ret.vCoins.push_back({
 					tx: pcoin,
           i,
           nDepth,
@@ -333,7 +298,7 @@ Lib.AvailableCoins = function (
 			});
 
       // Checks the sum amount of all UTXO's.
-      if (nMinimumSumAmount != MAX_MONEY) { // TODO: define MAX_MONEY
+      if (nMinimumSumAmount != MAX_MONEY) { 
         nTotal += pcoin.tx.vout[i].nValue;
 
         if (nTotal >= nMinimumSumAmount) {
@@ -342,7 +307,7 @@ Lib.AvailableCoins = function (
       }
 
       // Checks the maximum number of UTXO's.
-      if (nMaximumCount > 0 && vCoins.size() >= nMaximumCount) {
+      if (nMaximumCount > 0 && ret.vCoins.size() >= nMaximumCount) {
         return ret;
       }
     }
