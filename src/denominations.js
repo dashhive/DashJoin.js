@@ -9,12 +9,12 @@ const Vector = require('./vector.js');
 const COutPoint = require('./coutpoint.js');
 const COutput = require('./coutput.js');
 const CCoinControl = require('./coincontrol.js');
-module.exports = {
-  Lib,
-  constants: {
-    CoinType,
-  },
-};
+const LOCKTIME_THRESHOLD = 500000000;
+const SEQUENCE_FINAL = 0xffffffff;
+const LOCKTIME_MEDIAN_TIME_PAST = (1 << 1);
+Lib.constants = CoinType;
+module.exports = Lib;
+
 //orig: bool CWallet::SelectDenominatedAmounts(CAmount nValueMax, std::set<CAmount>& setAmountsRet) const {
 /**
  * This function will have to return an object that
@@ -38,7 +38,7 @@ module.exports = {
 		minDepth: int,
 		maxDepth: int,
 		isMatureCoinBase: boolean,
-		coinType: any value from 'cointype-constants.js',
+		coinType: any value from 'cointype-constants.js' i.e.: ALL_COINS,
 		minAmount: int,
 		maxAmount: int,
 		allowUsed: boolean,
@@ -46,20 +46,18 @@ module.exports = {
  *
  */
 Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
+	let setAmountsRet = {};
   let nValueTotal = 0;
-  //std::vector<COutput> vCoins;
-  let vCoins = new Vector(COutput);
-  //CCoinControl coin_control;
   let coinControl = new CCoinControl({
 		wallet,
 	});
-  vCoins = Lib.AvailableCoins({
+	let { vCoins } = Lib.AvailableCoins({
 		wallet, 
 		fOnlySafe: true, 
 		coinControl,
 	});
   // larger denoms first
-  vCoins = Lib.sort(vCoins, Lib.CompareByPriority);
+  vCoins = Lib.sortByLargestDenoms(vCoins);
 
   for (const out of vCoins.contents) {
     let nValue = out.tx.tx.vout[out.i].nValue;
@@ -74,26 +72,9 @@ Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
     setAmountsRet,
   };
 };
-Lib.CompareByPriority = function () {
-  //TODO:
-};
-Lib.sort = function (value, callback) {
-  //TODO:
-};
 
-Lib.getWalletUTXOs = function (wallet) {};
+Lib.sortByLargestDenoms = function(vCoins){
 
-/**
- * The original code had a `mapWallet` member in
- * the CWallet class:
- * std::map<uint256, CWalletTx> mapWallet GUARDED_BY(cs_wallet);
- */
-Lib.mapWallet = {};
-Lib.findWalletTxByHash = function (hash) {
-  if ("undefined" !== typeof Lib.mapWallet[hash]) {
-    return Lib.mapWallet[hash];
-  }
-  return null;
 };
 
 
@@ -144,7 +125,7 @@ Lib.checkFinalTx = function (wallet, tx) {
   // evaluated is what is used. Thus if we want to know if a
   // transaction can be part of the *next* block, we need to call
   // IsFinalTx() with one more than ::ChainActive().Height().
-  const /*int*/ nBlockHeight = Lib.ChainActive().Height() + 1;
+  const /*int*/ nBlockHeight = Lib.ChainActive().Height() + 1; // TODO: ChainActive().Height()
 
   // BIP113 requires that time-locked transactions have nLockTime set to
   // less than the median time of the previous block they're contained in.
@@ -153,10 +134,10 @@ Lib.checkFinalTx = function (wallet, tx) {
   // IsFinalTx() if LOCKTIME_MEDIAN_TIME_PAST is set.
   const /*int64_t*/ nBlockTime =
       flags & LOCKTIME_MEDIAN_TIME_PAST
-        ? Lib.ChainActive().Tip().GetMedianTimePast()
-        : Lib.GetAdjustedTime();
+        ? Lib.ChainActive().Tip().GetMedianTimePast() // TODO: ChainActive().Tip().GetMedianTimePast()
+        : Lib.GetAdjustedTime(); // TODO: GetAdjustedTime()
 
-  return Lib.IsFinalTx(tx, nBlockHeight, nBlockTime);
+  return Lib.IsFinalTx(tx, nBlockHeight, nBlockTime); // TODO: IsFinalTx
 };
 
 Lib.GetBlocksToMaturity = function(coin){
@@ -173,6 +154,9 @@ Lib.IsImmatureCoinBase = function(coin){
 	return false; // FIXME
 };
 Lib.GetDepthInMainChain = function(coin){
+
+};
+Lib.IsFullyMixed = function(outpoint){
 
 };
 //orig: void CWallet::AvailableCoins(
@@ -196,18 +180,24 @@ Lib.AvailableCoins = function ({
   nMinDepth: 0,
   nMaxDepth: 9999999,
   allow_used_addresses: false,
-	nCoinType: CoinType.ALL_COINS,
 }) {
   let ret = {
     vCoins: new Vector(COutput);
   };
-  //let nCoinType = coinControl ? coinControl.nCoinType : CoinType.ALL_COINS;
+	
+	let nCoinType = coinControl.nCoinType;
 
   let nTotal = 0;
   // Either the WALLET_FLAG_AVOID_REUSE flag is not set (in which case we always allow), or we default to avoiding, and only in the case where
   // a coin control object is provided, and has the avoid address reuse flag set to false, do we allow already used addresses
   //let allow_used_addresses = !Lib.IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE) || (coinControl && !coinControl.m_avoid_address_reuse);
 
+
+	/**
+	 * At some point, we may have to write GetSpendableTXs() and bring
+	 * that logic into this library. As of right now, it's fine to
+	 * leave this up to the wallet impelementation.
+	 */
   for (let pcoin of wallet.GetSpendableTXs({
 		onlySafe: fOnlySafe,
 		minDepth: nMinDepth,

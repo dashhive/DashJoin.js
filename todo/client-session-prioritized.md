@@ -17,6 +17,7 @@ The following contains what I think will get us to a pre-alpha state the fastest
 - [ ] `bool IsValidInOuts(const CTxMemPool& mempool, const std::vector<CTxIn>& vin, const std::vector<CTxOut>& vout, PoolMessage& nMessageIDRet, bool* fConsumeCollateralRet) const;`
 
 # Implement `CTransaction`
+- [ ] unit tests
 
 # Implement `CAmount`
 - [x] `CAmount` is just an `int64_t`. See this `typedef` from `src/amount.h`:
