@@ -7,11 +7,13 @@ The following contains what I think will get us to a pre-alpha state the fastest
 	- [ ] This should be one of the first things to implement (CCoinJoinEntry)
 
 # `CTxIn` and `CTxOut`
-- [ ] Implement these two classes
-	- [ ] or find a way to simplify them
+- [x] Implement these two classes
 - [ ] Come up with an array that contains the pool state
 	- [ ] `std::atomic<PoolState> nState{POOL_STATE_IDLE}; // should be one of the POOL_STATE_XXX values`
 - [ ] `bool IsValidInOuts(const CTxMemPool& mempool, const std::vector<CTxIn>& vin, const std::vector<CTxOut>& vout, PoolMessage& nMessageIDRet, bool* fConsumeCollateralRet) const;`
+# Implement `CAmount`
+
+# Implement `CTransaction`
 
 - [ ] `bool CreateDenominated(CAmount nBalanceToDenominate);`
 - [ ] `bool CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals);`
