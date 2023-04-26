@@ -1,3 +1,54 @@
+/**
+ * This is a port of Dash Core's CCoinControl class.
+ *
+ * How to use this:
+ * 1) You will need a generic "wallet" variable. This can be any
+ * javascript object that has the following object defined on it:
+   {
+    "destChange",
+    "fRequireAllInputs",
+    "fAllowWatchOnly",
+    "m_feerate",
+    "m_discard_feerate",
+    "m_confirm_target",
+    "m_avoid_partial_spends",
+    "m_avoid_address_reuse",
+    "m_fee_mode",
+    "m_min_depth",
+		"nCoinType",
+  }
+
+	Assuming your wallet object is named 'my_wallet', you could do
+	the following:
+
+	let my_wallet = {};
+	my_wallet.coin_control = {
+		destChange: nul,
+		fRequireAllInputs: true,
+		fAllowWatchOnly: false,
+		nCoinType: CoinType.ALL_COINS,
+	};
+ Note that all key/value pairs are optional, but if you decide
+ to leave one out, the CCoinControl class will fill those in
+ with a default value.  You can always go back and set these
+ values on the resulting CCoinControl object after you've 
+ constructed it. See step 3 for how
+
+	
+	2) Once you've set the coin_control object on your wallet,
+	you can now create a CCoinControl object:
+
+ let coin_control = new CCoinControl(my_wallet);
+
+  3) Optionally, you can always set the variables on coin_control
+	after you've constructed the object:
+
+	For example, maybe you want to change the nCoinType:
+
+	coin_control.nCoinType = CoinType.ONLY_FULLY_MIXED;
+
+ */
+
 let Lib = {};
 const Vector = require("./vector.js");
 const COutPoint = require("./coutpoint.js");
@@ -71,6 +122,7 @@ function CCoinControl(
     m_avoid_address_reuse: true,
     m_fee_mode: "",
     m_min_depth: 0,
+		nCoinType: CoinType.ALL_COINS,
   };
   this.setFromWallet = function (w) {
     for (const key of self.assignable) {

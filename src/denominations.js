@@ -29,27 +29,34 @@ module.exports = {
  *  	valid: true|false,
  *  	setAmountsRet: {} // a set emulating std::set<CAmount>
  * }
+ *
+ * Requirements:
+ * wallet - needs to have a function defined on it called GetSpendableTXs(options).
+ * Where 'options' is an object: 
+ * {
+		onlySafe: boolean,
+		minDepth: int,
+		maxDepth: int,
+		isMatureCoinBase: boolean,
+		coinType: any value from 'cointype-constants.js',
+		minAmount: int,
+		maxAmount: int,
+		allowUsed: boolean,
+	}
+ *
  */
 Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
   let nValueTotal = 0;
   //std::vector<COutput> vCoins;
   let vCoins = new Vector(COutput);
   //CCoinControl coin_control;
-  let coin_control = new CCoinControl({
+  let coinControl = new CCoinControl({
 		wallet,
 	});
-  nMinimumAmount,
-  nMaximumAmount,
-  nMinimumSumAmount,
-  nMaximumCount,
-  nMinDepth,
-  nMaxDepth,
-  allow_used_addresses,
   vCoins = Lib.AvailableCoins({
 		wallet, 
 		fOnlySafe: true, 
-		coinControl: coin_control,
-		//nMinimumAmount: 
+		coinControl,
 	});
   // larger denoms first
   vCoins = Lib.sort(vCoins, Lib.CompareByPriority);
@@ -180,8 +187,8 @@ Lib.GetDepthInMainChain = function(coin){
 //const int nMaxDepth) const {
 Lib.AvailableCoins = function ({
   wallet,
+	coinControl,
   fOnlySafe: true,
-  coinControl: null,
   nMinimumAmount: 1,
   nMaximumAmount: MAX_MONEY,
   nMinimumSumAmount: MAX_MONEY,
