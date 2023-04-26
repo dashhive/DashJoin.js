@@ -1,6 +1,10 @@
 # Overview
 The following contains what I think will get us to a pre-alpha state the fastest.
 
+# High priority, and testable
+- [ ] `bool CreateDenominated(CAmount nBalanceToDenominate);`
+	- place this in `client-session.js`
+	- [ ] Write unit test for this
 
 # First steps
 - [ ] `std::vector<CCoinJoinEntry> vecEntries GUARDED_BY(cs_coinjoin); // Masternode/clients entries`
@@ -23,7 +27,6 @@ typedef int64_t CAmount;
 
 
 
-- [ ] `bool CreateDenominated(CAmount nBalanceToDenominate);`
 - [ ] `bool CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals);`
 - [ ] `bool CreateCollateralTransaction(CMutableTransaction& txCollateral, std::string& strReason);`
 - [ ] `bool MakeCollateralAmounts();`

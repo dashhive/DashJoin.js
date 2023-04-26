@@ -62,10 +62,10 @@ Lib.CreateDenominated = function (
   //orig: std::vector<CompactTallyItem> vecTally = mixingWallet.SelectCoinsGroupedByAddresses(true, true, true, 400);
   let vecTally = new Vector();
   vecTally.contents = Lib.mixingWallet.SelectCoinsGroupedByAddresses(
-    true,
-    true,
-    true,
-    400
+    true,	// bool fSkipDenominated, 
+    true, // bool fAnonymizable,
+    true, // bool fSkipUnconfirmed,
+    400 	// int nMaxOupointsPerAddress
   ); // FIXME: add to wallet.js
   if (vecTally.contents.length === 0) {
     Lib.LogPrint(
@@ -86,7 +86,7 @@ Lib.CreateDenominated = function (
 
   for (const item of vecTally.contents) {
     if (
-      !Lib.CreateDenominated(
+      !Lib.CreateDenominatedExt(
         nBalanceToDenominate,
         item,
         fCreateMixingCollaterals
