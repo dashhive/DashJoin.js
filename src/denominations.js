@@ -14,6 +14,9 @@ const CoinType = {
 
 const CCoinJoin = require("./coin-join.js");
 const { SEQUENCE_FINAL } = require("./ctxin-constants.js");
+const Vector = require('./vector.js');
+const COutPoint = require('./coutpoint.js');
+const COutput = require('./coutput.js');
 module.exports = {
   Lib,
   constants: {
@@ -163,6 +166,23 @@ Lib.checkFinalTx = function (wallet, tx) {
 
   return Lib.IsFinalTx(tx, nBlockHeight, nBlockTime);
 };
+
+Lib.GetBlocksToMaturity = function(coin){
+	// TODO:
+	//if(!Lib.IsCoinBase(coin)) {
+	//	return false;
+	//}
+	//let chain_depth = Lib.GetDepthInMainChain();
+	//return Lib.max(0, (COINBASE_MATURITY+1) - chain_depth);
+};
+Lib.IsImmatureCoinBase = function(coin){
+	// note GetBlocksToMaturity is 0 for non-coinbase tx
+	//TODO: return Lib.GetBlocksToMaturity(coin) > 0;
+	return false; // FIXME
+};
+Lib.GetDepthInMainChain = function(coin){
+
+};
 //orig: void CWallet::AvailableCoins(
 //std::vector<COutput>& vCoins,
 //bool fOnlySafe,
@@ -183,13 +203,14 @@ Lib.AvailableCoins = function (
   nMaximumCount,
   nMinDepth,
   nMaxDepth,
-  allow_used_addresses
+  allow_used_addresses,
+	nCoinType = CoinType.ALL_COINS
 ) {
-  let vCoins = new Vector(COutPoint);
+  let vCoins = new Vector(COutput);
   let ret = {
     vCoins: [],
   };
-  let nCoinType = coinControl ? coinControl.nCoinType : CoinType.ALL_COINS;
+  //let nCoinType = coinControl ? coinControl.nCoinType : CoinType.ALL_COINS;
 
   let nTotal = 0;
   // Either the WALLET_FLAG_AVOID_REUSE flag is not set (in which case we always allow), or we default to avoiding, and only in the case where
@@ -199,21 +220,21 @@ Lib.AvailableCoins = function (
   for (let pcoin of Lib.GetSpendableTXs(wallet)) {
     let wtxid = pcoin.GetHash();
 
-    if (!Lib.checkFinalTx(wallet, pcoin.tx)) {
-      continue;
-    }
+    //if (!Lib.checkFinalTx(wallet, pcoin.tx)) {
+    //  continue;
+    //}
 
-    if (pcoin.IsImmatureCoinBase()) {
-      continue;
-    }
+    //if (Lib.IsImmatureCoinBase(pcoin)) {
+    //  continue;
+    //}
 
-    let nDepth = pcoin.GetDepthInMainChain();
+    let nDepth = Lib.GetDepthInMainChain(pcoin);
 
     // We should not consider coins which aren't at least in our mempool
     // It's possible for these to be conflicted via ancestors which we may never be able to detect
-    if (nDepth == 0 && !pcoin.InMempool()) {
-      continue;
-    }
+    //if (nDepth == 0 && !pcoin.InMempool()) {
+    //  continue;
+    //}
 
     let safeTx = pcoin.IsTrusted();
 
@@ -276,7 +297,7 @@ Lib.AvailableCoins = function (
         continue;
       }
 
-      if (IsSpent(wtxid, i)) {
+      if (Lib.IsSpent(wtxid, i)) {
         continue;
       }
 
@@ -289,33 +310,30 @@ Lib.AvailableCoins = function (
       if (!allow_used_addresses && Lib.IsSpentKey(wtxid, i)) {
         continue;
       }
+			// TODO: complete this
+      //let provider = Lib.GetSigningProvider(pcoin.tx.vout[i].scriptPubKey);
+      //let solvable = provider
+      //  ? Lib.IsSolvable(provider, pcoin.tx.vout[i].scriptPubKey)
+      //  : false;
+      //let spendable =
+      //  (mine & ISMINE_SPENDABLE) != ISMINE_NO ||
+      //  ((mine & ISMINE_WATCH_ONLY) != ISMINE_NO &&
+      //    coinControl &&
+      //    coinControl.fAllowWatchOnly &&
+      //    solvable);
 
-      let provider = Lib.GetSigningProvider(pcoin.tx.vout[i].scriptPubKey);
-
-      let solvable = provider
-        ? Lib.IsSolvable(provider, pcoin.tx.vout[i].scriptPubKey)
-        : false;
-      let spendable =
-        (mine & ISMINE_SPENDABLE) != ISMINE_NO ||
-        ((mine & ISMINE_WATCH_ONLY) != ISMINE_NO &&
-          coinControl &&
-          coinControl.fAllowWatchOnly &&
-          solvable);
-
-      vCoins.push_back(
-        COutput(
-          pcoin,
+      vCoins.push_back({
+					tx: pcoin,
           i,
           nDepth,
-          spendable,
-          solvable,
-          safeTx,
-          coinControl && coinControl.fAllowWatchOnly
-        )
-      );
+          fSpendable: spendable,
+          fSolvable: solvable,
+          fSafe: safeTx,
+          use_max_sig: (coinControl && coinControl.fAllowWatchOnly)
+			});
 
       // Checks the sum amount of all UTXO's.
-      if (nMinimumSumAmount != MAX_MONEY) {
+      if (nMinimumSumAmount != MAX_MONEY) { // TODO: define MAX_MONEY
         nTotal += pcoin.tx.vout[i].nValue;
 
         if (nTotal >= nMinimumSumAmount) {
