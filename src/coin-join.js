@@ -8,6 +8,7 @@ const { COINJOIN_ENTRY_MAX_SIZE } = require("./coin-join-constants.js");
 const llmq = require("./llmq.js");
 let CoinJoinDenominations = require('./coin-join-denominations.js');
 
+module.exports = Lib;
 let Validation = {};
 //orig: CChainState& ChainstateActive()
 Validation.ChainstateActiveCoinsTipGetCoin = function (outpoint, coin) {
@@ -91,7 +92,6 @@ Validation.GetUTXOCoin = function (outpoint, coin) {
   return utxoCoin;
 };
 
-module.exports = Lib;
 
 //orig: static std::map<uint256, CCoinJoinBroadcastTx> mapDSTX GUARDED_BY(cs_mapdstx);
 Lib.mapDSTX = {}; // FIXME: this can most likely just be an object

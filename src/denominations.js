@@ -1,17 +1,16 @@
 let Lib = {};
 const ONLY_READY_TO_MIX = "";
-const { MAX_MONEY } = require('./coin.js');
-const CoinType = require('./cointype-constants.js');
+const { MAX_MONEY } = require("./coin.js");
+const CoinType = require("./cointype-constants.js");
 
 const CCoinJoin = require("./coin-join.js");
 const { SEQUENCE_FINAL } = require("./ctxin-constants.js");
-const Vector = require('./vector.js');
-const COutPoint = require('./coutpoint.js');
-const COutput = require('./coutput.js');
-const CCoinControl = require('./coincontrol.js');
+const Vector = require("./vector.js");
+const COutPoint = require("./coutpoint.js");
+const COutput = require("./coutput.js");
+const CCoinControl = require("./coincontrol.js");
 const LOCKTIME_THRESHOLD = 500000000;
-const SEQUENCE_FINAL = 0xffffffff;
-const LOCKTIME_MEDIAN_TIME_PAST = (1 << 1);
+const LOCKTIME_MEDIAN_TIME_PAST = 1 << 1;
 Lib.constants = CoinType;
 module.exports = Lib;
 
@@ -46,16 +45,16 @@ module.exports = Lib;
  *
  */
 Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
-	let setAmountsRet = {};
+  let setAmountsRet = {};
   let nValueTotal = 0;
   let coinControl = new CCoinControl({
-		wallet,
-	});
-	let { vCoins } = Lib.AvailableCoins({
-		wallet, 
-		fOnlySafe: true, 
-		coinControl,
-	});
+    wallet,
+  });
+  let { vCoins } = Lib.AvailableCoins({
+    wallet,
+    fOnlySafe: true,
+    coinControl,
+  });
   // larger denoms first
   vCoins = Lib.sortByLargestDenoms(vCoins);
 
@@ -73,10 +72,37 @@ Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
   };
 };
 
-Lib.sortByLargestDenoms = function(vCoins){
+Lib.CalculateAmountPriority = function (nInputAmount) {
+  for (const denom of GetStandardDenominations()) {
+    if (nInputAmount === denom) {
+      return (COIN / denom) * 10000;
+    }
+  }
+  if (nInputAmount < COIN) {
+    return 20000;
+  }
 
+  //nondenom return largest first
+  return -1 * (nInputAmount / COIN);
 };
-
+Lib.sortByLargestDenoms = function (vCoins) {
+  //(const COutput& t1, const COutput& t2) const {
+  vCoins.contents.sort(function (a, b) {
+    let aval = CCoinJoin.CalculateAmountPriority(
+      a.GetInputCoin().effective_value
+    );
+    let bval = CCoinJoin.CalculateAmountPriority(
+      b.GetInputCoin().effective_value
+    );
+    if (aval < bval) {
+      return -1;
+    }
+    if (aval > bval) {
+      return 1;
+    }
+    return 0;
+  });
+};
 
 //orig: bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
 Lib.IsFinalTx = function (tx, nBlockHeight, nBlockTime) {
@@ -140,25 +166,56 @@ Lib.checkFinalTx = function (wallet, tx) {
   return Lib.IsFinalTx(tx, nBlockHeight, nBlockTime); // TODO: IsFinalTx
 };
 
-Lib.GetBlocksToMaturity = function(coin){
-	// TODO:
-	//if(!Lib.IsCoinBase(coin)) {
-	//	return false;
-	//}
-	//let chain_depth = Lib.GetDepthInMainChain();
-	//return Lib.max(0, (COINBASE_MATURITY+1) - chain_depth);
+Lib.GetBlocksToMaturity = function (coin) {
+  // TODO:
+  //if(!Lib.IsCoinBase(coin)) {
+  //	return false;
+  //}
+  //let chain_depth = Lib.GetDepthInMainChain();
+  //return Lib.max(0, (COINBASE_MATURITY+1) - chain_depth);
 };
-Lib.IsImmatureCoinBase = function(coin){
-	// note GetBlocksToMaturity is 0 for non-coinbase tx
-	//TODO: return Lib.GetBlocksToMaturity(coin) > 0;
-	return false; // FIXME
+Lib.IsImmatureCoinBase = function (coin) {
+  // note GetBlocksToMaturity is 0 for non-coinbase tx
+  //TODO: return Lib.GetBlocksToMaturity(coin) > 0;
+  return false; // FIXME
 };
-Lib.GetDepthInMainChain = function(coin){
+Lib.GetDepthInMainChain = function (coin) {};
+    /** Pulled from wallet DB ("ps_salt") and used when mixing a random number of rounds.
+     *  This salt is needed to prevent an attacker from learning how many extra times
+     *  the input was mixed based only on information in the blockchain.
+     */
+    //uint256 nCoinJoinSalt;
+Lib.getCoinJoinSalt = function(wallet){
 
 };
-Lib.IsFullyMixed = function(outpoint){
+//orig: bool CWallet::IsFullyMixed(const COutPoint& outpoint) const {
+Lib.IsFullyMixed = function (wallet,outpoint) {
+	let nRounds = GetRealOutpointCoinJoinRounds(outpoint);
+	// Mix again if we don't have N rounds yet
+	if(nRounds < wallet.CCoinJoinClientOptions().GetRounds()) {
+		return false;
+	}
 
-};
+	// Try to mix a "random" number of rounds more than minimum.
+	// If we have already mixed N + MaxOffset rounds, don't mix again.
+	// Otherwise, we should mix again 50% of the time, this results in an exponential decay
+	// N rounds 50% N+1 25% N+2 12.5%... until we reach N + GetRandomRounds() rounds where we stop.
+	if(nRounds < wallet.CCoinJoinClientOptions().GetRounds() + wallet.CCoinJoinClientOptions().GetRandomRounds()) {
+		//CDataStream ss(SER_GETHASH, PROTOCOL_VERSION);
+		//ss << outpoint << nCoinJoinSalt;
+		//uint256 nHash;
+		let ss = new CDataStream(SER_GETHASH,PROTOCOL_VERSION);
+		ss.write(outpoint);
+		ss.write(Lib.getCoinJoinSalt(wallet));
+		let nHash;
+		CSHA256().Write(ss).Finalize(nHash);
+		if(ReadLE64(nHash) % 2 == 0) {
+			return false;
+		}
+	}
+
+	return true;
+}
 //orig: void CWallet::AvailableCoins(
 //std::vector<COutput>& vCoins,
 //bool fOnlySafe,
@@ -171,67 +228,67 @@ Lib.IsFullyMixed = function(outpoint){
 //const int nMaxDepth) const {
 Lib.AvailableCoins = function ({
   wallet,
-	coinControl,
-  fOnlySafe: true,
-  nMinimumAmount: 1,
-  nMaximumAmount: MAX_MONEY,
-  nMinimumSumAmount: MAX_MONEY,
-  nMaximumCount: 0,
-  nMinDepth: 0,
-  nMaxDepth: 9999999,
-  allow_used_addresses: false,
+  coinControl,
+  fOnlySafe = true,
+  nMinimumAmount = 1,
+  nMaximumAmount = MAX_MONEY,
+  nMinimumSumAmount = MAX_MONEY,
+  nMaximumCount = 0,
+  nMinDepth = 0,
+  nMaxDepth = 9999999,
+  allow_used_addresses = false,
 }) {
   let ret = {
-    vCoins: new Vector(COutput);
+    vCoins: new Vector(COutput),
   };
-	
-	let nCoinType = coinControl.nCoinType;
+
+  let nCoinType = coinControl.nCoinType;
 
   let nTotal = 0;
   // Either the WALLET_FLAG_AVOID_REUSE flag is not set (in which case we always allow), or we default to avoiding, and only in the case where
   // a coin control object is provided, and has the avoid address reuse flag set to false, do we allow already used addresses
   //let allow_used_addresses = !Lib.IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE) || (coinControl && !coinControl.m_avoid_address_reuse);
 
-
-	/**
-	 * At some point, we may have to write GetSpendableTXs() and bring
-	 * that logic into this library. As of right now, it's fine to
-	 * leave this up to the wallet impelementation.
-	 */
+  /**
+   * At some point, we may have to write GetSpendableTXs() and bring
+   * that logic into this library. As of right now, it's fine to
+   * leave this up to the wallet impelementation.
+   */
   for (let pcoin of wallet.GetSpendableTXs({
-		onlySafe: fOnlySafe,
-		minDepth: nMinDepth,
-		maxDepth: nMaxDepth,
-		isMatureCoinBase: true,
-		coinType: nCoinType,
-		minAmount: nMinimumAmount,
-		maxAmount: nMaximumAmount,
-		allowUsed: allow_used_addresses,
-	})) {
-    let wtxid = pcoin.GetHash();
-    let nDepth = Lib.GetDepthInMainChain(pcoin);
+    onlySafe: fOnlySafe,
+    minDepth: nMinDepth,
+    maxDepth: nMaxDepth,
+    isMatureCoinBase: true,
+    coinType: nCoinType,
+    minAmount: nMinimumAmount,
+    maxAmount: nMaximumAmount,
+    allowUsed: allow_used_addresses,
+  })) {
+    let wtxid = Lib.GetCoinHash(pcoin); // TODO: implement GetCoinHash(pcoin) 
 
-    for (let i = 0; i < pcoin.tx.vout.size(); i++) {
+		let vOuts = Lib.GetVoutsFromTx(pcoin.tx);	// TODO: implement GetVoutsFromTx
+    for (let i = 0; i < vOuts.length; i++) {
       let found = false;
+			let nValue = vOuts[i].nValue;
       if (nCoinType == CoinType.ONLY_FULLY_MIXED) {
-        if (!CCoinJoin.IsDenominatedAmount(pcoin.tx.vout[i].nValue)) {
+        if (!CCoinJoin.IsDenominatedAmount(nValue)) {
           continue;
         }
         found = Lib.IsFullyMixed(COutPoint(wtxid, i));
       } else if (nCoinType == CoinType.ONLY_READY_TO_MIX) {
-        if (!CCoinJoin.IsDenominatedAmount(pcoin.tx.vout[i].nValue)) {
+        if (!CCoinJoin.IsDenominatedAmount(nValue)) {
           continue;
         }
         found = !Lib.IsFullyMixed(COutPoint(wtxid, i));
       } else if (nCoinType == CoinType.ONLY_NONDENOMINATED) {
-        if (CCoinJoin.IsCollateralAmount(pcoin.tx.vout[i].nValue)) {
+        if (CCoinJoin.IsCollateralAmount(nValue)) {
           continue; // do not use collateral amounts
         }
-        found = !CCoinJoin.IsDenominatedAmount(pcoin.tx.vout[i].nValue);
+        found = !CCoinJoin.IsDenominatedAmount(nValue);
       } else if (nCoinType == CoinType.ONLY_MASTERNODE_COLLATERAL) {
-        found = dmn_types.IsCollateralAmount(pcoin.tx.vout[i].nValue);
+        found = dmn_types.IsCollateralAmount(nValue);
       } else if (nCoinType == CoinType.ONLY_COINJOIN_COLLATERAL) {
-        found = CCoinJoin.IsCollateralAmount(pcoin.tx.vout[i].nValue);
+        found = CCoinJoin.IsCollateralAmount(nValue);
       } else {
         found = true;
       }
@@ -240,14 +297,13 @@ Lib.AvailableCoins = function ({
       }
 
       if (
-        pcoin.tx.vout[i].nValue < nMinimumAmount ||
-        pcoin.tx.vout[i].nValue > nMaximumAmount
+        nValue < nMinimumAmount ||
+        nValue > nMaximumAmount
       ) {
         continue;
       }
 
       if (
-        coinControl &&
         coinControl.HasSelected() &&
         !coinControl.fAllowOtherInputs &&
         !coinControl.IsSelected(COutPoint(wtxid, i))
@@ -256,23 +312,23 @@ Lib.AvailableCoins = function ({
       }
 
       if (
-        Lib.IsLockedCoin(wtxid, i) &&
+        Lib.IsLockedCoin(wtxid, i) && // TODO: Implement IsLockedCoin
         nCoinType != CoinType.ONLY_MASTERNODE_COLLATERAL
       ) {
         continue;
       }
 
-      if (Lib.IsSpent(wtxid, i)) {
+      if (Lib.IsSpent(wtxid, i)) { // TODO: implement IsSpent
         continue;
       }
 
-      let mine = Lib.IsMine(pcoin.tx.vout[i]);
+      let mine = Lib.IsMine(vOuts[i]); // TODO: implement IsMine
 
-      if (mine == ISMINE_NO) {
+      if (mine == ISMINE_NO) { // TODO: deinf ISMINE_NO
         continue;
       }
 
-			// TODO: complete this
+      // TODO: complete this
       //let provider = Lib.GetSigningProvider(pcoin.tx.vout[i].scriptPubKey);
       //let solvable = provider
       //  ? Lib.IsSolvable(provider, pcoin.tx.vout[i].scriptPubKey)
@@ -284,19 +340,21 @@ Lib.AvailableCoins = function ({
       //    coinControl.fAllowWatchOnly &&
       //    solvable);
 
+    	//TODO: let nDepth = Lib.GetDepthInMainChain(pcoin);
+			let nDepth = 0;
       ret.vCoins.push_back({
-					tx: pcoin,
-          i,
-          nDepth,
-          fSpendable: spendable,
-          fSolvable: solvable,
-          fSafe: safeTx,
-          use_max_sig: (coinControl && coinControl.fAllowWatchOnly)
-			});
+        tx: pcoin,
+        i,
+        nDepth,
+        fSpendable: spendable,
+        fSolvable: solvable,
+        fSafe: safeTx,
+        use_max_sig: coinControl.fAllowWatchOnly,
+      });
 
       // Checks the sum amount of all UTXO's.
-      if (nMinimumSumAmount != MAX_MONEY) { 
-        nTotal += pcoin.tx.vout[i].nValue;
+      if (nMinimumSumAmount != MAX_MONEY) {
+        nTotal += vOuts[i].nValue;
 
         if (nTotal >= nMinimumSumAmount) {
           return ret;
