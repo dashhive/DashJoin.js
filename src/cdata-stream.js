@@ -47,29 +47,28 @@ function CDataStream(args = {
         self.nReadPos = nReadPosNext;
     };
 
-    void ignore(int nSize)
-    {
-        // Ignore from the beginning of the buffer
-        if (nSize < 0) {
-            throw std::ios_base::failure("CDataStream::ignore(): nSize negative");
-        }
-        unsigned int nReadPosNext = nReadPos + nSize;
-        if (nReadPosNext >= vch.size())
-        {
-            if (nReadPosNext > vch.size())
-                throw std::ios_base::failure("CDataStream::ignore(): end of data");
-            nReadPos = 0;
-            vch.clear();
-            return;
-        }
-        nReadPos = nReadPosNext;
-    }
+    //void ignore(int nSize)
+    //{
+    //    // Ignore from the beginning of the buffer
+    //    if (nSize < 0) {
+    //        throw std::ios_base::failure("CDataStream::ignore(): nSize negative");
+    //    }
+    //    unsigned int nReadPosNext = nReadPos + nSize;
+    //    if (nReadPosNext >= vch.size())
+    //    {
+    //        if (nReadPosNext > vch.size())
+    //            throw std::ios_base::failure("CDataStream::ignore(): end of data");
+    //        nReadPos = 0;
+    //        vch.clear();
+    //        return;
+    //    }
+    //    nReadPos = nReadPosNext;
+    //}
 
-    void write(const char* pch, size_t nSize)
-    {
+    this.write = function(pch, nSize) {
         // Write to the end of the buffer
-        vch.insert(vch.end(), pch, pch + nSize);
-    }
+        self.vch.insert(vch.end(), pch, pch + nSize);
+    };
 
     /**
      * XOR the contents of this stream with a certain key.
