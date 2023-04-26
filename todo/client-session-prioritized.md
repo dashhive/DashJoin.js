@@ -11,9 +11,17 @@ The following contains what I think will get us to a pre-alpha state the fastest
 - [ ] Come up with an array that contains the pool state
 	- [ ] `std::atomic<PoolState> nState{POOL_STATE_IDLE}; // should be one of the POOL_STATE_XXX values`
 - [ ] `bool IsValidInOuts(const CTxMemPool& mempool, const std::vector<CTxIn>& vin, const std::vector<CTxOut>& vout, PoolMessage& nMessageIDRet, bool* fConsumeCollateralRet) const;`
-# Implement `CAmount`
 
 # Implement `CTransaction`
+
+# Implement `CAmount`
+- [x] `CAmount` is just an `int64_t`. See this `typedef` from `src/amount.h`:
+```
+/** Amount in satoshis (Can be negative) */
+typedef int64_t CAmount;
+```
+
+
 
 - [ ] `bool CreateDenominated(CAmount nBalanceToDenominate);`
 - [ ] `bool CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals);`
