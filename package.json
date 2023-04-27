@@ -28,5 +28,8 @@
   "bugs": {
     "url": "https://github.com/dashhive/DashJoin.js/issues"
   },
-  "homepage": "https://github.com/dashhive/DashJoin.js#readme"
+  "homepage": "https://github.com/dashhive/DashJoin.js#readme",
+  "devDependencies": {
+    "mocha": "^10.2.0"
+  }
 }

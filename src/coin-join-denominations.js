@@ -55,7 +55,6 @@ Lib.AmountToDenomination = function (nInputAmount) {
 */
 //orig: static constexpr CAmount DenominationToAmount(int nDenom)
 Lib.DenominationToAmount = function (nDenom) {
-  /** FIXME: create a CAmount type. return that */
   if (nDenom == 0) {
     // not initialized
     return 0;

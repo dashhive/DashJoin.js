@@ -11,6 +11,7 @@ const COutput = require("./coutput.js");
 const CCoinControl = require("./coincontrol.js");
 const LOCKTIME_THRESHOLD = 500000000;
 const LOCKTIME_MEDIAN_TIME_PAST = 1 << 1;
+const { COIN } = require('./coin.js');
 Lib.constants = CoinType;
 module.exports = Lib;
 
@@ -73,7 +74,7 @@ Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
 };
 
 Lib.CalculateAmountPriority = function (nInputAmount) {
-  for (const denom of GetStandardDenominations()) {
+  for (const denom of CCoinJoin.GetStandardDenominations()) {
     if (nInputAmount === denom) {
       return (COIN / denom) * 10000;
     }
@@ -208,8 +209,11 @@ Lib.IsFullyMixed = function (wallet,outpoint) {
 		ss.write(outpoint);
 		ss.write(Lib.getCoinJoinSalt(wallet));
 		let nHash;
+		// TODO: need CSHA256()
+		// TODO: need CSHA256().Write(stream)
+		// TODO: need CSHA256().Write(stream).Finalize(hash)
 		CSHA256().Write(ss).Finalize(nHash);
-		if(ReadLE64(nHash) % 2 == 0) {
+		if(ReadLE64(nHash) % 2 == 0) { // TODO: need ReadLE64
 			return false;
 		}
 	}
