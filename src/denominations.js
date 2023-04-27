@@ -9,9 +9,11 @@ const Vector = require("./vector.js");
 const COutPoint = require("./coutpoint.js");
 const COutput = require("./coutput.js");
 const CCoinControl = require("./coincontrol.js");
+const CCoinJoinDenominations = require('./coin-join-denominations.js');
 const LOCKTIME_THRESHOLD = 500000000;
 const LOCKTIME_MEDIAN_TIME_PAST = 1 << 1;
 const { COIN } = require('./coin.js');
+const { SER_GETHASH,PROTOCOL_VERSION } = require('./protocol-constants.js');
 Lib.constants = CoinType;
 module.exports = Lib;
 
@@ -68,13 +70,13 @@ Lib.SelectDenominatedAmounts = function (nValueMax, wallet) {
   }
 
   return {
-    valid: nValueTotal >= CCoinJoin.GetSmallestDenomination(),
+    valid: nValueTotal >= CCoinJoinDenominations.GetSmallestDenomination(),
     setAmountsRet,
   };
 };
 
 Lib.CalculateAmountPriority = function (nInputAmount) {
-  for (const denom of CCoinJoin.GetStandardDenominations()) {
+  for (const denom of CCoinJoinDenominations.GetStandardDenominations()) {
     if (nInputAmount === denom) {
       return (COIN / denom) * 10000;
     }
@@ -89,10 +91,10 @@ Lib.CalculateAmountPriority = function (nInputAmount) {
 Lib.sortByLargestDenoms = function (vCoins) {
   //(const COutput& t1, const COutput& t2) const {
   vCoins.contents.sort(function (a, b) {
-    let aval = CCoinJoin.CalculateAmountPriority(
+    let aval = Lib.CalculateAmountPriority(
       a.GetInputCoin().effective_value
     );
-    let bval = CCoinJoin.CalculateAmountPriority(
+    let bval = Lib.CalculateAmountPriority(
       b.GetInputCoin().effective_value
     );
     if (aval < bval) {
@@ -187,13 +189,13 @@ Lib.GetDepthInMainChain = function (coin) {};
      */
     //uint256 nCoinJoinSalt;
 Lib.getCoinJoinSalt = function(wallet){
-
+	/** TODO: */
 };
 //orig: bool CWallet::IsFullyMixed(const COutPoint& outpoint) const {
 Lib.IsFullyMixed = function (wallet,outpoint) {
 	let nRounds = GetRealOutpointCoinJoinRounds(outpoint);
 	// Mix again if we don't have N rounds yet
-	if(nRounds < wallet.CCoinJoinClientOptions().GetRounds()) {
+	if(nRounds < wallet.CCoinJoinClientOptions().GetRounds()) { // TODO: make sure this wallet function is documented correctly
 		return false;
 	}
 
@@ -201,11 +203,22 @@ Lib.IsFullyMixed = function (wallet,outpoint) {
 	// If we have already mixed N + MaxOffset rounds, don't mix again.
 	// Otherwise, we should mix again 50% of the time, this results in an exponential decay
 	// N rounds 50% N+1 25% N+2 12.5%... until we reach N + GetRandomRounds() rounds where we stop.
-	if(nRounds < wallet.CCoinJoinClientOptions().GetRounds() + wallet.CCoinJoinClientOptions().GetRandomRounds()) {
+	if(nRounds < wallet.CCoinJoinClientOptions().GetRounds() + wallet.CCoinJoinClientOptions().GetRandomRounds()) { // TODO: make sure these wallet functions are documented correctly
 		//CDataStream ss(SER_GETHASH, PROTOCOL_VERSION);
 		//ss << outpoint << nCoinJoinSalt;
 		//uint256 nHash;
 		let ss = new CDataStream(SER_GETHASH,PROTOCOL_VERSION);
+		// This is how the '<<' operator is defined in streams.h 
+		// for the CDataStream type. It's a write operation. It
+		// will take the parameters and write them to the stream's
+		// internal vch vector.
+    //template<typename T>
+    //CDataStream& operator<<(const T& obj)
+    //{
+    //    // Serialize to this stream
+    //    ::Serialize(*this, obj);
+    //    return (*this);
+    //}
 		ss.write(outpoint);
 		ss.write(Lib.getCoinJoinSalt(wallet));
 		let nHash;
@@ -275,20 +288,20 @@ Lib.AvailableCoins = function ({
       let found = false;
 			let nValue = vOuts[i].nValue;
       if (nCoinType == CoinType.ONLY_FULLY_MIXED) {
-        if (!CCoinJoin.IsDenominatedAmount(nValue)) {
+        if (!CCoinJoinDenominations.IsDenominatedAmount(nValue)) {
           continue;
         }
-        found = Lib.IsFullyMixed(COutPoint(wtxid, i));
+        found = Lib.IsFullyMixed(new COutPoint({hashIn: wtxid, nIn: i}));
       } else if (nCoinType == CoinType.ONLY_READY_TO_MIX) {
-        if (!CCoinJoin.IsDenominatedAmount(nValue)) {
+        if (!CCoinJoinDenominations.IsDenominatedAmount(nValue)) {
           continue;
         }
-        found = !Lib.IsFullyMixed(COutPoint(wtxid, i));
+        found = !Lib.IsFullyMixed(new COutPoint({ hashIn: wtxid, nIn: i}));
       } else if (nCoinType == CoinType.ONLY_NONDENOMINATED) {
-        if (CCoinJoin.IsCollateralAmount(nValue)) {
+        if (CCoinJoinDenominations.IsCollateralAmount(nValue)) {
           continue; // do not use collateral amounts
         }
-        found = !CCoinJoin.IsDenominatedAmount(nValue);
+        found = !CCoinJoinDenominations.IsDenominatedAmount(nValue);
       } else if (nCoinType == CoinType.ONLY_MASTERNODE_COLLATERAL) {
         found = dmn_types.IsCollateralAmount(nValue);
       } else if (nCoinType == CoinType.ONLY_COINJOIN_COLLATERAL) {
@@ -310,7 +323,7 @@ Lib.AvailableCoins = function ({
       if (
         coinControl.HasSelected() &&
         !coinControl.fAllowOtherInputs &&
-        !coinControl.IsSelected(COutPoint(wtxid, i))
+        !coinControl.IsSelected(new COutPoint({ hashIn: wtxid, nIn: i}))
       ) {
         continue;
       }
