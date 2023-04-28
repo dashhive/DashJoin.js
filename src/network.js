@@ -4,6 +4,14 @@ const net = require('net');
 let client = new net.Socket();
 const PROTOCOL_VERSION = 70227;
 
+const testnet_magic_bytes = function(){
+	let packet = new Uint8Array(4);
+	packet[0] = 0xce;
+	packet[1] = 0xe2;
+	packet[2] = 0xca;
+	packet[3] = 0xff;
+	return packet;
+};
 const { createHash } = require('crypto');
 const str2uint8 = (text) => {
 	return Uint8Array.from(Array.from(text).map(letter => letter.charCodeAt(0)));
@@ -45,8 +53,65 @@ const htons = function(b, i, v) {
 	b[i + 1] = (0xff & (v));
 };
 
+/**
+ * First 4 bytes of SHA256(SHA256(payload)) in internal byte order.
+ */
+const compute_checksum = (payload) => {
+	let hash = createHash('sha256').update(payload).digest();
+	let hashOfHash = createHash('sha256').update(hash).digest();
+	console.debug({hashOfHash});
+	return hashOfHash.slice(0,4);
+};
+
+const wrap_packet = (net, command_name, payload, payload_size) => {
+	const SIZES = {
+		MAGIC_BYTES: 4,
+		COMMAND_NAME: 12,
+		PAYLOAD_SIZE: 4,
+		CHECKSUM: 4,
+	};
+	let TOTAL_SIZE = 0;
+	for(const key in SIZES){
+		TOTAL_SIZE += SIZES[key];
+	}
+	TOTAL_SIZE += payload_size;
+	console.debug({net,command_name,payload_size,TOTAL_SIZE});
+
+	let packet = new Uint8Array(TOTAL_SIZE);
+	/**
+	 * FIXME: we just assume net is always testnet.
+	 */
+	/**
+	 * TODO: switch(net){ ... }
+	 */
+	packet.set(testnet_magic_bytes(),0);
+
+	/**
+	 * Set command_name (char[12])
+	 */
+	let COMMAND_NAME_OFFSET = SIZES.MAGIC_BYTES;
+	packet.set(str2uint8(command_name),COMMAND_NAME_OFFSET);
 
 
+	let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
+	let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
+	if(payload_size === 0 || payload === null) {
+		packet = setUint32(packet,0x5df6e0e2,CHECKSUM_OFFSET);
+		return packet;
+	}
+	console.debug({payload_size});
+	packet = setUint32(packet,payload_size,PAYLOAD_SIZE_OFFSET);
+	for(let i=PAYLOAD_SIZE_OFFSET; i < PAYLOAD_SIZE_OFFSET + 4; i++){
+		console.debug({i,char: packet[i]});
+	}
+	packet.set(compute_checksum(payload),CHECKSUM_OFFSET);
+	/**
+	 * Finally, append the payload to the header
+	 */
+	let ACTUAL_PAYLOAD_OFFSET = CHECKSUM_OFFSET + SIZES.CHECKSUM;
+	packet.set(payload,ACTUAL_PAYLOAD_OFFSET);
+	return packet;
+};
 
 
 
@@ -68,11 +133,11 @@ const version = function(){
 		ADDR_TRANS_IP: 16,
 		ADDR_TRANS_PORT: 2,
 		NONCE: 8,
-		USER_AGENT_BYTES: 0, // can be skipped
+		USER_AGENT_BYTES: 1, // can be skipped
 		START_HEIGHT: 4,
 		// The following 2 fields are OPTIONAL
-		//RELAY: 1,
-		//MNAUTH_CHALLENGE: 32,
+		RELAY: 1,
+		MNAUTH_CHALLENGE: 32,
 	};
 	let TOTAL_SIZE = 0;
 
@@ -130,20 +195,26 @@ const version = function(){
 
 	// this can be left zero
 	let NONCE_OFFSET = ADDR_TRANS_PORT_OFFSET + SIZES.ADDR_TRANS_PORT;
+	packet.set([0x1,0x2,0x3,0x4,0x5,0x6,0x7],NONCE_OFFSET);
+
+	let USER_AGENT_BYTES_OFFSET = NONCE_OFFSET + SIZES.NONCE;
+	packet.set([0x0],USER_AGENT_BYTES_OFFSET);
 
 	// Skipping user agent. it can be zero
-	let START_HEIGHT_OFFSET = NONCE_OFFSET + SIZES.NONCE;
+	let START_HEIGHT_OFFSET = USER_AGENT_BYTES_OFFSET + SIZES.USER_AGENT_BYTES;
 	packet = setUint32(packet,876829,START_HEIGHT_OFFSET); // FIXME: grab this from an api or a block explorer or something
 
-	//let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
-	//packet.set([0x1],RELAY_OFFSET);
+	let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
+	packet.set([0x1],RELAY_OFFSET);
 
-	//let MNAUTH_CHALLENGE_OFFSET = RELAY_OFFSET + SIZES.RELAY;
-	{
-		for(let k=0; k < TOTAL_SIZE;k++){
-			console.debug(k,':',packet[k]);
-		}
-	}
+	let MNAUTH_CHALLENGE_OFFSET = RELAY_OFFSET + SIZES.RELAY;
+	packet.set([0x1,0x2,0x3,0x4,0x5,0x6],MNAUTH_CHALLENGE_OFFSET);
+	packet = wrap_packet('testnet', 'version', packet, TOTAL_SIZE);
+	//{
+	//	for(let k=0; k < TOTAL_SIZE;k++){
+	//		console.debug(k,':',packet[k]);
+	//	}
+	//}
 	return packet;
 };
 const getaddr = function(){
@@ -164,11 +235,11 @@ const getaddr = function(){
 	packet.set(cmdArray,MAGIC_BYTES_SIZE);
 
 	packet.set([0x5d,0xf6,0xe0,0xe2],MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE);
-	{
-		for(let k=0; k < TOTAL_SIZE;k++){
-			console.debug(k,':',packet[k]);
-		}
-	}
+	//{
+	//	for(let k=0; k < TOTAL_SIZE;k++){
+	//		console.debug(k,':',packet[k]);
+	//	}
+	//}
 	return packet;
 };
 
@@ -214,7 +285,7 @@ const ping_message = function(){
 client.connect(19999, '127.0.0.1', function() {
 
 	console.log('Connected');
-	client.write(version());
+		client.write(version());
 	//client.write(ping_message());
 });
 
