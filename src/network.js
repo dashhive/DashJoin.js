@@ -10,6 +10,9 @@ const net = require("net");
 const crypto = require("crypto");
 const { createHash } = crypto;
 
+let Lib = {};
+module.exports = Lib;
+
 const PROTOCOL_VERSION = 70227;
 const RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
 const MNAUTH_PROTOCOL_VERSION_INTRODUCTION = 70214;
@@ -58,7 +61,6 @@ const NETWORKS = {
     nBits: 0x207fffff,
   },
 };
-
 const RELAY_SIZE = 1;
 
 let SERVICE_IDENTIFIERS = {
@@ -106,6 +108,20 @@ let SERVICE_IDENTIFIERS = {
    */
   NODE_NETWORK_LIMITED: 0x400,
 };
+Lib.constants = {
+  NETWORKS,
+  PROTOCOL_VERSION,
+  RELAY_PROTOCOL_VERSION_INTRODUCTION,
+  MNAUTH_PROTOCOL_VERSION_INTRODUCTION,
+  MNAUTH_CHALLENGE_SIZE,
+  MAINNET,
+  TESTNET,
+  DEVNET,
+  REGTEST,
+  VALID_NETS,
+  RELAY_SIZE,
+  SERVICE_IDENTIFIERS,
+};
 
 const str2uint8 = (text) => {
   return Uint8Array.from(
@@ -152,6 +168,16 @@ const htons = function (b, i, v) {
 const mapIPv4ToIpv6 = function (ip) {
   return "::ffff:" + ip;
 };
+Lib.util = {
+  str2uint8,
+  setUint32,
+  dot2num,
+  num2array,
+  htonl,
+  is_ipv6_mapped_ipv4,
+  htons,
+  mapIPv4ToIpv6,
+};
 
 /**
  * First 4 bytes of SHA256(SHA256(payload)) in internal byte order.
@@ -174,7 +200,6 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
     TOTAL_SIZE += SIZES[key];
   }
   TOTAL_SIZE += payload_size;
-  console.debug({ net, command_name, payload_size, TOTAL_SIZE });
 
   let packet = new Uint8Array(TOTAL_SIZE);
   packet.set(NETWORKS[net].magic, 0);
@@ -199,6 +224,11 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
   let ACTUAL_PAYLOAD_OFFSET = CHECKSUM_OFFSET + SIZES.CHECKSUM;
   packet.set(payload, ACTUAL_PAYLOAD_OFFSET);
   return packet;
+};
+
+Lib.net = {
+  compute_checksum,
+  wrap_packet,
 };
 
 /**
@@ -342,7 +372,7 @@ const version = function (
   }
   if (
     args.protocol_version < RELAY_PROTOCOL_VERSION_INTRODUCTION &&
-    'undefined' !== typeof args.relay
+    "undefined" !== typeof args.relay
   ) {
     throw new Error(
       `"relay" field is not supported in protocol versions prior to ${RELAY_PROTOCOL_VERSION_INTRODUCTION}`
@@ -350,13 +380,13 @@ const version = function (
   }
   if (
     args.protocol_version < MNAUTH_PROTOCOL_VERSION_INTRODUCTION &&
-    'undefined' !== typeof args.mnauth_challenge
+    "undefined" !== typeof args.mnauth_challenge
   ) {
     throw new Error(
       `"mnauth_challenge" field is not support in protocol versions prior to ${MNAUTH_CHALLENGE_OFFSET}`
     );
   }
-  if ('undefined' !== typeof args.mnauth_challenge) {
+  if ("undefined" !== typeof args.mnauth_challenge) {
     if (!(args.mnauth_challenge instanceof Uint8Array)) {
       throw new Error(`"mnauth_challenge" field must be a Uint8Array`);
     }
@@ -366,13 +396,16 @@ const version = function (
       );
     }
   }
-  if ('undefined' !== typeof args.relay) {
+  if ("undefined" !== typeof args.relay) {
     SIZES.RELAY = RELAY_SIZE;
   }
-  if ('undefined' !== typeof args.mnauth_challenge) {
+  if ("undefined" !== typeof args.mnauth_challenge) {
     SIZES.MNAUTH_CHALLENGE = MNAUTH_CHALLENGE_SIZE;
   }
-  if ('undefined' !== typeof args.user_agent && "string" === typeof args.user_agent) {
+  if (
+    "undefined" !== typeof args.user_agent &&
+    "string" === typeof args.user_agent
+  ) {
     SIZES.USER_AGENT_STRING = args.user_agent.length;
   }
 
@@ -381,7 +414,6 @@ const version = function (
   for (const key in SIZES) {
     TOTAL_SIZE += SIZES[key];
   }
-  console.debug({ TOTAL_SIZE });
   let packet = new Uint8Array(TOTAL_SIZE);
   // Protocol version
 
@@ -409,7 +441,6 @@ const version = function (
   let ADDR_RECV_IP_OFFSET =
     ADDR_RECV_SERVICES_OFFSET + SIZES.ADDR_RECV_SERVICES;
   let ipBytes = dot2num(args.addr_recv_ip);
-  console.debug({ ipBytes });
   let inv = htonl(ipBytes);
   packet = setUint32(packet, inv, ADDR_RECV_IP_OFFSET);
 
@@ -435,7 +466,6 @@ const version = function (
   let transmittingIP = args.addr_trans_ip;
   if (is_ipv6_mapped_ipv4(transmittingIP)) {
     let ipBytes = dot2num(transmittingIP.split(":").reverse()[0]);
-    console.debug({ ipBytes });
     let inv = htonl(ipBytes);
     packet = setUint32(packet, inv, ADDR_TRANS_IP_OFFSET + 12);
     let encodedIP = [0xff, 0xff];
@@ -451,7 +481,7 @@ const version = function (
 
   // this can be left zero
   let NONCE_OFFSET = ADDR_TRANS_PORT_OFFSET + SIZES.ADDR_TRANS_PORT;
-  if ('undefined' !== typeof args.nonce) {
+  if ("undefined" !== typeof args.nonce) {
     if (args.nonce instanceof Uint8Array) {
       packet.set(args.nonce, NONCE_OFFSET);
     } else {
@@ -462,7 +492,7 @@ const version = function (
   }
 
   let USER_AGENT_BYTES_OFFSET = NONCE_OFFSET + SIZES.NONCE;
-  if ('undefined' !== typeof args.user_agent) {
+  if ("undefined" !== typeof args.user_agent) {
     let userAgentSize = args.user_agent.length;
     packet.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
     packet.set(str2uint8(args.user_agent), USER_AGENT_BYTES_OFFSET + 1);
@@ -476,12 +506,12 @@ const version = function (
   packet = setUint32(packet, args.start_height, START_HEIGHT_OFFSET);
 
   let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
-  if ('undefined' !== typeof args.relay) {
+  if ("undefined" !== typeof args.relay) {
     packet.set([args.relay ? 0x01 : 0x00], RELAY_OFFSET);
   }
 
   let MNAUTH_CHALLENGE_OFFSET = RELAY_OFFSET + SIZES.RELAY;
-  if ('undefined' !== typeof args.mnauth_challenge) {
+  if ("undefined" !== typeof args.mnauth_challenge) {
     packet.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
   }
   packet = wrap_packet(args.chosen_network, "version", packet, TOTAL_SIZE);
@@ -509,15 +539,13 @@ const getaddr = function () {
     [0x5d, 0xf6, 0xe0, 0xe2],
     MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE
   );
-  //{
-  //	for(let k=0; k < TOTAL_SIZE;k++){
-  //		console.debug(k,':',packet[k]);
-  //	}
-  //}
   return packet;
 };
 
 const ping_message = function () {
+  /**
+   * FIXME: add network and adjust magic bytes accordingly
+   */
   const NONCE = "12340000";
   const cmd = "ping";
   const MAGIC_BYTES_SIZE = 4;
@@ -542,7 +570,6 @@ const ping_message = function () {
   //// fill the checksum
   let hash = createHash("sha256").update(NONCE).digest();
   let hashOfHash = createHash("sha256").update(hash).digest();
-  //console.debug({hash,hashOfHash});
   let arr = hashOfHash.slice(0, 4);
   packet.set(arr, MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE);
 
@@ -552,12 +579,13 @@ const ping_message = function () {
     nonceArray,
     MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE + CHECKSUM_SIZE
   );
-  {
-    for (let k = 0; k < TOTAL_SIZE; k++) {
-      console.debug(k, ":", packet[k]);
-    }
-  }
   return packet;
+};
+
+Lib.packet = {
+  version,
+  ping_message,
+  getaddr,
 };
 
 function connectToMasternode(
@@ -610,70 +638,88 @@ function connectToMasternode(
       },
     });
   });
+  return client;
 }
 
-let masterNodeIP = "127.0.0.1";
-let masterNodePort = 19999;
-let network = TESTNET;
-const random_mnauth_challenge = function(){
-	return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
-};
-let state = {
-  socket: null,
-  connected: false,
-  masterNode: {
-    ip: masterNodeIP,
-    port: masterNodePort,
-  },
-	network,
-	mnauth_challenge: random_mnauth_challenge(),
-};
-function our_ip_address() {
-  /**
-   * FIXME:
-   */
-  return "127.0.0.1";
-}
+Lib.net.connectToMasternode = connectToMasternode;
 
-function mainLogic() {
-  /**
-   * We'll have to send a "version" message to complete
-   * the authentication with the master node
-   */
-  const versionPayload = {
-		chosen_network: state.network,
-    protocol_version: PROTOCOL_VERSION,
-    services: [
-      SERVICE_IDENTIFIERS.NODE_NETWORK,
-      SERVICE_IDENTIFIERS.NODE_BLOOM,
-    ],
-    addr_recv_services: [
-      SERVICE_IDENTIFIERS.NODE_NETWORK,
-      SERVICE_IDENTIFIERS.NODE_BLOOM,
-    ],
-		start_height: 89245,
-    addr_recv_ip: mapIPv4ToIpv6(state.masterNode.ip),
-    addr_recv_port: state.masterNode.port,
-    addr_trans_ip: mapIPv4ToIpv6(our_ip_address()),
-    addr_trans_port: state.masterNode.port,
-		relay: true,
-		mnauth_challenge: state.mnauth_challenge,
-  };
-  version(versionPayload);
-}
-
-connectToMasternode(masterNodeIP, masterNodePort, function (obj) {
-  switch (obj.eventType) {
-    case "connected":
-      state.socket = obj.socket;
-      state.connected = true;
-      return mainLogic();
-      break;
-    case "data":
-      console.debug({ obj });
-      break;
-    case "close":
-      state.connected = false;
-      break;
-  }
-});
+//let masterNodeIP = "127.0.0.1";
+//let masterNodePort = 19999;
+//let network = TESTNET;
+//const random_mnauth_challenge = function(){
+//	return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
+//};
+//let state = {
+//  socket: null,
+//  connected: false,
+//  masterNode: {
+//    ip: masterNodeIP,
+//    port: masterNodePort,
+//  },
+//	network,
+//	mnauth_challenge: random_mnauth_challenge(),
+//};
+//function our_ip_address() {
+//  /**
+//   * FIXME:
+//   */
+//  return "127.0.0.1";
+//}
+//
+//function mainLogic(data) {
+//	if(data.eventType === 'connected') {
+//		/**
+//		 * We'll have to send a "version" message to complete
+//		 * the authentication with the master node
+//		 */
+//		const versionPayload = {
+//			chosen_network: state.network,
+//			protocol_version: PROTOCOL_VERSION,
+//			services: [
+//				SERVICE_IDENTIFIERS.NODE_NETWORK,
+//				SERVICE_IDENTIFIERS.NODE_BLOOM,
+//			],
+//			addr_recv_services: [
+//				SERVICE_IDENTIFIERS.NODE_NETWORK,
+//				SERVICE_IDENTIFIERS.NODE_BLOOM,
+//			],
+//			start_height: 89245,
+//			addr_recv_ip: mapIPv4ToIpv6(state.masterNode.ip),
+//			addr_recv_port: state.masterNode.port,
+//			addr_trans_ip: mapIPv4ToIpv6(our_ip_address()),
+//			addr_trans_port: state.masterNode.port,
+//			relay: true,
+//			mnauth_challenge: state.mnauth_challenge,
+//		};
+//		state.socket.write(version(versionPayload));
+//		return;
+//	}
+//	if(data.eventType === 'data'){
+//		console.log({
+//			msg: new Uint8Array(data.data),
+//		});
+//		return;
+//	}
+//	if(data.eventType === 'close'){
+//		console.log('closing socket');
+//		state.socket.destroy();
+//		return;
+//	}
+//}
+//
+//connectToMasternode(masterNodeIP, masterNodePort, function (obj) {
+//  switch (obj.eventType) {
+//    case "connected":
+//      state.socket = obj.socket;
+//      state.connected = true;
+//      return mainLogic(obj);
+//      break;
+//    case "data":
+//			return mainLogic(obj);
+//      break;
+//    case "close":
+//      state.connected = false;
+//			return mainLogic(obj);
+//      break;
+//  }
+//});
