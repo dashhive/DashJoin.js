@@ -7,17 +7,59 @@
  * See: http://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
  */
 const net = require("net");
+const crypto = require("crypto");
+const { createHash } = crypto;
 
 const PROTOCOL_VERSION = 70227;
 const RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
 const MNAUTH_PROTOCOL_VERSION_INTRODUCTION = 70214;
 const MNAUTH_CHALLENGE_SIZE = 32;
+const MAINNET = "mainnet";
+const TESTNET = "testnet";
+const DEVNET = "devnet";
+const REGTEST = "regtest";
+const VALID_NETS = [MAINNET, TESTNET, DEVNET, REGTEST];
+
 const NETWORKS = {
-	MAIN: 'mainnet',
-	TEST: 'testnet',
-	DEV: 'devnet',
-	REG: 'regnet',
+  [MAINNET]: {
+    port: 9999,
+    magic: new Uint8Array([
+      //0xBD6B0CBF,
+      0xbf, 0x0c, 0x6b, 0xbd,
+    ]),
+    start: 0xbf0c6bbd,
+    nBits: 0x1e0ffff0,
+  },
+  [TESTNET]: {
+    port: 19999,
+    magic: new Uint8Array([
+      //0xFFCAE2CE,
+      0xce, 0xe2, 0xca, 0xff,
+    ]),
+    start: 0xcee2caff,
+    nBits: 0x1e0ffff0,
+  },
+  [REGTEST]: {
+    port: 19899,
+    magic: new Uint8Array([
+      //0xDCB7C1FC,
+      0xfc, 0xc1, 0xb7, 0xdc,
+    ]),
+    start: 0xfcc1b7dc,
+    nBits: 0x207fffff,
+  },
+  [DEVNET]: {
+    port: 19799,
+    magic: new Uint8Array([
+      //0xCEFFCAE2,
+      0xe2, 0xca, 0xff, 0xce,
+    ]),
+    start: 0xe2caffce,
+    nBits: 0x207fffff,
+  },
 };
+
+const RELAY_SIZE = 1;
 
 let SERVICE_IDENTIFIERS = {
   /**
@@ -65,15 +107,6 @@ let SERVICE_IDENTIFIERS = {
   NODE_NETWORK_LIMITED: 0x400,
 };
 
-const testnet_magic_bytes = function () {
-  let packet = new Uint8Array(4);
-  packet[0] = 0xce;
-  packet[1] = 0xe2;
-  packet[2] = 0xca;
-  packet[3] = 0xff;
-  return packet;
-};
-const { createHash } = require("crypto");
 const str2uint8 = (text) => {
   return Uint8Array.from(
     Array.from(text).map((letter) => letter.charCodeAt(0))
@@ -101,8 +134,8 @@ function num2array(num) {
 function htonl(x) {
   return dot2num(num2array(x).reverse().join("."));
 }
-function is_ipv6_mapped_ipv4(ip){
-	return !!ip.match(/^[:]{2}[f]{4}[:]{1}.*$/); 
+function is_ipv6_mapped_ipv4(ip) {
+  return !!ip.match(/^[:]{2}[f]{4}[:]{1}.*$/);
 }
 
 /**
@@ -126,7 +159,6 @@ const mapIPv4ToIpv6 = function (ip) {
 const compute_checksum = (payload) => {
   let hash = createHash("sha256").update(payload).digest();
   let hashOfHash = createHash("sha256").update(hash).digest();
-  console.debug({ hashOfHash });
   return hashOfHash.slice(0, 4);
 };
 
@@ -145,13 +177,7 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
   console.debug({ net, command_name, payload_size, TOTAL_SIZE });
 
   let packet = new Uint8Array(TOTAL_SIZE);
-  /**
-   * FIXME: we just assume net is always testnet.
-   */
-  /**
-   * TODO: switch(net){ ... }
-   */
-  packet.set(testnet_magic_bytes(), 0);
+  packet.set(NETWORKS[net].magic, 0);
 
   /**
    * Set command_name (char[12])
@@ -165,11 +191,7 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
     packet = setUint32(packet, 0x5df6e0e2, CHECKSUM_OFFSET);
     return packet;
   }
-  console.debug({ payload_size });
   packet = setUint32(packet, payload_size, PAYLOAD_SIZE_OFFSET);
-  for (let i = PAYLOAD_SIZE_OFFSET; i < PAYLOAD_SIZE_OFFSET + 4; i++) {
-    console.debug({ i, char: packet[i] });
-  }
   packet.set(compute_checksum(payload), CHECKSUM_OFFSET);
   /**
    * Finally, append the payload to the header
@@ -187,12 +209,12 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
  */
 const version = function (
   args = {
-		/**
-		 * Required.
-		 *
-		 * Must be one of the values in NETWORKS constant above.
-		 */
-		chosen_network,
+    /**
+     * Required.
+     *
+     * Must be one of the values in NETWORKS constant above.
+     */
+    chosen_network,
     /**
      * Required.
      */
@@ -244,12 +266,12 @@ const version = function (
      */
     addr_trans_port,
 
-		/**
-		 * Required.
-		 *
-		 * Start height of your best block chain.
-		 */
-		start_height,
+    /**
+     * Required.
+     *
+     * Start height of your best block chain.
+     */
+    start_height,
 
     /**
      * Optional.
@@ -305,28 +327,22 @@ const version = function (
     ADDR_TRANS_PORT: 2,
     NONCE: 8,
     USER_AGENT_BYTES: 1, // can be skipped
-		USER_AGENT_STRING: 0,
+    USER_AGENT_STRING: 0,
     START_HEIGHT: 4,
     // The following 2 fields are OPTIONAL
     RELAY: 0,
     MNAUTH_CHALLENGE: 0,
   };
-	let validNetwork = false;
-	for(const key in NETWORKS) {
-		if(chosen_network === NETWORKS[key]){
-			validNetwork = true;
-			break;
-		}
-	}
-	if(!validNetwork){
-		throw new Error(`"chosen_network" is invalid.`);
-	}
+
+  if (!VALID_NETS.includes(args.chosen_network)) {
+    throw new Error(`"chosen_network" is invalid.`);
+  }
   if (!Array.isArray(args.services)) {
     throw new Error('"services" needs to be an array');
   }
   if (
     args.protocol_version < RELAY_PROTOCOL_VERSION_INTRODUCTION &&
-    null !== args.relay
+    'undefined' !== typeof args.relay
   ) {
     throw new Error(
       `"relay" field is not supported in protocol versions prior to ${RELAY_PROTOCOL_VERSION_INTRODUCTION}`
@@ -334,31 +350,29 @@ const version = function (
   }
   if (
     args.protocol_version < MNAUTH_PROTOCOL_VERSION_INTRODUCTION &&
-    null !== args.mnauth_challenge
+    'undefined' !== typeof args.mnauth_challenge
   ) {
     throw new Error(
       `"mnauth_challenge" field is not support in protocol versions prior to ${MNAUTH_CHALLENGE_OFFSET}`
     );
   }
-	if(null !== args.mnauth_challenge){
-		if(!(args.mnauth_challenge instanceof Uint8Array)){
-			throw new Error(
-				`"mnauth_challenge" field must be a Uint8Array`
-			);
-		}
-		if(args.mnauth_challenge.length !== MNAUTH_CHALLENGE_SIZE) {
-			throw new Error(
-				`"mnauth_challenge" field must be ${MNAUTH_CHALLENGE_SIZE} bytes long`
-			);
-		}
-	}
-	if(null !== args.relay) {
-		SIZES.RELAY = 1;
-	}
-	if(null !== args.mnauth_challenge) {
-		SIZES.MNAUTH_CHALLENGE = 32;
-	}
-  if (null !== args.user_agent && "string" === typeof args.user_agent) {
+  if ('undefined' !== typeof args.mnauth_challenge) {
+    if (!(args.mnauth_challenge instanceof Uint8Array)) {
+      throw new Error(`"mnauth_challenge" field must be a Uint8Array`);
+    }
+    if (args.mnauth_challenge.length !== MNAUTH_CHALLENGE_SIZE) {
+      throw new Error(
+        `"mnauth_challenge" field must be ${MNAUTH_CHALLENGE_SIZE} bytes long`
+      );
+    }
+  }
+  if ('undefined' !== typeof args.relay) {
+    SIZES.RELAY = RELAY_SIZE;
+  }
+  if ('undefined' !== typeof args.mnauth_challenge) {
+    SIZES.MNAUTH_CHALLENGE = MNAUTH_CHALLENGE_SIZE;
+  }
+  if ('undefined' !== typeof args.user_agent && "string" === typeof args.user_agent) {
     SIZES.USER_AGENT_STRING = args.user_agent.length;
   }
 
@@ -378,7 +392,7 @@ const version = function (
   const SERVICES_OFFSET = SIZES.VERSION;
   let services = 0;
   for (const service of args.services) {
-		services += service;
+    services += service;
   }
   packet.set([services], SERVICES_OFFSET);
 
@@ -388,14 +402,14 @@ const version = function (
   let ADDR_RECV_SERVICES_OFFSET = TIMESTAMP_OFFSET + SIZES.TIMESTAMP;
   packet.set([services], ADDR_RECV_SERVICES_OFFSET);
 
-	/**
-	 * "ADDR_RECV" means the host that we're sending this traffic to.
-	 * So, in other words, it's the master node
-	 */
+  /**
+   * "ADDR_RECV" means the host that we're sending this traffic to.
+   * So, in other words, it's the master node
+   */
   let ADDR_RECV_IP_OFFSET =
     ADDR_RECV_SERVICES_OFFSET + SIZES.ADDR_RECV_SERVICES;
   let ipBytes = dot2num(args.addr_recv_ip);
-	console.debug({ipBytes});
+  console.debug({ ipBytes });
   let inv = htonl(ipBytes);
   packet = setUint32(packet, inv, ADDR_RECV_IP_OFFSET);
 
@@ -418,17 +432,17 @@ const version = function (
    */
   let ADDR_TRANS_IP_OFFSET =
     ADDR_TRANS_SERVICES_OFFSET + SIZES.ADDR_TRANS_SERVICES;
-	let transmittingIP = args.addr_trans_ip;
-	if(is_ipv6_mapped_ipv4(transmittingIP)){
-  	let ipBytes = dot2num(transmittingIP.split(':').reverse()[0]);
-		console.debug({ipBytes});
-		let inv = htonl(ipBytes);
-		packet = setUint32(packet, inv, ADDR_TRANS_IP_OFFSET + 12);
-  	let encodedIP = [0xff, 0xff];
-  	packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
-	}else{
-		/** TODO: */
-	}
+  let transmittingIP = args.addr_trans_ip;
+  if (is_ipv6_mapped_ipv4(transmittingIP)) {
+    let ipBytes = dot2num(transmittingIP.split(":").reverse()[0]);
+    console.debug({ ipBytes });
+    let inv = htonl(ipBytes);
+    packet = setUint32(packet, inv, ADDR_TRANS_IP_OFFSET + 12);
+    let encodedIP = [0xff, 0xff];
+    packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
+  } else {
+    /** TODO: */
+  }
 
   let ADDR_TRANS_PORT_OFFSET = ADDR_TRANS_IP_OFFSET + SIZES.ADDR_TRANS_IP;
   portBuffer = new Uint8Array(2);
@@ -437,42 +451,40 @@ const version = function (
 
   // this can be left zero
   let NONCE_OFFSET = ADDR_TRANS_PORT_OFFSET + SIZES.ADDR_TRANS_PORT;
-	if(null !== args.nonce) {
-		if(Array.isArray(args.nonce)) {
-  		packet.set(args.nonce, NONCE_OFFSET);
-		}else{
-			/**
-			 * TODO: support taking a string and converting it to 8 bytes
-			 */
-			throw new Error(`"nonce" field must be an array of 8 bytes`);
-		}
-	}else{
-  	packet.set(new Uint8Array(SIZES.NONCE), NONCE_OFFSET);
-	}
+  if ('undefined' !== typeof args.nonce) {
+    if (args.nonce instanceof Uint8Array) {
+      packet.set(args.nonce, NONCE_OFFSET);
+    } else {
+      throw new Error(`"nonce" field must be an array of 8 bytes`);
+    }
+  } else {
+    packet.set(new Uint8Array(SIZES.NONCE), NONCE_OFFSET);
+  }
 
   let USER_AGENT_BYTES_OFFSET = NONCE_OFFSET + SIZES.NONCE;
-	if(null !== args.user_agent) {
-		let userAgentSize = args.user_agent.length;
-  	packet.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
-		packet.set(str2uint8(args.user_agent),USER_AGENT_BYTES_OFFSET + 1);
-	}else{
-  	packet.set([0x0], USER_AGENT_BYTES_OFFSET);
-	}
+  if ('undefined' !== typeof args.user_agent) {
+    let userAgentSize = args.user_agent.length;
+    packet.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
+    packet.set(str2uint8(args.user_agent), USER_AGENT_BYTES_OFFSET + 1);
+  } else {
+    packet.set([0x0], USER_AGENT_BYTES_OFFSET);
+  }
 
   // Skipping user agent. it can be zero
-  let START_HEIGHT_OFFSET = USER_AGENT_BYTES_OFFSET + SIZES.USER_AGENT_BYTES + SIZES.USER_AGENT_STRING;
+  let START_HEIGHT_OFFSET =
+    USER_AGENT_BYTES_OFFSET + SIZES.USER_AGENT_BYTES + SIZES.USER_AGENT_STRING;
   packet = setUint32(packet, args.start_height, START_HEIGHT_OFFSET);
 
   let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
-	if(null !== args.relay){
-  	packet.set([args.relay ? 0x01 : 0x00], RELAY_OFFSET);
-	}
+  if ('undefined' !== typeof args.relay) {
+    packet.set([args.relay ? 0x01 : 0x00], RELAY_OFFSET);
+  }
 
   let MNAUTH_CHALLENGE_OFFSET = RELAY_OFFSET + SIZES.RELAY;
-	if(null !== args.mnauth_challenge){
-  	packet.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
-	}
-  packet = wrap_packet(chosen_network, "version", packet, TOTAL_SIZE);
+  if ('undefined' !== typeof args.mnauth_challenge) {
+    packet.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
+  }
+  packet = wrap_packet(args.chosen_network, "version", packet, TOTAL_SIZE);
   return packet;
 };
 const getaddr = function () {
@@ -602,6 +614,10 @@ function connectToMasternode(
 
 let masterNodeIP = "127.0.0.1";
 let masterNodePort = 19999;
+let network = TESTNET;
+const random_mnauth_challenge = function(){
+	return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
+};
 let state = {
   socket: null,
   connected: false,
@@ -609,6 +625,8 @@ let state = {
     ip: masterNodeIP,
     port: masterNodePort,
   },
+	network,
+	mnauth_challenge: random_mnauth_challenge(),
 };
 function our_ip_address() {
   /**
@@ -623,13 +641,23 @@ function mainLogic() {
    * the authentication with the master node
    */
   const versionPayload = {
+		chosen_network: state.network,
     protocol_version: PROTOCOL_VERSION,
-    services: [SERVICE_IDENTIFIERS.NODE_NETWORK, SERVICE_IDENTIFIERS.NODE_BLOOM],
-    addr_recv_services: [SERVICE_IDENTIFIERS.NODE_NETWORK, SERVICE_IDENTIFIERS.NODE_BLOOM],
+    services: [
+      SERVICE_IDENTIFIERS.NODE_NETWORK,
+      SERVICE_IDENTIFIERS.NODE_BLOOM,
+    ],
+    addr_recv_services: [
+      SERVICE_IDENTIFIERS.NODE_NETWORK,
+      SERVICE_IDENTIFIERS.NODE_BLOOM,
+    ],
+		start_height: 89245,
     addr_recv_ip: mapIPv4ToIpv6(state.masterNode.ip),
     addr_recv_port: state.masterNode.port,
     addr_trans_ip: mapIPv4ToIpv6(our_ip_address()),
     addr_trans_port: state.masterNode.port,
+		relay: true,
+		mnauth_challenge: state.mnauth_challenge,
   };
   version(versionPayload);
 }
@@ -642,8 +670,8 @@ connectToMasternode(masterNodeIP, masterNodePort, function (obj) {
       return mainLogic();
       break;
     case "data":
-			console.debug({obj});
-			break;
+      console.debug({ obj });
+      break;
     case "close":
       state.connected = false;
       break;

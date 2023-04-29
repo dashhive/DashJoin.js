@@ -1,10 +1,33 @@
 # Overview
 The following contains what I think will get us to a pre-alpha state the fastest.
 
-# High priority, and testable
+# High priority
 - [ ] `bool CreateDenominated(CAmount nBalanceToDenominate);`
 	- place this in `client-session.js`
 	- [ ] Write unit test for this
+- [ ] `bool CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals);`
+	- [ ] unit tests
+- [ ] `bool CreateCollateralTransaction(CMutableTransaction& txCollateral, std::string& strReason);`
+	- [ ] unit tests
+- [ ] `bool MakeCollateralAmounts();`
+	- [ ] unit tests
+## Split up large inputs or make fee sized inputs
+- [ ] `bool MakeCollateralAmounts(const CompactTallyItem& tallyItem, bool fTryDenominated);`
+	- [ ] unit tests
+- [ ] `bool SelectDenominate(std::string& strErrorRet, std::vector<CTxDSIn>& vecTxDSInRet);`
+	- [ ] unit tests
+## step 0: select denominated inputs and txouts
+- [ ] `bool PrepareDenominate(int nMinRounds, int nMaxRounds, std::string& strErrorRet, const std::vector<CTxDSIn>& vecTxDSIn, std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsRet, bool fDryRun = false);`
+	- [ ] unit tests
+## step 1: prepare denominated inputs and outputs
+- [ ] `bool SendDenominate(const std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsIn, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);`
+	- [ ] unit tests
+## step 2: send denominated inputs and outputs prepared in step 1
+- [ ] `void CompletedTransaction(PoolMessage nMessageID);`
+	- [ ] unit tests
+- [ ] `bool SignFinalTransaction(const CTxMemPool& mempool, const CTransaction& finalTransactionNew, CNode& peer, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);`
+	- [ ] unit tests
+## As a client, check and sign the final transaction
 
 # First steps
 - [ ] `std::vector<CCoinJoinEntry> vecEntries GUARDED_BY(cs_coinjoin); // Masternode/clients entries`
@@ -27,21 +50,6 @@ typedef int64_t CAmount;
 ```
 
 
-
-- [ ] `bool CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals);`
-- [ ] `bool CreateCollateralTransaction(CMutableTransaction& txCollateral, std::string& strReason);`
-- [ ] `bool MakeCollateralAmounts();`
-	- Split up large inputs or make fee sized inputs
-- [ ] `bool MakeCollateralAmounts(const CompactTallyItem& tallyItem, bool fTryDenominated);`
-- [ ] `bool SelectDenominate(std::string& strErrorRet, std::vector<CTxDSIn>& vecTxDSInRet);`
-	- step 0: select denominated inputs and txouts
-- [ ] `bool PrepareDenominate(int nMinRounds, int nMaxRounds, std::string& strErrorRet, const std::vector<CTxDSIn>& vecTxDSIn, std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsRet, bool fDryRun = false);`
-  - step 1: prepare denominated inputs and outputs
-- [ ] `bool SendDenominate(const std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsIn, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);`
-  - step 2: send denominated inputs and outputs prepared in step 1
-- [ ] `void CompletedTransaction(PoolMessage nMessageID);`
-- [ ] `bool SignFinalTransaction(const CTxMemPool& mempool, const CTransaction& finalTransactionNew, CNode& peer, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);`
-  - As a client, check and sign the final transaction
 
 # Masternode data
 These variables would be absolutely crucial. For a pre-alpha, we may be able to get away with simplifying/hard-coding this for the time being.
