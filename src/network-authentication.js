@@ -2,96 +2,132 @@
 const Network = require("./network.js");
 const crypto = require("crypto");
 const { createHash } = crypto;
+const net = require("net");
 
 let Lib = {};
 module.exports = Lib;
 
-const { 
-	PROTOCOL_VERSION,
-	MNAUTH_CHALLENGE_SIZE,
-	TESTNET,
-	SERVICE_IDENTIFIERS,
+const {
+  PROTOCOL_VERSION,
+  MNAUTH_CHALLENGE_SIZE,
+  TESTNET,
+  SERVICE_IDENTIFIERS,
 } = Network.constants;
 
-const { mapIPv4ToIpv6, } = Network.util;
-const { version } = Network.packet;
-const { connectToMasternode } = Network.net;
+const { mapIPv4ToIpv6 } = Network.util;
+const PacketParser = Network.packet.parse;
+const Statuses = ["NEEDS_AUTH", "EXPECT_VERACK", "READY", "CLOSED"];
 
-let masterNodeIP = "127.0.0.1";
-let masterNodePort = 19999;
-let network = TESTNET;
-const random_mnauth_challenge = function(){
-	return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
-};
-let state = {
-  socket: null,
-  connected: false,
-  masterNode: {
-    ip: masterNodeIP,
-    port: masterNodePort,
-  },
-	network,
-	mnauth_challenge: random_mnauth_challenge(),
-};
-function our_ip_address() {
-  return "127.0.0.1";
-}
-
-function mainLogic(data) {
-	if(data.eventType === 'connected') {
-		/**
-		 * We'll have to send a "version" message to complete
-		 * the authentication with the master node
-		 */
-		const versionPayload = {
-			chosen_network: state.network,
-			protocol_version: PROTOCOL_VERSION,
-			services: [
-				SERVICE_IDENTIFIERS.NODE_NETWORK,
-				SERVICE_IDENTIFIERS.NODE_BLOOM,
-			],
-			addr_recv_services: [
-				SERVICE_IDENTIFIERS.NODE_NETWORK,
-				SERVICE_IDENTIFIERS.NODE_BLOOM,
-			],
-			start_height: 89245,
-			addr_recv_ip: mapIPv4ToIpv6(state.masterNode.ip),
-			addr_recv_port: state.masterNode.port,
-			addr_trans_ip: mapIPv4ToIpv6(our_ip_address()),
-			addr_trans_port: state.masterNode.port,
-			relay: true,
-			mnauth_challenge: state.mnauth_challenge,
-		};
-		state.socket.write(version(versionPayload));
-		return;
-	}
-	if(data.eventType === 'data'){
-		console.log({
-			msg: new Uint8Array(data.data),
+//let activeConnections = [];
+function MasterNode({
+  ip,
+  port,
+  network,
+  ourIP = "127.0.0.1", // FIXME: find out how to get this automatically
+  startBlockHeight = 84567, // FIXME needs to change
+}) {
+  let self = this;
+  self.ip = ip;
+  self.port = port;
+  self.network = network;
+  self.startBlockHeight = startBlockHeight;
+  self.client = null;
+  self.mnauth_challenge = null;
+  self.status = null;
+  self.statusChangedAt = 0;
+  self.ourIP = ourIP;
+  self.setStatus = function (s) {
+    self.status = s;
+    self.statusChangedAt = Date.now();
+  };
+  self.createMNAuthChallenge = function () {
+    return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
+  };
+	self.recv = [];
+  self.connect = function () {
+		console.debug('connect');
+    self.client = new net.Socket();
+      self.client.on("close", function () {
+				console.debug('close');
+				self.setStatus("CLOSED");
+				console.log("closing socket");
+				self.client.destroy();
+      });
+			self.client.on('error', function(err) {
+				console.debug('error');
+				console.error({err});
+			});
+			self.client.on('end', function(...args) {
+				console.debug('end', args);
+			});
+      self.client.on("data", function (payload) {
+				console.debug({payload});
+				self.recv.push(payload);
+				let magicBytes = PacketParser.magicBytes(payload);
+				let command = PacketParser.commandName(payload);
+				let operatingNetwork = PacketParser.identifyMagicBytes(payload);
+				console.debug({ operatingNetwork, magicBytes, command });
+				if (['sendaddr','sendaddrv2','version','verack'].includes(command)){
+					console.debug('');
+					self.setStatus('READY');
+				}
+				return true;
+			});
+		self.client.on('ready', function(){
+			console.debug('connected. sending version');
+      const versionPayload = {
+        chosen_network: self.network,
+        protocol_version: PROTOCOL_VERSION,
+        services: [
+          SERVICE_IDENTIFIERS.NODE_NETWORK,
+          SERVICE_IDENTIFIERS.NODE_BLOOM,
+        ],
+        addr_recv_services: [
+          SERVICE_IDENTIFIERS.NODE_NETWORK,
+          SERVICE_IDENTIFIERS.NODE_BLOOM,
+        ],
+        start_height: self.startBlockHeight,
+        addr_recv_ip: mapIPv4ToIpv6(self.ip),
+        addr_recv_port: self.port,
+        addr_trans_ip: mapIPv4ToIpv6(self.ourIP),
+        addr_trans_port: self.client.localPort,
+        relay: false,
+        mnauth_challenge: self.createMNAuthChallenge(),
+      };
+			console.debug({local: self.client.localAddress, p: self.client.localPort});
+      self.setStatus("EXPECT_VERACK");
+      self.client.write(Network.packet.version(versionPayload));
 		});
-		return;
-	}
-	if(data.eventType === 'close'){
-		console.log('closing socket');
-		state.socket.destroy();
-		return;
-	}
+    self.setStatus("NEEDS_AUTH");
+    self.client.connect({
+			port: self.port, 
+			host: self.ip, 
+			keepAlive: true,
+			keepAliveInitialDelay: 3,
+			//onread: {
+			//	buffer: Buffer.alloc(2 * 1024),
+			//	callback: function (bytesRead, buffer) {
+			//		console.debug({bytesRead,buffer});
+			//		//self.recvBufferChanged();
+			//		return true;
+			//	},
+			//},
+		}, function(){
+    });
+  };
 }
 
-connectToMasternode(masterNodeIP, masterNodePort, function (obj) {
-  switch (obj.eventType) {
-    case "connected":
-      state.socket = obj.socket;
-      state.connected = true;
-      return mainLogic(obj);
-      break;
-		default:
-    case "data":
-			return mainLogic(obj);
-      break;
-    case "close":
-      state.connected = false;
-			return mainLogic(obj);
-      break;
-  }
+let config = require('./config.json');
+let masterNodeIP = config.masterNodeIP;
+let masterNodePort = config.masterNodePort;
+let network = config.network;
+
+let masterNodeConnection = new MasterNode({
+  ip: masterNodeIP,
+  port: masterNodePort,
+  network: TESTNET,
+  ourIP: "10.0.2.15", // FIXME: find out how to get this automatically
+  startBlockHeight: 84567, // FIXME needs to change
 });
+
+masterNodeConnection.connect();

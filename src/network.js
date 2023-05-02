@@ -22,10 +22,14 @@ const TESTNET = "testnet";
 const DEVNET = "devnet";
 const REGTEST = "regtest";
 const VALID_NETS = [MAINNET, TESTNET, DEVNET, REGTEST];
+const MAINNET_PORT = 9999;
+const TESTNET_PORT = 19999;
+const REGTEST_PORT = 19899;
+const DEVTEST_PORT = 19799;
 
 const NETWORKS = {
   [MAINNET]: {
-    port: 9999,
+    port: MAINNET_PORT,
     magic: new Uint8Array([
       //0xBD6B0CBF,
       0xbf, 0x0c, 0x6b, 0xbd,
@@ -34,7 +38,7 @@ const NETWORKS = {
     nBits: 0x1e0ffff0,
   },
   [TESTNET]: {
-    port: 19999,
+    port: TESTNET_PORT,
     magic: new Uint8Array([
       //0xFFCAE2CE,
       0xce, 0xe2, 0xca, 0xff,
@@ -43,7 +47,7 @@ const NETWORKS = {
     nBits: 0x1e0ffff0,
   },
   [REGTEST]: {
-    port: 19899,
+    port: REGTEST_PORT,
     magic: new Uint8Array([
       //0xDCB7C1FC,
       0xfc, 0xc1, 0xb7, 0xdc,
@@ -52,7 +56,7 @@ const NETWORKS = {
     nBits: 0x207fffff,
   },
   [DEVNET]: {
-    port: 19799,
+    port: DEVTEST_PORT,
     magic: new Uint8Array([
       //0xCEFFCAE2,
       0xe2, 0xca, 0xff, 0xce,
@@ -581,64 +585,69 @@ const ping_message = function () {
   );
   return packet;
 };
+function verack(args = {
+	chosen_network,
+}) {
+  return wrap_packet(args.chosen_network, 'verack', null, 0);
+};
+function sendaddrv2(args = {
+	chosen_network,
+}) {
+  return wrap_packet(args.chosen_network, 'sendaddrv2', null, 0);
+};
+function sendaddr(args = {
+	chosen_network,
+}) {
+  return wrap_packet(args.chosen_network, 'sendaddr', null, 0);
+};
 
 Lib.packet = {
   version,
-  ping_message,
+  //ping_message,
   getaddr,
+	verack,
+	sendaddrv2,
+	sendaddr,
+	parse: {},
 };
 
-function connectToMasternode(
-  masterNodeIp,
-  masterNodePort,
-  cb,
-  config = {
-    setupListeners: true,
-  }
-) {
-  let client = new net.Socket();
-  if (false === config.setupListeners) {
-    client.connect(masterNodePort, masterNodeIp, function () {
-      cb({
-        eventType: "connected",
-        socket: client,
-        data: {
-          masterNode: {
-            ip: masterNodeIp,
-            port: masterNodePort,
-          },
-        },
-      });
-    });
-    return client;
-  }
-  client.connect(masterNodePort, masterNodeIp, function () {
-    client.on("data", function (data) {
-      cb({
-        eventType: "data",
-        socket: client,
-        data,
-      });
-    });
-    client.on("close", function () {
-      cb({
-        eventType: "close",
-        socket: client,
-        data: {},
-      });
-    });
-    cb({
-      eventType: "connected",
-      socket: client,
-      data: {
-        masterNode: {
-          ip: masterNodeIp,
-          port: masterNodePort,
-        },
-      },
-    });
-  });
-  return client;
-}
+Lib.packet.parse.magicBytes = function(buffer){
+	if(!(buffer instanceof Uint8Array)){
+		throw new Error('Must be an instance of Uint8Array');
+	}
+	let copy = new Uint8Array(4);
+	for(let i=0; i < 4;i++){
+		copy[i] = buffer[i];
+	}
+	return copy;
+};
 
-Lib.net.connectToMasternode = connectToMasternode;
+Lib.packet.parse.identifyMagicBytes = function(buffer){
+	let bytes = Lib.packet.parse.magicBytes(buffer);
+
+	for(let key in NETWORKS){
+		let bytesMatched = 0;
+		for(let i=0; i < 4;i++){
+			if(NETWORKS[key].magic[i] !== buffer[i]){
+				bytesMatched = 0;
+				break;
+			}
+			++bytesMatched;
+		}
+		if(bytesMatched === 4){
+			return key;
+		}
+	}
+	return null;
+};
+
+Lib.packet.parse.commandName = function(buffer){
+	if(!(buffer instanceof Uint8Array)){
+		throw new Error('Must be an instance of Uint8Array');
+	}
+	let cmd = '';
+	for(let i=4; i < 12 && buffer[i] !== 0x0;++i){
+		cmd += String.fromCharCode(buffer[i]);
+	}
+	return cmd;
+};

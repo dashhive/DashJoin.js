@@ -1,0 +1,5 @@
+{
+	"masterNodeIP":"1.2.3.4",
+	"masterNodePort":19999,
+	"network":"testnet"
+}
