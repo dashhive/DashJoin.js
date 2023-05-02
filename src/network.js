@@ -217,7 +217,7 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
   let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
   let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
   if (payload_size === 0 || payload === null) {
-    packet = setUint32(packet, 0x5df6e0e2, CHECKSUM_OFFSET);
+    packet.set([0x5d,0xf6,0xe0,0xe2], CHECKSUM_OFFSET);
     return packet;
   }
   packet = setUint32(packet, payload_size, PAYLOAD_SIZE_OFFSET);

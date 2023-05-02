@@ -48,14 +48,12 @@ function MasterNode({
 		console.debug('connect');
     self.client = new net.Socket();
       self.client.on("close", function () {
-				console.debug('close');
 				self.setStatus("CLOSED");
-				console.log("closing socket");
+				console.debug("closing socket");
 				self.client.destroy();
       });
 			self.client.on('error', function(err) {
-				console.debug('error');
-				console.error({err});
+				console.debug({err});
 			});
 			self.client.on('end', function(...args) {
 				console.debug('end', args);
@@ -68,8 +66,8 @@ function MasterNode({
 				let operatingNetwork = PacketParser.identifyMagicBytes(payload);
 				console.debug({ operatingNetwork, magicBytes, command });
 				if (['sendaddr','sendaddrv2','version','verack'].includes(command)){
-					console.debug('');
 					self.setStatus('READY');
+      		self.client.write(Network.packet.verack({chosen_network: self.network,}));
 				}
 				return true;
 			});
@@ -117,17 +115,19 @@ function MasterNode({
   };
 }
 
-let config = require('./config.json');
+let config = require('./.config.json');
 let masterNodeIP = config.masterNodeIP;
 let masterNodePort = config.masterNodePort;
 let network = config.network;
+let ourIP = config.ourIP;
+let startBlockHeight = config.startBlockHeight;
 
 let masterNodeConnection = new MasterNode({
   ip: masterNodeIP,
   port: masterNodePort,
-  network: TESTNET,
-  ourIP: "10.0.2.15", // FIXME: find out how to get this automatically
-  startBlockHeight: 84567, // FIXME needs to change
+  network,
+  ourIP,
+  startBlockHeight,
 });
 
 masterNodeConnection.connect();

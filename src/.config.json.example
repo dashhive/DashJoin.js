@@ -1,5 +1,7 @@
 {
 	"masterNodeIP":"1.2.3.4",
 	"masterNodePort":19999,
-	"network":"testnet"
+	"network":"testnet",
+	"ourIP": "4.3.2.1",
+	"startBlockHeight": 854321
 }
