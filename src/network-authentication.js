@@ -3,6 +3,7 @@ const Network = require("./network.js");
 const crypto = require("crypto");
 const { createHash } = crypto;
 const net = require("net");
+const { EventEmitter } = require('events');
 
 let Lib = {};
 module.exports = Lib;
@@ -19,13 +20,33 @@ const {
 const { mapIPv4ToIpv6 } = Network.util;
 const PacketParser = Network.packet.parse;
 
-//let activeConnections = [];
+let STATUSES = [
+	'NEEDS_AUTH',
+	'EXPECT_VERACK',
+	'RESPOND_VERACK',
+	/**
+	 * HCDP is an acronym for:
+	 * 'headers', 'cmpct', 'dsq', 'ping'
+	 * These corresspond to to the response of
+	 * the MN sending the following once you send a verack to
+	 * the MN: 
+	 * - sendheaders
+	 * - sendcmpct
+	 * - senddsq
+	 * - ping
+	 */
+	'EXPECT_HCDP',
+	'RESPOND_HCDP',
+	'READY',
+];
+
 function MasterNode({
   ip,
   port,
   network,
   ourIP,
   startBlockHeight,
+	onStatusChange = null,
 }) {
   let self = this;
   self.ip = ip;
@@ -37,9 +58,16 @@ function MasterNode({
   self.status = null;
   self.statusChangedAt = 0;
   self.ourIP = ourIP;
+	self.events = new EventEmitter();
+	self.onStatusChange = onStatusChange;
   self.setStatus = function (s) {
     self.status = s;
     self.statusChangedAt = Date.now();
+		if(self.onStatusChange){
+			self.onStatusChange({
+				self,
+			});
+		}
   };
   self.createMNAuthChallenge = function () {
     return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
@@ -53,6 +81,12 @@ function MasterNode({
 		verack: false,
 		sendaddr: false,
 	};
+	self.handshakeStatePhase2 = {
+		sendheaders: false,
+		sendcmpct: false,
+		senddsq: false,
+		ping: false,
+	};
 	self.extract = function(buffer,start,end){
 		if(start > end){
 			return new Uint8Array();
@@ -63,6 +97,9 @@ function MasterNode({
 			extracted[extractedIndex++] = buffer[i];
 		}
 		return extracted;
+	};
+	self.clearBuffer = function(){
+		self.buffer = new Uint8Array();
 	};
 	self.appendBuffer = function(dest,src){
 		let finalBuffer = new Uint8Array(dest.length + src.length);
@@ -78,13 +115,63 @@ function MasterNode({
 		}
 		return finalBuffer;
 	};
-	self.handshakeCompleted = function(){
+	self.handshakePhase2Completed = function(){
+		return self.handshakeStatePhase2.sendheaders && self.handshakeStatePhase2.sendcmpct && self.handshakeStatePhase2.senddsq && self.handshakeStatePhase2.ping;
+	};
+	self.handshakePhase1Completed = function(){
 		return self.handshakeState.version && self.handshakeState.verack && self.handshakeState.sendaddr;
 	};
 
 	self.processDebounce = null;
 	self.processRecvBuffer = function(){
 		console.debug('[+] processRecvBuffer');
+		if(self.status === 'EXPECT_HCDP'){
+			console.debug('EXPECT_HCDP status');
+			const HCDP_SIZE = (MESSAGE_HEADER_SIZE * 4) + (
+				0 + /* (H) sendheaders payload */
+				9 + /* (C) sendcmpct payload */
+				1 + /* (D) senddsq payload */
+				8   /* (P) Ping message payload */
+			);
+			if(self.buffer.length < HCDP_SIZE){
+				console.debug('[-] Need more data:',self.buffer.length, '. need:',HCDP_SIZE);
+				return;
+			}
+			console.debug('[+] have enough data:',self.buffer.length, '. need:',HCDP_SIZE);
+				
+			let command = PacketParser.commandName(self.buffer);
+			let payloadSize = PacketParser.payloadSize(self.buffer);
+			while(self.buffer.length && command.length && self.handshakePhase2Completed() === false){
+				console.debug({command});
+				if(command === 'sendheaders'){
+					// has no payload
+					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
+					self.handshakeStatePhase2.sendheaders = true;
+					console.debug('sendheaders +');
+				}else if(command === 'sendcmpct'){
+					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE + payloadSize,self.buffer.length);
+					self.handshakeStatePhase2.sendcmpct = true;
+					console.debug('sendcmpct +');
+				}else if(command === 'senddsq'){
+					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
+					self.handshakeStatePhase2.senddsq= true;
+					console.debug('senddsq +');
+				}else if(command === 'ping'){
+					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
+					self.handshakeStatePhase2.ping = true;
+					console.debug('ping +');
+				}else{
+					console.debug('unknown',command);
+					return;
+				}
+				command = PacketParser.commandName(self.buffer);
+			}
+		}
+		if(self.handshakePhase2Completed() && self.status === 'EXPECT_HCDP'){
+			console.debug('[+] Handshake phase 2 completed');
+			self.setStatus('RESPOND_HCDP');
+			return;
+		}
 		if(self.status === 'EXPECT_VERACK'){
 			console.debug('[ ] EXPECT_VERACK');
 			if(self.buffer.length < (MESSAGE_HEADER_SIZE * 3) + VERSION_PACKET_MINIMUM_SIZE){
@@ -99,7 +186,7 @@ function MasterNode({
 			 */
 			let command = PacketParser.commandName(self.buffer);
 			let payloadSize = PacketParser.payloadSize(self.buffer);
-			while(self.buffer.length && command.length && self.handshakeCompleted() === false){
+			while(self.buffer.length && command.length && self.handshakePhase1Completed() === false){
 				if(command === 'version'){
 					self.masterNodeVersion = self.extract(self.buffer,0,MESSAGE_HEADER_SIZE + payloadSize);
 					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE + payloadSize,self.buffer.length);
@@ -114,9 +201,16 @@ function MasterNode({
 				command = PacketParser.commandName(self.buffer);
 			}
 		}
-		if(self.handshakeCompleted()){
-			console.debug('[+] Handshake completed');
-			self.setStatus('READY');
+		if(self.handshakePhase1Completed() && self.status === 'EXPECT_VERACK'){
+			console.debug('[+] Handshake phase 1 completed');
+			self.clearBuffer();
+			self.setStatus('RESPOND_VERACK');
+			self.client.write(Network.packet.verack({chosen_network: self.network}));
+			self.setStatus('EXPECT_HCDP');
+			return;
+		}
+		if(self.status === 'READY'){
+			console.debug('READY state, and got packet:',self.buffer);
 		}
 	};
   self.connect = function () {
@@ -177,11 +271,38 @@ function MasterNode({
 }
 
 let config = require('./.config.json');
+console.debug({config});
 let masterNodeIP = config.masterNodeIP;
 let masterNodePort = config.masterNodePort;
 let network = config.network;
 let ourIP = config.ourIP;
 let startBlockHeight = config.startBlockHeight;
+
+function stateChanged(obj){
+	let self = obj.self;
+	switch(self.status){
+		default:
+			console.info('unhandled status:',self.status);
+			break;
+		case 'RESPOND_VERACK':
+			console.info('[ ] Sending verack...');
+			self.clearBuffer();
+			console.debug(self.buffer.length);
+			//self.client.write(Network.packet.verack({chosen_network: network}), function(){
+			//	console.info('[+] Done sending verack');
+			//	self.setStatus('EXPECT_HCDP');
+			//});
+			break;
+		case 'EXPECT_HCDP':
+			console.info('[ ] Got EXPECT_HCDP');
+			self.clearBuffer();
+			break;
+		case 'RESPOND_HCDP':
+			console.info('[ ] Got RESPOND_HCDP');
+			self.clearBuffer();
+			break;
+	}
+}
 
 let masterNodeConnection = new MasterNode({
   ip: masterNodeIP,
@@ -189,6 +310,7 @@ let masterNodeConnection = new MasterNode({
   network,
   ourIP,
   startBlockHeight,
+	onStatusChange: stateChanged,
 });
 
 masterNodeConnection.connect();
