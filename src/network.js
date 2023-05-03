@@ -38,6 +38,10 @@ for(let key in MSG_HEADER){
 	MESSAGE_HEADER_SIZE += MSG_HEADER[key];
 }
 const PAYLOAD_OFFSET = MSG_HEADER.MAGIC + MSG_HEADER.COMMAND;
+const SENDHEADERS_PAYLOAD_SIZE = 0;
+const SENDCMPCT_PAYLOAD_SIZE = 9;
+const SENDDSQ_PAYLOAD_SIZE = 1;
+const PING_PAYLOAD_SIZE = 8;
 
 const getVersionSizes = function(){
   let SIZES = {
@@ -170,6 +174,10 @@ Lib.constants = {
 	MESSAGE_HEADER_SIZE,
 	MSG_HEADER,
 	VERSION_PACKET_MINIMUM_SIZE,
+	SENDHEADERS_PAYLOAD_SIZE,
+	SENDCMPCT_PAYLOAD_SIZE,
+	SENDDSQ_PAYLOAD_SIZE,
+	PING_PAYLOAD_SIZE,
 };
 
 const str2uint8 = (text) => {
@@ -706,7 +714,7 @@ Lib.packet.parse.commandName = function(buffer){
 		throw new Error('Must be an instance of Uint8Array');
 	}
 	let cmd = '';
-	for(let i=4; i < 12 && buffer[i] !== 0x0;++i){
+	for(let i=4; i < 16 && buffer[i] !== 0x0;++i){
 		cmd += String.fromCharCode(buffer[i]);
 	}
 	return cmd;
