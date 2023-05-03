@@ -84,8 +84,11 @@ function MasterNode({
 
 	self.processDebounce = null;
 	self.processRecvBuffer = function(){
+		console.debug('[+] processRecvBuffer');
 		if(self.status === 'EXPECT_VERACK'){
+			console.debug('[ ] EXPECT_VERACK');
 			if(self.buffer.length < (MESSAGE_HEADER_SIZE * 3) + VERSION_PACKET_MINIMUM_SIZE){
+				console.debug('[-] not enough bytes');
 				return;
 			}
 			/**
@@ -112,16 +115,19 @@ function MasterNode({
 			}
 		}
 		if(self.handshakeCompleted()){
+			console.debug('[+] Handshake completed');
 			self.setStatus('READY');
 		}
 	};
   self.connect = function () {
     self.client = new net.Socket();
 		self.client.on("close", function () {
+			console.debug('close');
 			self.setStatus("CLOSED");
 			self.client.destroy();
 		});
 		self.client.on('error', function(err) {
+			console.debug('error');
 			self.client.destroy();
 		});
 		self.client.on("data", function (payload) {
@@ -136,6 +142,7 @@ function MasterNode({
 			},500);
 		});
 		self.client.on('ready', function(){
+			console.debug('ready');
       const versionPayload = {
         chosen_network: self.network,
         protocol_version: PROTOCOL_VERSION,
@@ -157,6 +164,7 @@ function MasterNode({
       };
       self.setStatus("EXPECT_VERACK");
       self.client.write(Network.packet.version(versionPayload));
+			console.debug('wrote');
 		});
     self.setStatus("NEEDS_AUTH");
     self.client.connect({
