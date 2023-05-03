@@ -26,6 +26,48 @@ const MAINNET_PORT = 9999;
 const TESTNET_PORT = 19999;
 const REGTEST_PORT = 19899;
 const DEVTEST_PORT = 19799;
+const MAX_PAYLOAD_SIZE = 0x02000000;
+const MSG_HEADER = {
+	MAGIC: 4,
+	COMMAND: 12,
+	PAYLOAD: 4,
+	CHECKSUM: 4,
+};
+let MESSAGE_HEADER_SIZE = 0;
+for(let key in MSG_HEADER){
+	MESSAGE_HEADER_SIZE += MSG_HEADER[key];
+}
+const PAYLOAD_OFFSET = MSG_HEADER.MAGIC + MSG_HEADER.COMMAND;
+
+const getVersionSizes = function(){
+  let SIZES = {
+    VERSION: 4,
+    SERVICES: 8,
+    TIMESTAMP: 8,
+    ADDR_RECV_SERVICES: 8,
+    ADDR_RECV_IP: 16,
+    ADDR_RECV_PORT: 2,
+    ADDR_TRANS_SERVICES: 8,
+    ADDR_TRANS_IP: 16,
+    ADDR_TRANS_PORT: 2,
+    NONCE: 8,
+    USER_AGENT_BYTES: 1, // can be skipped
+    USER_AGENT_STRING: 0,
+    START_HEIGHT: 4,
+    // The following 2 fields are OPTIONAL
+    RELAY: 0,
+    MNAUTH_CHALLENGE: 0,
+  };
+	return SIZES;
+};
+let VERSION_PACKET_MINIMUM_SIZE = 0;
+(function(){
+	VERSION_PACKET_MINIMUM_SIZE = 0;
+	let sizes = getVersionSizes();
+	for(let key in sizes){
+		VERSION_PACKET_MINIMUM_SIZE += sizes[key];
+	}
+})();
 
 const NETWORKS = {
   [MAINNET]: {
@@ -125,6 +167,9 @@ Lib.constants = {
   VALID_NETS,
   RELAY_SIZE,
   SERVICE_IDENTIFIERS,
+	MESSAGE_HEADER_SIZE,
+	MSG_HEADER,
+	VERSION_PACKET_MINIMUM_SIZE,
 };
 
 const str2uint8 = (text) => {
@@ -349,24 +394,7 @@ const version = function (
 ) {
   const cmd = "version";
 
-  let SIZES = {
-    VERSION: 4,
-    SERVICES: 8,
-    TIMESTAMP: 8,
-    ADDR_RECV_SERVICES: 8,
-    ADDR_RECV_IP: 16,
-    ADDR_RECV_PORT: 2,
-    ADDR_TRANS_SERVICES: 8,
-    ADDR_TRANS_IP: 16,
-    ADDR_TRANS_PORT: 2,
-    NONCE: 8,
-    USER_AGENT_BYTES: 1, // can be skipped
-    USER_AGENT_STRING: 0,
-    START_HEIGHT: 4,
-    // The following 2 fields are OPTIONAL
-    RELAY: 0,
-    MNAUTH_CHALLENGE: 0,
-  };
+  let SIZES = getVersionSizes();
 
   if (!VALID_NETS.includes(args.chosen_network)) {
     throw new Error(`"chosen_network" is invalid.`);
@@ -611,6 +639,38 @@ Lib.packet = {
 	parse: {},
 };
 
+Lib.packet.messagesWithNoPayload = [
+	'filterclear',
+	'getaddr',
+	'getsporks',
+	'mempool',
+	'sendaddr',
+	'sendaddrv2',
+	'sendheaders',
+	'sendheaders2',
+	'verack',
+];
+
+Lib.packet.parse.hasPayload = function(buffer){
+	if(!(buffer instanceof Uint8Array)){
+		throw new Error('Must be an instance of Uint8Array');
+	}
+	return !Lib.packet.messagesWithNoPayload.includes(Lib.packet.parse.commandName(buffer));
+};
+Lib.packet.parse.payloadSize = function(buffer){
+	if(!(buffer instanceof Uint8Array)){
+		throw new Error('Must be an instance of Uint8Array');
+	}
+	if(buffer.length < MESSAGE_HEADER_SIZE){
+		return null;
+	}
+	let uiBuffer = new Uint32Array([0]);
+	uiBuffer[0] = buffer[PAYLOAD_OFFSET];
+	uiBuffer[0] += buffer[PAYLOAD_OFFSET+1];
+	uiBuffer[0] += buffer[PAYLOAD_OFFSET+2];
+	uiBuffer[0] += buffer[PAYLOAD_OFFSET+3];
+	return uiBuffer[0];
+};
 Lib.packet.parse.magicBytes = function(buffer){
 	if(!(buffer instanceof Uint8Array)){
 		throw new Error('Must be an instance of Uint8Array');
