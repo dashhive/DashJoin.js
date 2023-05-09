@@ -19,6 +19,7 @@ const {
 				SENDCMPCT_PAYLOAD_SIZE,   /* (C) sendcmpct payload */
 				SENDDSQ_PAYLOAD_SIZE,     /* (D) senddsq payload */
 				PING_PAYLOAD_SIZE,        /* (P) Ping message payload */
+	PING_NONCE_SIZE,
 } = Network.constants;
 
 const { mapIPv4ToIpv6 } = Network.util;
@@ -122,15 +123,27 @@ function MasterNode({
 		return finalBuffer;
 	};
 	self.handshakePhase2Completed = function(){
-		return self.handshakeStatePhase2.sendheaders && self.handshakeStatePhase2.sendcmpct && self.handshakeStatePhase2.senddsq && self.handshakeStatePhase2.ping && self.handshakeStatePhase2.sendaddrv2;
+		return self.handshakeStatePhase2.sendheaders && 
+			self.handshakeStatePhase2.sendcmpct && 
+			self.handshakeStatePhase2.senddsq && 
+			self.handshakeStatePhase2.ping && 
+			self.handshakeStatePhase2.getheaders;
 	};
 	self.handshakePhase1Completed = function(){
-		return self.handshakeState.version && self.handshakeState.verack && /*self.handshakeState.sendaddr && */ self.handshakeState.sendaddrv2;
+		return self.handshakeState.version && 
+			self.handshakeState.verack && 
+			/*self.handshakeState.sendaddr && */ 
+			self.handshakeState.sendaddrv2;
 	};
 
 	self.processDebounce = null;
 	self.processRecvBuffer = function(){
 		console.debug('[+] processRecvBuffer');
+		{
+			let command = PacketParser.commandName(self.buffer);
+			let payloadSize = PacketParser.payloadSize(self.buffer);
+			console.debug({type: 'raw_parse',command,payloadSize});
+		}
 		if(self.status === 'EXPECT_GETHEADERS'){
 			console.debug('EXPECT_GETHEADERS');
 			let networkChoice = PacketParser.identifyMagicBytes(self.buffer);
@@ -155,40 +168,48 @@ function MasterNode({
 				
 			let command = PacketParser.commandName(self.buffer);
 			let payloadSize = PacketParser.payloadSize(self.buffer);
-			while(self.buffer.length && command.length && self.handshakePhase2Completed() === false){
-				console.debug({command});
-				if(command === 'sendheaders'){
-					// has no payload
-					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
-					self.handshakeStatePhase2.sendheaders = true;
-					console.debug('sendheaders +');
-				}else if(command === 'sendaddrv2'){
-					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
-					self.handshakeStatePhase2.sendaddrv2 = true;
-					console.debug('sendcmpct +');
-				}else if(command === 'sendcmpct'){
-					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE + payloadSize,self.buffer.length);
-					self.handshakeStatePhase2.sendcmpct = true;
-					console.debug('sendcmpct +');
-				}else if(command === 'senddsq'){
-					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
-					self.handshakeStatePhase2.senddsq= true;
-					console.debug('senddsq +');
-				}else if(command === 'ping'){
-					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
-					self.handshakeStatePhase2.ping = true;
-					console.debug('ping +');
-				}else{
-					console.debug('unknown',command);
-					return;
-				}
-				command = PacketParser.commandName(self.buffer);
+			if(command === 'getheaders'){
+				self.handshakeStatePhase2.getheaders = true;
+				let parsed = PacketParser.getheaders(self.buffer);
+				payloadSize += parsed.hashes.length * 32;
+				self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE + payloadSize,self.buffer.length);
+				self.setStatus('RESPOND_HCDP');
+				return;
 			}
-		}
-		if(self.handshakePhase2Completed() && self.status === 'EXPECT_HCDP'){
-			console.debug('[+] Handshake phase 2 completed');
-			self.setStatus('RESPOND_HCDP');
-			return;
+			while(self.buffer.length && self.handshakePhase2Completed() === false){
+				command = PacketParser.commandName(self.buffer);
+				payloadSize = PacketParser.payloadSize(self.buffer);
+				console.debug({command,payloadSize});
+				switch(command){
+					case 'getheaders':
+						self.handshakeStatePhase2.getheaders = true;
+						let parsed = PacketParser.getheaders(self.buffer);
+						payloadSize += parsed.hashes.length * 32;
+						console.debug('set status to RESPOND_HCDP');
+						self.setStatus('RESPOND_HCDP');
+						break;
+					case 'sendheaders':
+						self.handshakeStatePhase2.sendheaders = true;
+						break;
+					case 'sendcmpct':
+						self.handshakeStatePhase2.sendcmpct = true;
+						break;
+					case 'senddsq':
+						self.handshakeStatePhase2.senddsq = true;
+						break;
+					case 'ping':
+						self.handshakeStatePhase2.ping = true;
+						let nonce = PacketParser.extractPingNonce(self.buffer);
+						self.client.write(Network.packet.pong({chosen_network: network,nonce,}), function(){
+							console.debug('sent PONG');
+						});
+						break;
+					default:
+						console.info(`[-] Unknown command: '${command}'`);
+						break;
+				}
+				self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE + payloadSize,self.buffer.length);
+			}
 		}
 		if(self.status === 'EXPECT_VERACK'){
 			console.debug('[ ] EXPECT_VERACK');
@@ -204,9 +225,9 @@ function MasterNode({
 			 */
 			let command = PacketParser.commandName(self.buffer);
 			let payloadSize = PacketParser.payloadSize(self.buffer);
-			console.debug({command,payloadSize});
 			while(self.buffer.length && command.length && self.handshakePhase1Completed() === false){
-			console.debug({command,payloadSize});
+				payloadSize = PacketParser.payloadSize(self.buffer);
+				console.debug({command,payloadSize});
 				if(command === 'version'){
 					self.masterNodeVersion = self.extract(self.buffer,0,MESSAGE_HEADER_SIZE + payloadSize);
 					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE + payloadSize,self.buffer.length);
@@ -214,12 +235,11 @@ function MasterNode({
 				}else if(command === 'verack'){
 					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
 					self.handshakeState.verack = true;
-				//}else if(command === 'sendaddr'){
-				//	self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
-				//	self.handshakeState.sendaddr = true;
 				}else if(command === 'sendaddrv2'){
 					self.buffer = self.extract(self.buffer,MESSAGE_HEADER_SIZE,self.buffer.length);
 					self.handshakeState.sendaddrv2 = true;
+				}else{
+					console.debug({command,type: 'unhandled'});
 				}
 				command = PacketParser.commandName(self.buffer);
 			}
@@ -317,11 +337,11 @@ function stateChanged(obj){
 			break;
 		case 'EXPECT_HCDP':
 			console.info('[ ] Got EXPECT_HCDP');
-			self.clearBuffer();
+			//self.clearBuffer();
 			break;
 		case 'RESPOND_HCDP':
 			console.info('[ ] Got RESPOND_HCDP');
-			self.clearBuffer();
+			//self.clearBuffer();
 			break;
 	}
 }

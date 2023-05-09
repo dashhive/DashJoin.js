@@ -17,6 +17,7 @@ const PROTOCOL_VERSION = 70227;
 const RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
 const MNAUTH_PROTOCOL_VERSION_INTRODUCTION = 70214;
 const MNAUTH_CHALLENGE_SIZE = 32;
+const PING_NONCE_SIZE = 8;
 const MAINNET = "mainnet";
 const TESTNET = "testnet";
 const DEVNET = "devnet";
@@ -159,6 +160,7 @@ let SERVICE_IDENTIFIERS = {
   NODE_NETWORK_LIMITED: 0x400,
 };
 Lib.constants = {
+	PING_NONCE_SIZE,
   NETWORKS,
   PROTOCOL_VERSION,
   RELAY_PROTOCOL_VERSION_INTRODUCTION,
@@ -179,13 +181,36 @@ Lib.constants = {
 	SENDDSQ_PAYLOAD_SIZE,
 	PING_PAYLOAD_SIZE,
 };
+function allZeroes(buffer){
+	for(let ch of buffer){
+		if(ch !== 0){
+			return false;
+		}
+	}
+	return true;
+}
 
-const str2uint8 = (text) => {
+function str2uint8 (text) {
   return Uint8Array.from(
     Array.from(text).map((letter) => letter.charCodeAt(0))
   );
-};
-const setUint32 = (pkt, data, at) => {
+}
+function extractUint32 (data,at) {
+	let uiArray = new Uint32Array([0]);
+	for(let i=at; i < at + 4;i++){
+		uiArray[0] += data[at];
+	}
+	return uiArray[0];
+}
+function extractChunk(buffer,start,end){
+	let uiArray = new Uint8Array(end - start);
+	let k = 0;
+	for(let i=start; i < end;i++,k++){
+		uiArray[k] = buffer[i];
+	}
+	return uiArray;
+}
+function setUint32(pkt, data, at) {
   pkt.set(new Uint8Array(new Uint32Array([data]).buffer), at);
   return pkt;
 };
@@ -621,6 +646,14 @@ const ping_message = function () {
   );
   return packet;
 };
+function pong(args = {
+	chosen_network,
+	nonce,
+}) {
+	let nonceBuffer = new Uint8Array(PING_NONCE_SIZE);
+	nonceBuffer.set(args.nonce,0);
+  return wrap_packet(args.chosen_network, 'pong', nonceBuffer, PING_NONCE_SIZE);
+};
 function verack(args = {
 	chosen_network,
 }) {
@@ -645,6 +678,7 @@ Lib.packet = {
 	sendaddrv2,
 	sendaddr,
 	parse: {},
+	pong,
 };
 
 Lib.packet.messagesWithNoPayload = [
@@ -658,7 +692,15 @@ Lib.packet.messagesWithNoPayload = [
 	'sendheaders2',
 	'verack',
 ];
-
+Lib.packet.parse.extractPingNonce = function(buffer){
+	let offset = MESSAGE_HEADER_SIZE;
+	let k = 0;
+	let buf = new Uint8Array(PING_NONCE_SIZE);
+	for(let i=offset; i < MESSAGE_HEADER_SIZE + PING_NONCE_SIZE; i++,k++){
+		buf[k] = buffer[i];
+	}
+	return buf;
+}
 Lib.packet.parse.hasPayload = function(buffer){
 	if(!(buffer instanceof Uint8Array)){
 		throw new Error('Must be an instance of Uint8Array');
@@ -718,4 +760,41 @@ Lib.packet.parse.commandName = function(buffer){
 		cmd += String.fromCharCode(buffer[i]);
 	}
 	return cmd;
+};
+
+Lib.packet.parse.getheaders = function(buffer){
+	if(!(buffer instanceof Uint8Array)){
+		throw new Error('Must be an instance of Uint8Array');
+	}
+	let commandName = Lib.packet.parse.commandName(buffer);
+	if(commandName !== 'getheaders'){
+		throw new Error('Not a getheaders packet');
+	}
+	let parsed = {
+		version: new Uint8Array(4),
+		hashCount: 0,
+		hashes: [],
+	};
+	/**
+	 * getheaders message structure:
+	 * version 							- 4 bytes
+	 * hash count 					- varies
+	 * block header hashes 	- varies
+	 */
+	for(let i = 0; i < 4; i++){
+		parsed.version[i] = buffer[i];
+	}
+	parsed.hashCount = extractUint32(buffer,4);
+	const OFFSET = 8;
+	const HASH_SIZE = 32;
+	let hash = new Uint8Array(32);
+	for(let i=0; i < parsed.hashCount;i++){
+		hash = extractChunk(buffer,OFFSET + (i * HASH_SIZE),OFFSET + ( i * HASH_SIZE) + HASH_SIZE);
+		if(allZeroes(hash)){
+			continue;
+		}
+		parsed.hashes.push(hash);
+	}
+	parsed.hashCount = parsed.hashes.length;
+	return parsed;
 };
