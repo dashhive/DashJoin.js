@@ -29,14 +29,14 @@ const REGTEST_PORT = 19899;
 const DEVTEST_PORT = 19799;
 const MAX_PAYLOAD_SIZE = 0x02000000;
 const MSG_HEADER = {
-	MAGIC: 4,
-	COMMAND: 12,
-	PAYLOAD: 4,
-	CHECKSUM: 4,
+  MAGIC: 4,
+  COMMAND: 12,
+  PAYLOAD: 4,
+  CHECKSUM: 4,
 };
 let MESSAGE_HEADER_SIZE = 0;
-for(let key in MSG_HEADER){
-	MESSAGE_HEADER_SIZE += MSG_HEADER[key];
+for (let key in MSG_HEADER) {
+  MESSAGE_HEADER_SIZE += MSG_HEADER[key];
 }
 const PAYLOAD_OFFSET = MSG_HEADER.MAGIC + MSG_HEADER.COMMAND;
 const SENDHEADERS_PAYLOAD_SIZE = 0;
@@ -44,7 +44,7 @@ const SENDCMPCT_PAYLOAD_SIZE = 9;
 const SENDDSQ_PAYLOAD_SIZE = 1;
 const PING_PAYLOAD_SIZE = 8;
 
-const getVersionSizes = function(){
+const getVersionSizes = function () {
   let SIZES = {
     VERSION: 4,
     SERVICES: 8,
@@ -63,15 +63,15 @@ const getVersionSizes = function(){
     RELAY: 0,
     MNAUTH_CHALLENGE: 0,
   };
-	return SIZES;
+  return SIZES;
 };
 let VERSION_PACKET_MINIMUM_SIZE = 0;
-(function(){
-	VERSION_PACKET_MINIMUM_SIZE = 0;
-	let sizes = getVersionSizes();
-	for(let key in sizes){
-		VERSION_PACKET_MINIMUM_SIZE += sizes[key];
-	}
+(function () {
+  VERSION_PACKET_MINIMUM_SIZE = 0;
+  let sizes = getVersionSizes();
+  for (let key in sizes) {
+    VERSION_PACKET_MINIMUM_SIZE += sizes[key];
+  }
 })();
 
 const NETWORKS = {
@@ -160,7 +160,7 @@ let SERVICE_IDENTIFIERS = {
   NODE_NETWORK_LIMITED: 0x400,
 };
 Lib.constants = {
-	PING_NONCE_SIZE,
+  PING_NONCE_SIZE,
   NETWORKS,
   PROTOCOL_VERSION,
   RELAY_PROTOCOL_VERSION_INTRODUCTION,
@@ -173,47 +173,47 @@ Lib.constants = {
   VALID_NETS,
   RELAY_SIZE,
   SERVICE_IDENTIFIERS,
-	MESSAGE_HEADER_SIZE,
-	MSG_HEADER,
-	VERSION_PACKET_MINIMUM_SIZE,
-	SENDHEADERS_PAYLOAD_SIZE,
-	SENDCMPCT_PAYLOAD_SIZE,
-	SENDDSQ_PAYLOAD_SIZE,
-	PING_PAYLOAD_SIZE,
+  MESSAGE_HEADER_SIZE,
+  MSG_HEADER,
+  VERSION_PACKET_MINIMUM_SIZE,
+  SENDHEADERS_PAYLOAD_SIZE,
+  SENDCMPCT_PAYLOAD_SIZE,
+  SENDDSQ_PAYLOAD_SIZE,
+  PING_PAYLOAD_SIZE,
 };
-function allZeroes(buffer){
-	for(let ch of buffer){
-		if(ch !== 0){
-			return false;
-		}
-	}
-	return true;
+function allZeroes(buffer) {
+  for (let ch of buffer) {
+    if (ch !== 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
-function str2uint8 (text) {
+function str2uint8(text) {
   return Uint8Array.from(
     Array.from(text).map((letter) => letter.charCodeAt(0))
   );
 }
-function extractUint32 (data,at) {
-	let uiArray = new Uint32Array([0]);
-	for(let i=at; i < at + 4;i++){
-		uiArray[0] += data[at];
-	}
-	return uiArray[0];
+function extractUint32(data, at) {
+  let uiArray = new Uint32Array([0]);
+  for (let i = at; i < at + 4; i++) {
+    uiArray[0] += data[at];
+  }
+  return uiArray[0];
 }
-function extractChunk(buffer,start,end){
-	let uiArray = new Uint8Array(end - start);
-	let k = 0;
-	for(let i=start; i < end;i++,k++){
-		uiArray[k] = buffer[i];
-	}
-	return uiArray;
+function extractChunk(buffer, start, end) {
+  let uiArray = new Uint8Array(end - start);
+  let k = 0;
+  for (let i = start; i < end; i++, k++) {
+    uiArray[k] = buffer[i];
+  }
+  return uiArray;
 }
 function setUint32(pkt, data, at) {
   pkt.set(new Uint8Array(new Uint32Array([data]).buffer), at);
   return pkt;
-};
+}
 function dot2num(dot) {
   // the same as ip2long in php
   var d = dot.split(".");
@@ -295,7 +295,7 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
   let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
   let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
   if (payload_size === 0 || payload === null) {
-    packet.set([0x5d,0xf6,0xe0,0xe2], CHECKSUM_OFFSET);
+    packet.set([0x5d, 0xf6, 0xe0, 0xe2], CHECKSUM_OFFSET);
     return packet;
   }
   packet = setUint32(packet, payload_size, PAYLOAD_SIZE_OFFSET);
@@ -646,155 +646,243 @@ const ping_message = function () {
   );
   return packet;
 };
-function pong(args = {
-	chosen_network,
-	nonce,
-}) {
-	let nonceBuffer = new Uint8Array(PING_NONCE_SIZE);
-	nonceBuffer.set(args.nonce,0);
-  return wrap_packet(args.chosen_network, 'pong', nonceBuffer, PING_NONCE_SIZE);
-};
-function verack(args = {
-	chosen_network,
-}) {
-  return wrap_packet(args.chosen_network, 'verack', null, 0);
-};
-function sendaddrv2(args = {
-	chosen_network,
-}) {
-  return wrap_packet(args.chosen_network, 'sendaddrv2', null, 0);
-};
-function sendaddr(args = {
-	chosen_network,
-}) {
-  return wrap_packet(args.chosen_network, 'sendaddr', null, 0);
-};
+function pong(
+  args = {
+    chosen_network,
+    nonce,
+  }
+) {
+  let nonceBuffer = new Uint8Array(PING_NONCE_SIZE);
+  nonceBuffer.set(args.nonce, 0);
+  return wrap_packet(args.chosen_network, "pong", nonceBuffer, PING_NONCE_SIZE);
+}
+function verack(
+  args = {
+    chosen_network,
+  }
+) {
+  return wrap_packet(args.chosen_network, "verack", null, 0);
+}
+function sendaddrv2(
+  args = {
+    chosen_network,
+  }
+) {
+  return wrap_packet(args.chosen_network, "sendaddrv2", null, 0);
+}
+function sendaddr(
+  args = {
+    chosen_network,
+  }
+) {
+  return wrap_packet(args.chosen_network, "sendaddr", null, 0);
+}
 
+const CJDenoms = require('./coin-join-constants.js').STANDARD_DENOMINATIONS;
+let CJLib = require('./coin-join-denominations.js');
+
+function isStandardDenomination(d){
+	return CJDenoms.includes(d);
+}
+
+function dsa(args = {
+	chosen_network,
+	denomination,
+	collateral,
+}) {
+	const DENOM_SIZE = 4;
+	let COLLATERAL_SIZE_MINIMUM = 216;
+	let packet = new Uint8Array(DENOM_SIZE + args.collateral.length);
+
+	if(!isStandardDenomination(args.denomination)){
+		throw new Error(`Invalid denomination value`);
+	}
+	let encodedDenom = CJLib.AmountToDenomination(args.denomination);
+	if(encodedDenom === 0){
+		throw new Error(`Couldn't serialize denomination`);
+	}
+	packet.set([encodedDenom,0,0,0],0);
+	packet.set(args.collateral,DENOM_SIZE);
+
+  return wrap_packet(args.chosen_network, "dsa", packet, packet.length );
+}
+function dsc() {
+
+}
+function dsf() {
+
+}
+function dsi() {
+
+}
+function dsq() {
+
+}
+function dssu() {
+
+}
+function dstx() {
+
+}
 Lib.packet = {
-  version,
-  //ping_message,
+  coinjoin: {
+    dsa,
+    dsc,
+    dsf,
+    dsi,
+    dsq,
+    dssu,
+    dstx,
+  },
   getaddr,
-	verack,
-	sendaddrv2,
-	sendaddr,
-	parse: {},
-	pong,
+  sendaddr,
+  sendaddrv2,
+  parse: {},
+  pong,
+  verack,
+  version,
 };
 
 Lib.packet.messagesWithNoPayload = [
-	'filterclear',
-	'getaddr',
-	'getsporks',
-	'mempool',
-	'sendaddr',
-	'sendaddrv2',
-	'sendheaders',
-	'sendheaders2',
-	'verack',
+  "filterclear",
+  "getaddr",
+  "getsporks",
+  "mempool",
+  "sendaddr",
+  "sendaddrv2",
+  "sendheaders",
+  "sendheaders2",
+  "verack",
 ];
-Lib.packet.parse.extractPingNonce = function(buffer){
-	let offset = MESSAGE_HEADER_SIZE;
-	let k = 0;
-	let buf = new Uint8Array(PING_NONCE_SIZE);
-	for(let i=offset; i < MESSAGE_HEADER_SIZE + PING_NONCE_SIZE; i++,k++){
-		buf[k] = buffer[i];
-	}
-	return buf;
-}
-Lib.packet.parse.hasPayload = function(buffer){
-	if(!(buffer instanceof Uint8Array)){
-		throw new Error('Must be an instance of Uint8Array');
-	}
-	return !Lib.packet.messagesWithNoPayload.includes(Lib.packet.parse.commandName(buffer));
-};
-Lib.packet.parse.payloadSize = function(buffer){
-	if(!(buffer instanceof Uint8Array)){
-		throw new Error('Must be an instance of Uint8Array');
-	}
-	if(buffer.length < MESSAGE_HEADER_SIZE){
-		return null;
-	}
-	let uiBuffer = new Uint32Array([0]);
-	uiBuffer[0] = buffer[PAYLOAD_OFFSET];
-	uiBuffer[0] += buffer[PAYLOAD_OFFSET+1];
-	uiBuffer[0] += buffer[PAYLOAD_OFFSET+2];
-	uiBuffer[0] += buffer[PAYLOAD_OFFSET+3];
-	return uiBuffer[0];
-};
-Lib.packet.parse.magicBytes = function(buffer){
-	if(!(buffer instanceof Uint8Array)){
-		throw new Error('Must be an instance of Uint8Array');
-	}
-	let copy = new Uint8Array(4);
-	for(let i=0; i < 4;i++){
-		copy[i] = buffer[i];
-	}
-	return copy;
+Lib.packet.parse.extractItems = function (buffer, items) {
+  let extracted = [];
+  for (let item of items) {
+    switch (item) {
+      case "command":
+        extracted.push(Lib.packet.parse.commandName(buffer));
+        break;
+      case "payloadSize":
+        extracted.push(Lib.packet.parse.payloadSize(buffer));
+        break;
+      case "magic":
+        extracted.push(Lib.packet.parse.magicBytes(buffer));
+        break;
+      default:
+        break;
+    }
+  }
+  return extracted;
 };
 
-Lib.packet.parse.identifyMagicBytes = function(buffer){
-	let bytes = Lib.packet.parse.magicBytes(buffer);
-
-	for(let key in NETWORKS){
-		let bytesMatched = 0;
-		for(let i=0; i < 4;i++){
-			if(NETWORKS[key].magic[i] !== buffer[i]){
-				bytesMatched = 0;
-				break;
-			}
-			++bytesMatched;
-		}
-		if(bytesMatched === 4){
-			return key;
-		}
-	}
-	return null;
+Lib.packet.parse.extractPingNonce = function (buffer) {
+  let offset = MESSAGE_HEADER_SIZE;
+  let k = 0;
+  let buf = new Uint8Array(PING_NONCE_SIZE);
+  for (let i = offset; i < MESSAGE_HEADER_SIZE + PING_NONCE_SIZE; i++, k++) {
+    buf[k] = buffer[i];
+  }
+  return buf;
+};
+Lib.packet.parse.hasPayload = function (buffer) {
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("Must be an instance of Uint8Array");
+  }
+  return !Lib.packet.messagesWithNoPayload.includes(
+    Lib.packet.parse.commandName(buffer)
+  );
+};
+Lib.packet.parse.payloadSize = function (buffer) {
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("Must be an instance of Uint8Array");
+  }
+  if (buffer.length < MESSAGE_HEADER_SIZE) {
+    return null;
+  }
+  let uiBuffer = new Uint32Array([0]);
+  uiBuffer[0] = buffer[PAYLOAD_OFFSET];
+  uiBuffer[0] += buffer[PAYLOAD_OFFSET + 1];
+  uiBuffer[0] += buffer[PAYLOAD_OFFSET + 2];
+  uiBuffer[0] += buffer[PAYLOAD_OFFSET + 3];
+  return uiBuffer[0];
+};
+Lib.packet.parse.magicBytes = function (buffer) {
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("Must be an instance of Uint8Array");
+  }
+  let copy = new Uint8Array(4);
+  for (let i = 0; i < 4; i++) {
+    copy[i] = buffer[i];
+  }
+  return copy;
 };
 
-Lib.packet.parse.commandName = function(buffer){
-	if(!(buffer instanceof Uint8Array)){
-		throw new Error('Must be an instance of Uint8Array');
-	}
-	let cmd = '';
-	for(let i=4; i < 16 && buffer[i] !== 0x0;++i){
-		cmd += String.fromCharCode(buffer[i]);
-	}
-	return cmd;
+Lib.packet.parse.identifyMagicBytes = function (buffer) {
+  let bytes = Lib.packet.parse.magicBytes(buffer);
+
+  for (let key in NETWORKS) {
+    let bytesMatched = 0;
+    for (let i = 0; i < 4; i++) {
+      if (NETWORKS[key].magic[i] !== buffer[i]) {
+        bytesMatched = 0;
+        break;
+      }
+      ++bytesMatched;
+    }
+    if (bytesMatched === 4) {
+      return key;
+    }
+  }
+  return null;
 };
 
-Lib.packet.parse.getheaders = function(buffer){
-	if(!(buffer instanceof Uint8Array)){
-		throw new Error('Must be an instance of Uint8Array');
-	}
-	let commandName = Lib.packet.parse.commandName(buffer);
-	if(commandName !== 'getheaders'){
-		throw new Error('Not a getheaders packet');
-	}
-	let parsed = {
-		version: new Uint8Array(4),
-		hashCount: 0,
-		hashes: [],
-	};
-	/**
-	 * getheaders message structure:
-	 * version 							- 4 bytes
-	 * hash count 					- varies
-	 * block header hashes 	- varies
-	 */
-	for(let i = 0; i < 4; i++){
-		parsed.version[i] = buffer[i];
-	}
-	parsed.hashCount = extractUint32(buffer,4);
-	const OFFSET = 8;
-	const HASH_SIZE = 32;
-	let hash = new Uint8Array(32);
-	for(let i=0; i < parsed.hashCount;i++){
-		hash = extractChunk(buffer,OFFSET + (i * HASH_SIZE),OFFSET + ( i * HASH_SIZE) + HASH_SIZE);
-		if(allZeroes(hash)){
-			continue;
-		}
-		parsed.hashes.push(hash);
-	}
-	parsed.hashCount = parsed.hashes.length;
-	return parsed;
+Lib.packet.parse.commandName = function (buffer) {
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("Must be an instance of Uint8Array");
+  }
+  let cmd = "";
+  for (let i = 4; i < 16 && buffer[i] !== 0x0; ++i) {
+    cmd += String.fromCharCode(buffer[i]);
+  }
+  return cmd;
+};
+
+Lib.packet.parse.getheaders = function (buffer) {
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("Must be an instance of Uint8Array");
+  }
+  let commandName = Lib.packet.parse.commandName(buffer);
+  if (commandName !== "getheaders") {
+    throw new Error("Not a getheaders packet");
+  }
+  let parsed = {
+    version: new Uint8Array(4),
+    hashCount: 0,
+    hashes: [],
+  };
+  /**
+   * getheaders message structure:
+   * version 							- 4 bytes
+   * hash count 					- varies
+   * block header hashes 	- varies
+   */
+  for (let i = 0; i < 4; i++) {
+    parsed.version[i] = buffer[i];
+  }
+  parsed.hashCount = extractUint32(buffer, 4);
+  const OFFSET = 8;
+  const HASH_SIZE = 32;
+  let hash = new Uint8Array(32);
+  for (let i = 0; i < parsed.hashCount; i++) {
+    hash = extractChunk(
+      buffer,
+      OFFSET + i * HASH_SIZE,
+      OFFSET + i * HASH_SIZE + HASH_SIZE
+    );
+    if (allZeroes(hash)) {
+      continue;
+    }
+    parsed.hashes.push(hash);
+  }
+  parsed.hashCount = parsed.hashes.length;
+  return parsed;
 };

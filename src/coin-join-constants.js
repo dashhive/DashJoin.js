@@ -10,7 +10,7 @@ Lib.COINJOIN_AUTO_TIMEOUT_MAX = 15;
 Lib.COINJOIN_QUEUE_TIMEOUT = 30;
 Lib.COINJOIN_SIGNING_TIMEOUT = 15;
 Lib.COINJOIN_ENTRY_MAX_SIZE = 9;
-LIb.COINJOIN_DENOM_OUTPUTS_THRESHOLD = 500;
+Lib.COINJOIN_DENOM_OUTPUTS_THRESHOLD = 500;
 // Warn user if mixing in gui or try to create backup if mixing in daemon mode
 // when we have only this many keys left
 Lib.COINJOIN_KEYS_THRESHOLD_WARNING = 100;
@@ -80,3 +80,14 @@ Lib.MSG_ENTRIES_ADDED = 21;
 Lib.ERR_SIZE_MISMATCH = 22;
 Lib.MSG_POOL_MIN = Lib.ERR_ALREADY_HAVE;
 Lib.MSG_POOL_MAX = Lib.ERR_SIZE_MISMATCH;
+
+Lib.STANDARD_DENOMINATIONS = [
+  10 * COIN + 10000,
+  1 * COIN + 1000,
+  COIN / 10 + 100,
+  COIN / 100 + 10,
+  COIN / 1000 + 1,
+];
+Lib.COIN = COIN;
+
+module.exports = Lib;
