@@ -3,8 +3,7 @@ const Network = require("./network.js");
 const crypto = require("crypto");
 const { createHash } = crypto;
 const net = require("net");
-const { EventEmitter } = require("events");
-const COIN = require('./coin-join-constants.js').COIN;
+const COIN = require("./coin-join-constants.js").COIN;
 
 let Lib = {};
 module.exports = Lib;
@@ -45,6 +44,9 @@ let STATUSES = [
   "READY",
 ];
 
+/**
+ * "constructor"
+ */
 function MasterNode({
   ip,
   port,
@@ -52,42 +54,16 @@ function MasterNode({
   ourIP,
   startBlockHeight,
   onStatusChange = null,
-	debugFunction = null,
+  debugFunction = null,
 }) {
   let self = this;
-  self.ip = ip;
-  self.port = port;
-  self.network = network;
-  self.startBlockHeight = startBlockHeight;
-  self.client = null;
-  self.mnauth_challenge = null;
-  self.status = null;
-  self.statusChangedAt = 0;
-  self.ourIP = ourIP;
-  self.events = new EventEmitter();
-  self.onStatusChange = onStatusChange;
-	self.debugFunction = debugFunction;
-	self.debug = function(...args){
-		if(self.debugFunction){
-			self.debugFunction(...args);
-		}
-	};
-  self.setStatus = function (s) {
-    self.status = s;
-    self.statusChangedAt = Date.now();
-    if (self.onStatusChange) {
-      self.onStatusChange({
-        self,
-      });
-    }
-  };
-  self.createMNAuthChallenge = function () {
-    return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
-  };
-  self.recv = [];
-  self.frames = [];
-  self.needMoreData = false;
+  /**
+   * Our member variables
+   */
   self.buffer = new Uint8Array();
+  self.client = null;
+  self.debugFunction = debugFunction;
+  self.frames = [];
   self.handshakeState = {
     version: false,
     verack: false,
@@ -99,6 +75,39 @@ function MasterNode({
     sendcmpct: false,
     senddsq: false,
     ping: false,
+  };
+  self.ip = ip;
+  self.mnauth_challenge = null;
+  self.network = network;
+  self.onStatusChange = onStatusChange;
+  self.ourIP = ourIP;
+  self.port = port;
+  self.processDebounce = null;
+  self.processRecvBuffer = null;
+  self.recv = [];
+  self.startBlockHeight = startBlockHeight;
+  self.status = null;
+  self.statusChangedAt = 0;
+
+  /**
+   * Member functions
+   */
+  self.debug = function (...args) {
+    if (self.debugFunction) {
+      self.debugFunction(...args);
+    }
+  };
+  self.setStatus = function (s) {
+    self.status = s;
+    self.statusChangedAt = Date.now();
+    if (self.onStatusChange) {
+      self.onStatusChange({
+        self,
+      });
+    }
+  };
+  self.createMNAuthChallenge = function () {
+    return new Uint8Array(crypto.randomBytes(MNAUTH_CHALLENGE_SIZE));
   };
   self.extract = function (buffer, start, end) {
     if (start > end) {
@@ -145,34 +154,33 @@ function MasterNode({
     );
   };
 
-  self.processDebounce = null;
-  self.processRecvBuffer = null;
   self.processCoinJoinRecvBuffer = function () {
     self.debugFunction("[+] processCoinJoinRecvBuffer");
-      let i = PacketParser.extractItems(self.buffer, [
-        "command",
-        "payloadSize",
-      ]);
-		let command = i[0];
-		let payloadSize = i[1];
-		self.debugFunction({command,payloadSize});
-		if(command === 'ping'){
-				let nonce = PacketParser.extractPingNonce(self.buffer);
-				self.client.write(
-					Network.packet.pong({ chosen_network: network, nonce })
-				);
+    let i = PacketParser.extractItems(self.buffer, ["command", "payloadSize"]);
+    let command = i[0];
+    let payloadSize = i[1];
+    self.debugFunction({ command, payloadSize });
+		if(command === 'dssu'){
+      let dssu = PacketParser.dssu(self.buffer);
+			self.debugFunction('dssu:',dssu);
 		}
-		self.buffer = self.extract(
-			self.buffer,
-			MESSAGE_HEADER_SIZE + payloadSize,
-			self.buffer.length
-		);
+    if (command === "ping") {
+      let nonce = PacketParser.extractPingNonce(self.buffer);
+      self.client.write(
+        Network.packet.pong({ chosen_network: network, nonce })
+      );
+    }
+    self.buffer = self.extract(
+      self.buffer,
+      MESSAGE_HEADER_SIZE + payloadSize,
+      self.buffer.length
+    );
   };
   self.switchHandlerTo = function (which) {
-		if('function' === typeof which){
-			self.processRecvBuffer = which;
-			return;
-		}
+    if ("function" === typeof which) {
+      self.processRecvBuffer = which;
+      return;
+    }
     switch (which) {
       case "coinjoin":
         self.processRecvBuffer = self.processCoinJoinRecvBuffer;
@@ -183,12 +191,12 @@ function MasterNode({
         break;
     }
   };
-	self.getDefaultRecvFunctions = function(){
-		return {
-			'coinjoin': self.processCoinJoinRecvBuffer,
-			'handshake': self.processHandshakeBuffer,
-		};
-	};
+  self.getDefaultRecvFunctions = function () {
+    return {
+      coinjoin: self.processCoinJoinRecvBuffer,
+      handshake: self.processHandshakeBuffer,
+    };
+  };
   self.processHandshakeBuffer = function () {
     self.debug("[+] processHandshakeBuffer");
     if (self.status === "EXPECT_HCDP") {
@@ -198,9 +206,11 @@ function MasterNode({
         (SENDHEADERS_PAYLOAD_SIZE /* (H) sendheaders payload */ +
           SENDCMPCT_PAYLOAD_SIZE /* (C) sendcmpct payload */ +
           SENDDSQ_PAYLOAD_SIZE /* (D) senddsq payload */ +
-          PING_PAYLOAD_SIZE) /* (P) Ping message payload */;
+          PING_PAYLOAD_SIZE); /* (P) Ping message payload */
       if (self.buffer.length < HCDP_SIZE) {
-        self.debug(`[-] Need more data:${self.buffer.length} need: ${HCDP_SIZE}`);
+        self.debug(
+          `[-] Need more data:${self.buffer.length} need: ${HCDP_SIZE}`
+        );
         return;
       }
 
@@ -211,6 +221,10 @@ function MasterNode({
       let command = i[0];
       let payloadSize = i[1];
 
+      /**
+       * Step 5: Parse `getheaders` messages. We are now ready to
+       * send coin join traffic
+       */
       if (command === "getheaders") {
         self.handshakeStatePhase2.getheaders = true;
         let parsed = PacketParser.getheaders(self.buffer);
@@ -223,6 +237,11 @@ function MasterNode({
         self.setStatus("READY");
         return;
       }
+      /**
+       * Step 4: Receive `getheaders`, `sendheaders`, `sendcmpct`, `senddsq`, and
+       * `ping`. Respond with `pong` to `ping`. Parse `getheaders` in order to
+       * properly parse the next couple of messages.
+       */
       while (self.buffer.length && self.handshakePhase2Completed() === false) {
         command = PacketParser.commandName(self.buffer);
         payloadSize = PacketParser.payloadSize(self.buffer);
@@ -232,7 +251,7 @@ function MasterNode({
             let parsed = PacketParser.getheaders(self.buffer);
             payloadSize += parsed.hashes.length * 32;
             self.setStatus("READY");
-      			self.switchHandlerTo("coinjoin");
+            self.switchHandlerTo("coinjoin");
             break;
           case "sendheaders":
             self.handshakeStatePhase2.sendheaders = true;
@@ -267,6 +286,9 @@ function MasterNode({
       ) {
         return;
       }
+      /**
+       * Step 3: parse `version`, `verack`, and `sendaddrv2` from MN
+       */
       /**
        * This means we have the following:
        * 1) version packet (24 byte header, plus variable payload size)
@@ -324,9 +346,34 @@ function MasterNode({
       return;
     }
   };
+
+  /**
+   * Creates a socket descriptor and saves it to self.client.
+   * The user may use self.client to write packets to the wire.
+   * No message header is prefixed, so treat self.client.write as
+   * a direct socket call.
+   */
   self.connect = function () {
+    /**
+     * There's different phases in the MasterNode handshake.
+     * This is one of them.
+     * switchHandlerTo("handshake") will parse and verify
+     * that all traffic needed to authenticate to a master node
+     * is handled correctly.
+     *
+     * The underlying code will automatically change the handler to
+     * "coinjoin" once all steps in the handshake process have been
+     * parsed and completed.
+     */
     self.switchHandlerTo("handshake");
+
+    /**
+     * Here we create the socket
+     */
     self.client = new net.Socket();
+    /**
+     * We have to handle several events on this socket.
+     */
     self.client.on("close", function () {
       self.setStatus("CLOSED");
       self.client.destroy();
@@ -334,8 +381,26 @@ function MasterNode({
     self.client.on("error", function (err) {
       self.client.destroy();
     });
+
+    /**
+     * The "data" event is triggered when the socket receives
+     * bytes off the wire. This is equivalent to a recv() system call
+     * (see man 2 recv), except there is no user intervention needed
+     * to receive data. Instead, it just comes off the wire whenever
+     * the kernel gets data. There doesn't seem to be a way to manually
+     * fetch data, unless you use pause/resume mechanics. See the node
+     * docs for more info on that.
+     */
     self.client.on("data", function (payload) {
+      /**
+       * This is an atomic operation
+       */
       self.buffer = self.appendBuffer(self.buffer, payload);
+
+      /**
+       * Debouncing the call so that we can wait until
+       * we have a larger amount of data before processing it.
+       */
       if (self.processDebounce) {
         clearInterval(self.processDebounce);
       }
@@ -345,7 +410,20 @@ function MasterNode({
         self.processDebounce = null;
       }, 500);
     });
+
+    /**
+     * As soon as we're connected, the "ready" event will
+     * be emitted. This is will be our chance to send the
+     * first packet. Masternodes expect a `version` message
+     */
     self.client.on("ready", function () {
+      /**
+       * Step 2: once connected, send a `version` message
+       */
+
+      /**
+       * see: https://dashcore.readme.io/docs/core-ref-p2p-network-control-messages#version
+       */
       const versionPayload = {
         chosen_network: self.network,
         protocol_version: PROTOCOL_VERSION,
@@ -368,6 +446,9 @@ function MasterNode({
       self.setStatus("EXPECT_VERACK");
       self.client.write(Network.packet.version(versionPayload));
     });
+    /**
+     * Step 1: connect to the remote host
+     */
     self.setStatus("NEEDS_AUTH");
     self.client.connect({
       port: self.port,

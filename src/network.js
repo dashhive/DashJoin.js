@@ -34,6 +34,76 @@ const MSG_HEADER = {
   PAYLOAD: 4,
   CHECKSUM: 4,
 };
+
+const POOL_STATE = {
+	IDLE : 0,
+	QUEUE : 1,
+	ACCEPTING_ENTRIES: 2,
+	SIGNING: 3,
+	ERROR: 4,
+	SUCCESS: 5,
+	toString: function(i){
+		for(const key in POOL_STATE){
+			if(key === 'toString'){
+				continue;
+			}
+			if(POOL_STATE[key] === i){
+				return String(key);
+			}
+		}
+	},
+};
+const POOL_STATUS_UPDATE = {
+	REJECTED: 0,
+	ACCEPTED: 1,
+	toString: function(i){
+		switch(i){
+			case POOL_STATUS_UPDATE.REJECTED:
+				return 'REJECTED';
+			case POOL_STATUS_UPDATE.ACCEPTED:
+				return 'ACCEPTED';
+			default:
+				return null;
+		}
+	},
+};
+
+const MESSAGE_ID = {
+ERR_ALREADY_HAVE:0x00,
+ERR_DENOM: 0x01,
+ERR_ENTRIES_FULL: 0x02,
+ERR_EXISTING_TX: 0x03,
+ERR_FEES: 0x04,
+ERR_INVALID_COLLATERAL: 0x05,
+ERR_INVALID_INPUT: 0x06,
+ERR_INVALID_SCRIPT: 0x07,
+ERR_INVALID_TX: 0x08,
+ERR_MAXIMUM: 0x09,
+ERR_MN_LIST: 0x0A,// <--
+ERR_MODE: 0x0B,
+ERR_NON_STANDARD_PUBKEY: 0x0C,//	 (Not used)
+ERR_NOT_A_MN: 0x0D, //(Not used)
+ERR_QUEUE_FULL: 0x0E,
+ERR_RECENT: 0x0F,	
+ERR_SESSION: 0x10,	
+ERR_MISSING_TX: 0x11,
+ERR_VERSION: 0x12,
+MSG_NOERR: 0x13,
+MSG_SUCCESS: 0x14,
+MSG_ENTRIES_ADDED: 0x15,
+ERR_SIZE_MISMATCH: 0x16,
+	toString: function(i){
+		for(const key in MESSAGE_ID){
+			if(key === 'toString'){
+				continue;
+			}
+			if(MESSAGE_ID[key] === i){
+				return String(key);
+			}
+		}
+	},
+};
+
 let MESSAGE_HEADER_SIZE = 0;
 for (let key in MSG_HEADER) {
   MESSAGE_HEADER_SIZE += MSG_HEADER[key];
@@ -160,13 +230,15 @@ let SERVICE_IDENTIFIERS = {
   NODE_NETWORK_LIMITED: 0x400,
 };
 Lib.constants = {
-  PING_NONCE_SIZE,
-  NETWORKS,
-  PROTOCOL_VERSION,
-  RELAY_PROTOCOL_VERSION_INTRODUCTION,
+  MAINNET,
+	MESSAGE_ID,
   MNAUTH_PROTOCOL_VERSION_INTRODUCTION,
   MNAUTH_CHALLENGE_SIZE,
-  MAINNET,
+  NETWORKS,
+  PING_NONCE_SIZE,
+	POOL_STATE,
+  PROTOCOL_VERSION,
+  RELAY_PROTOCOL_VERSION_INTRODUCTION,
   TESTNET,
   DEVNET,
   REGTEST,
@@ -190,6 +262,15 @@ function allZeroes(buffer) {
   return true;
 }
 
+function hexToBytes (hex){
+  let bytes = new Uint8Array(hex.length / 2);
+	let i = 0;
+  for (let c = 0; c < hex.length; c += 2) {
+    bytes[i] = parseInt(hex.substr(c, 2), 16);
+		++i;
+  }
+  return bytes;
+};
 function str2uint8(text) {
   return Uint8Array.from(
     Array.from(text).map((letter) => letter.charCodeAt(0))
@@ -251,14 +332,15 @@ const mapIPv4ToIpv6 = function (ip) {
   return "::ffff:" + ip;
 };
 Lib.util = {
-  str2uint8,
-  setUint32,
   dot2num,
-  num2array,
   htonl,
-  is_ipv6_mapped_ipv4,
   htons,
+  is_ipv6_mapped_ipv4,
   mapIPv4ToIpv6,
+	hexToBytes,
+  num2array,
+  setUint32,
+  str2uint8,
 };
 
 /**
@@ -884,5 +966,50 @@ Lib.packet.parse.getheaders = function (buffer) {
     parsed.hashes.push(hash);
   }
   parsed.hashCount = parsed.hashes.length;
+  return parsed;
+};
+
+Lib.packet.parse.dssu = function (buffer) {
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("Must be an instance of Uint8Array");
+  }
+  let commandName = Lib.packet.parse.commandName(buffer);
+  if (commandName !== "dssu") {
+    throw new Error("Not a dssu packet");
+  }
+  let parsed = {
+		session_id: 0,
+		state: 0,
+		entries_count: 0,
+		status_update: 0,
+		message_id: 0,
+  };
+/**
+	* 4	nMsgSessionID			-	Required			-	Session ID
+	* 4	nMsgState					- Required			- Current state of processing
+	* 4	nMsgEntriesCount	- Required			- Number of entries in the pool (deprecated)
+	* 4	nMsgStatusUpdate	-	Required			- Update state and/or signal if entry was accepted or not
+	* 4	nMsgMessageID			- Required			- ID of the typical masternode reply message
+	*/
+	const SIZES = {
+		SESSION_ID: 4,
+		STATE: 4,
+		ENTRIES_COUNT: 4,
+		STATUS_UPDATE: 4,
+		MESSAGE_ID: 4,
+	};
+	let offset = MESSAGE_HEADER_SIZE;
+  parsed.session_id= extractUint32(buffer, offset);
+	offset += SIZES.SESSION_ID;
+  let state = extractUint32(buffer, offset);
+	offset += SIZES.STATE;
+  parsed.entries_count = extractUint32(buffer, offset);
+	offset += SIZES.ENTRIES_COUNT;
+  let status_update = extractUint32(buffer, offset);
+	offset += SIZES.STATUS_UPDATE;
+  let message_id = extractUint32(buffer, offset);
+  parsed.message_id = [message_id,MESSAGE_ID.toString(message_id)];
+	parsed.state = [state,POOL_STATE.toString(state)];
+	parsed.status_update = [status_update,POOL_STATUS_UPDATE.toString(status_update)];
   return parsed;
 };

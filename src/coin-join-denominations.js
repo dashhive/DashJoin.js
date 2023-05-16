@@ -88,3 +88,9 @@ Same as DenominationToAmount but returns a string representation
 */
 //orig: static std::string DenominationToString(int nDenom);
 Lib.DenominationToString = function (nDenom) {};
+Lib.GetCollateralAmount = function () {
+  return Lib.GetSmallestDenomination() / 10;
+};
+Lib.GetMaxCollateralAmount = function () {
+  return Lib.GetCollateralAmount() * 4;
+};
