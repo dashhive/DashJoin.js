@@ -9,6 +9,7 @@
 const net = require("net");
 const crypto = require("crypto");
 const { createHash } = crypto;
+const NetUtil = require('./network-util.js');
 
 let Lib = {};
 module.exports = Lib;
@@ -253,29 +254,10 @@ Lib.constants = {
   SENDDSQ_PAYLOAD_SIZE,
   PING_PAYLOAD_SIZE,
 };
-function allZeroes(buffer) {
-  for (let ch of buffer) {
-    if (ch !== 0) {
-      return false;
-    }
-  }
-  return true;
-}
+let allZeroes = NetUtil.allZeroes;
+let hexToBytes = NetUtil.hexToBytes;
+let str2uint8 = NetUtil.str2uint8;
 
-function hexToBytes (hex){
-  let bytes = new Uint8Array(hex.length / 2);
-	let i = 0;
-  for (let c = 0; c < hex.length; c += 2) {
-    bytes[i] = parseInt(hex.substr(c, 2), 16);
-		++i;
-  }
-  return bytes;
-};
-function str2uint8(text) {
-  return Uint8Array.from(
-    Array.from(text).map((letter) => letter.charCodeAt(0))
-  );
-}
 function extractUint32(data, at) {
   let uiArray = new Uint32Array([0]);
   for (let i = at; i < at + 4; i++) {
@@ -291,57 +273,15 @@ function extractChunk(buffer, start, end) {
   }
   return uiArray;
 }
-function setUint32(pkt, data, at) {
-  pkt.set(new Uint8Array(new Uint32Array([data]).buffer), at);
-  return pkt;
-}
-function dot2num(dot) {
-  // the same as ip2long in php
-  var d = dot.split(".");
-  return (+d[0] << 24) + (+d[1] << 16) + (+d[2] << 8) + +d[3];
-}
+let setUint32 = NetUtil.setUint32;
+let dot2num = NetUtil.dot2num;
+let num2array = NetUtil.num2array;
+let htonl = NetUtil.htonl;
+let is_ipv6_mapped_ipv4 = NetUtil.is_ipv6_mapped_ipv4;
+let htons = NetUtil.htons;
+let mapIPv4ToIpv6 = NetUtil.mapIPv4ToIpv6;
 
-function num2array(num) {
-  return [
-    (num & 0xff000000) >>> 24,
-    (num & 0x00ff0000) >>> 16,
-    (num & 0x0000ff00) >>> 8,
-    num & 0x000000ff,
-  ];
-}
-
-function htonl(x) {
-  return dot2num(num2array(x).reverse().join("."));
-}
-function is_ipv6_mapped_ipv4(ip) {
-  return !!ip.match(/^[:]{2}[f]{4}[:]{1}.*$/);
-}
-
-/**
- * Convert a 16-bit quantity (short integer) from host byte order to network byte order (Little-Endian to Big-Endian).
- *
- * @param {Array|Buffer} b Array of octets or a nodejs Buffer
- * @param {number} i Zero-based index at which to write into b
- * @param {number} v Value to convert
- */
-const htons = function (b, i, v) {
-  b[i] = 0xff & (v >> 8);
-  b[i + 1] = 0xff & v;
-};
-const mapIPv4ToIpv6 = function (ip) {
-  return "::ffff:" + ip;
-};
-Lib.util = {
-  dot2num,
-  htonl,
-  htons,
-  is_ipv6_mapped_ipv4,
-  mapIPv4ToIpv6,
-	hexToBytes,
-  num2array,
-  setUint32,
-  str2uint8,
-};
+Lib.util = NetUtil;
 
 /**
  * First 4 bytes of SHA256(SHA256(payload)) in internal byte order.
@@ -767,15 +707,12 @@ function isStandardDenomination(d){
 	return CJDenoms.includes(d);
 }
 
+
 function dsa(args = {
 	chosen_network,
 	denomination,
 	collateral,
 }) {
-	const DENOM_SIZE = 4;
-	let COLLATERAL_SIZE_MINIMUM = 216;
-	let packet = new Uint8Array(DENOM_SIZE + args.collateral.length);
-
 	if(!isStandardDenomination(args.denomination)){
 		throw new Error(`Invalid denomination value`);
 	}
@@ -783,6 +720,21 @@ function dsa(args = {
 	if(encodedDenom === 0){
 		throw new Error(`Couldn't serialize denomination`);
 	}
+
+	const SIZES = {
+		DENOMINATION: 4,
+		COLLATERAL: args.collateral.length,
+	};
+	let TOTAL_SIZE = 0;
+	for(const key in SIZES){
+		TOTAL_SIZE += SIZES[key];
+	}
+
+	/**
+	 * Packet payload
+	 */
+	let packet = new Uint8Array(TOTAL_SIZE);
+
 	packet.set([encodedDenom,0,0,0],0);
 	packet.set(args.collateral,DENOM_SIZE);
 
