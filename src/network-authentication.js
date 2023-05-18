@@ -58,13 +58,22 @@ txCollateral CMutableTransaction(
   let tx = new Uint8Array(TOTAL_SIZE);
 	let offset = 0;
   /**
-   * Version 1
-   * Type: 0
-   * - Takes up 32 bits (2 uint16_t's)
+   * Version
+	 * (2 bytes)
+	 * value: 2
    */
-  tx.set([0x01, 0x00, 0x00, 0x00], 0);
+  tx.set([0x02, 0x00], offset);
+	offset += SIZES.VERSION;
 
-	offset = SIZES.VERSION + SIZES.TYPE;
+	/**
+	 * Type
+	 * (2 bytes)
+	 * value: 0
+	 * 	- for DIP2 special transactions, this would be non-zero
+	 */
+	tx.set([0x00, 0x00], offset);
+
+	offset += SIZES.TYPE;
 
   /**
    * How many _IN_ transactions

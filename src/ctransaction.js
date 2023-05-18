@@ -11,93 +11,59 @@ const /*int32_t*/ CURRENT_VERSION = 2;
 // bumping the default CURRENT_VERSION at which point both CURRENT_VERSION and
 // MAX_STANDARD_VERSION will be equal.
 const /*int32_t*/ MAX_STANDARD_VERSION = 3;
+const TRANSACTION_NORMAL = 0;
+const OPCODES = require('./opcodes.js');
+const hexToBytes = require('./network-util.js').hexToBytes;
 
-const CTxIn = require("./ctxin.js");
-const CTxOut = require("./ctxout.js");
-function CTransaction(args = {
-	cmutabletx: null,
-}) {
+function Transaction() {
   let self = this;
-  this.constructorId = 0;
-  // The local variables are made const to prevent unintended modification
-  // without updating the cached hash value. However, CTransaction is not
-  // actually immutable; deserialization and assignment are implemented,
-  // and bypass the constness. This is safe, as they update the entire
-  // structure, including the hash.
-  //std::vector<CTxIn> vin;
-  this.vin = new Vector(CTxIn);
-  //std::vector<CTxOut> vout;
-  this.vout = new Vector(CTxOut);
-  //int16_t nVersion;
-  this.nVersion = 0;
-  //uint16_t nType;
-  this.nType = 0;
-  //uint32_t nLockTime;
-  this.nLockTime = 0;
-  //std::vector<uint8_t> vExtraPayload; // only available for special transaction types
-  this.vExtraPayload = new Uint8Array();
-  //const uint256 hash;
-  this.hash = 0;
-  this.ComputeHash = function () {};
+  self.vin = [];
+  self.vout = [];
+  //2 bytes
+	self.nVersion = CURRENT_VERSION;
+  //2 bytes
+	self.nType = TRANSACTION_NORMAL;
+  //4 bytes
+  self.nLockTime = 0;
+  //Variable bytes - Uint8Array() - only available for special transaction types
+  self.vExtraPayload = new Uint8Array();
+  //32 bytes
+  self.hash = 0;
 
-  /**
-   * Support for constructor:
-		 CTransaction::CTransaction() : vin(), vout(), nVersion(CTransaction::CURRENT_VERSION), nType(TRANSACTION_NORMAL), nLockTime(0), hash{} {}
-	 || comment from src/primitives/transaction.cpp: ||
-	 		"For backward compatibility, the hash is initialized to 0. TODO: remove the need for this default constructor entirely."
-   */
-	this.nVersion = CURRENT_VERSION;
-	this.nType = TRANSACTION_NORMAL;
-	this.nLockTime = 0;
-	this.constructorId = 0;
-
-	/**
-	 * Support for constructor: 
-	 * CTransaction::CTransaction(const CMutableTransaction& tx)
-	 */
-	if(null !== args.cmutabletx){
-		this.vin = args.cmutabletx.vin;
-		this.vout = args.cmutabletx.vout;
-		this.nVersion = args.cmutabletx.nVersion;
-		this.nType = args.cmutabletx.nType;
-		this.nLockTime = args.cmutabletx.nLockTime;
-		this.vExtraPayload = args.cmutabletx.vExtraPayload;
-		this.hash = this.ComputeHash();
-	}
-
-  this.IsNull = function () {
-    return self.vin.empty() && self.vout.empty();
-  };
-  this.Serialize = function () {
-    // TODO:
-    /*int32_t*/ let n32bitVersion = self.nVersion | (self.nType << 16);
-    //s << n32bitVersion;
-    //s << vin;
-    //s << vout;
-    //s << nLockTime;
-    //if (this->nVersion == 3 && this->nType != TRANSACTION_NORMAL)
-    //    s << vExtraPayload;
-  };
-
-  // Return sum of txouts.
-  //CAmount GetValueOut() const;
-  this.GetValueOut = function () {
-    //TODO:
-  };
-  // GetValueIn() is a method on CCoinsViewCache, because
-  // inputs must be known to compute value in.
-  /**
-   * Get the total transaction size in bytes, including witness data.
-   * "Total Size" defined in BIP141 and BIP144.
-   * @return Total transaction size in bytes
-   */
-  //TODO: unsigned int GetTotalSize() const;
-  this.IsCoinBase = function () {
-    return self.vin.size() == 1 && self.vin[0].prevout.IsNull(); // FIXME: verify which is needed: IsNull() or === null
-  };
-  this.equals = function (b) {
-    return self.hash == b.hash;
-  };
+	self.clearVin = function(){
+		self.vin = [];
+	};
+	self.clearVout = function(){
+		self.vout = [];
+	};
+	self.addVin = function({hash, index}){
+		self.vin.push({hash,index});
+	};
+	self.addVout = function({value,script}){
+		self.vout.push({value,script});
+	};
+	
 }
 
-module.exports = CTransaction;
+/**
+ * Use case:
+ */
+(function({
+	outpointTransaction,
+}){
+	if(typeof outpointTransaction.hash === 'undefined' || outpointTransaction.hash.length !== 32){
+		throw new Error('Invalid hash. Must be 32 bytes');
+	}
+	let collateralTx = new Transaction();
+	collateralTx.clearVin();
+	collateralTx.clearVout();
+	collateralTx.addVin(outpointTransaction);
+	collateralTx.addVout({value: 0, script: [OPCODES.OP_RETURN]});
+})({
+	outpointTransaction: {
+		hash: hexToBytes('ababf00dababf00dababf00dababf00dababf00dababf00dababf00dababf00d'),
+		index: 0,
+	},
+});
+
+module.exports = Transaction;
