@@ -709,9 +709,9 @@ function isStandardDenomination(d){
 
 
 function dsa(args = {
-	chosen_network,
-	denomination,
-	collateral,
+	chosen_network,	 // 'testnet'
+	denomination,		// COIN / 1000 + 1
+	collateral,			// see: ctransaction.js
 }) {
 	if(!isStandardDenomination(args.denomination)){
 		throw new Error(`Invalid denomination value`);

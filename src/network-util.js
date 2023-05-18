@@ -1,5 +1,56 @@
 "use strict";
 
+/**
+ * Compact Size UINT documentation:
+ * https://docs.dash.org/projects/core/en/stable/docs/reference/transactions-compactsize-unsigned-integers.html
+ */
+function calculateCompactSize(obj){
+	if(obj.length > 0 && obj.length <= 252){
+		return 1;
+	}
+	if(obj.length > 253 && obj.length <= 0xffff){
+		return 3;
+	}
+	if(obj.length > 0x10000 && obj.length <= 0xffffffff) {
+		return 5;
+	}
+	if(obj.length > 0x100000000 && obj.length <= 0xffffffffffffffff) {
+		return 9;
+	}
+	return 0;
+}
+function encodeCompactSizeBytes(obj){
+	let size = calculateCompactSize(obj);
+	if(size === 0){
+		return 0;
+	}
+	const len = obj.length;
+	switch(size){
+		case 1:
+			return [len];
+		case 3:
+			return [0xfd,len & 0xff,len >> 8];
+		case 5:
+			/**
+			 *  32      24      16       8       1
+			 *   |-------|-------|-------|-------|
+			 *
+			 */
+			return [0xfe,len & 0xff,len >> 8, (len >> 16) & 0xff, (len >> 24) & 0xff];
+		case 9:
+			return [0xff,
+				len & 0xff, 				// byte 1
+				(len >> 8) & 0xff,	// byte 2
+				(len >> 16) & 0xff,	// byte 3
+				(len >> 24) & 0xff,	// byte 4
+				(len >> 32) & 0xff,	// byte 5
+				(len >> 40) & 0xff,	// byte 6
+				(len >> 48) & 0xff,	// byte 7
+				(len >> 56) & 0xff,	// byte 8
+		];
+	}
+}
+
 function allZeroes(buffer) {
   for (let ch of buffer) {
     if (ch !== 0) {
@@ -89,5 +140,7 @@ let Lib = {
   setUint32,
   str2uint8,
 	allZeroes,
+calculateCompactSize,
+encodeCompactSizeBytes,
 };
 module.exports = Lib;
