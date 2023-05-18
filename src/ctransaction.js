@@ -120,6 +120,9 @@ function Transaction() {
 		for(let vout of self.vout){
 			size += HASH_TXID_SIZE; // hash - TXID of transaction
 			size += INDEX_SIZE; // index uint32_t - index number of specific output
+			// TODO: account for script compactSize uint length
+			// TODO: account for script length
+			// FIXME: when done, update unit test
 		}
 		size += LOCK_TIME_SIZE; // lock_time uint32_t 
 		if(self.vExtraPayload && self.vExtraPayload.length){

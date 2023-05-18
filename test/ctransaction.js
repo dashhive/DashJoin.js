@@ -74,5 +74,29 @@ describe('Transactions', function(){
 			size += SEQUENCE_SIZE;
 			assert.equal(total,size);
 		});
+		
+		// TODO: write this when vout's are fleshed out
+		//it('should calculate the correct packet size per txout', function(){
+		//	let txn = new Transaction();
+		//	let script = hexToBytes(getTestScript());
+		//	let sequence = 1;
+		//	txn.addVout({
+		//		hash: randomHash(32),
+		//		index: 0,
+		//		script,
+		//	});
+		//	let { total, txinCount, txoutCount, extraPayloadCount} = txn.calculateSize();
+		//	assert.notEqual(total,getBaseTxnSize());
+		//	assert.equal(txinCount,1);
+		//	assert.equal(txoutCount,0);
+		//	assert.equal(extraPayloadCount,0);
+		//	let size = LOCK_TIME_SIZE;
+		//	size += OUTPOINT_SIZE;
+		//	size += calculateCompactSize(txn.vin);
+		//	size += calculateCompactSize(script);
+		//	size += script.length;
+		//	size += SEQUENCE_SIZE;
+		//	assert.equal(total,size);
+		//});
 	});
 });
