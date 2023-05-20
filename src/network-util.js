@@ -22,9 +22,14 @@ function calculateCompactSize(obj){
 function encodeCompactSizeBytes(obj){
 	let size = calculateCompactSize(obj);
 	if(size === 0){
-		return 0;
+		return [0];
 	}
-	const len = obj.length;
+	let len = 0;
+	if(typeof obj === 'number'){
+		len = obj;
+	}else{
+		len = obj.length;
+	}
 	switch(size){
 		case 1:
 			return [len];

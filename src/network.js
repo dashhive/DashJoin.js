@@ -730,13 +730,16 @@ function dsa(args = {
 		TOTAL_SIZE += SIZES[key];
 	}
 
+	let offset = 0;
 	/**
 	 * Packet payload
 	 */
 	let packet = new Uint8Array(TOTAL_SIZE);
 
-	packet.set([encodedDenom,0,0,0],0);
-	packet.set(args.collateral,DENOM_SIZE);
+	packet.set([encodedDenom,0,0,0],offset);
+
+	offset += SIZES.DENOMINATION;
+	packet.set(args.collateral,offset);
 
   return wrap_packet(args.chosen_network, "dsa", packet, packet.length );
 }

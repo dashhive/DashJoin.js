@@ -145,3 +145,5 @@ const OPCODES = {
 
     OP_INVALIDOPCODE : 0xff,
 };
+
+module.exports = OPCODES;
