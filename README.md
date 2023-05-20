@@ -24,6 +24,10 @@ TBD
 		- Status: *IN PROGRESS*
 		- Overview: A partial implementation of a Transaction is working on a fundamental level. Encoding the transaction for the purpose of creating a collateral transaction is the priority right now.
 		- [ ] Craft a collateral transaction from user input
+			- [x] Encode a single `vin` (transaction input hash - or: "outpoint")
+			- [x] Create raw transaction header with this encoded `vin`
+			- [ ] Place the encoded raw transaction into the `dsa` message
+				- See: (DASH `dsa` docs)[https://docs.dash.org/projects/core/en/stable/docs/reference/p2p-network-privatesend-messages.html#dsa]
 			
 	- [ ] Transmitting CoinJoin to a Masternode
 		- Status: *IN PROGRESS*
