@@ -52,6 +52,9 @@ function Transaction() {
      */
     let size = 36;
     let compactSizeSigScript = calculateCompactSize(vin.signatureScript);
+		console.debug('sanity: compactSizeSigScript:', compactSizeSigScript);
+		console.debug('sanity: vin.signatureScript.length:', vin.signatureScript.length);
+    console.debug('sanity: vin.signatureScript encodedCompact size: ',encodeCompactSizeBytes(vin.signatureScript));
     let sigScriptLen = vin.signatureScript.length;
 
     //console.debug({ 
@@ -64,10 +67,14 @@ function Transaction() {
     size += compactSizeSigScript;
     size += sigScriptLen;
     size += SEQUENCE_SIZE;
+
+		assert.equal(SEQUENCE_SIZE,4);
+
     let packet = new Uint8Array(size);
     let offset = 0;
 
     assert.equal(32, vin.hash.length);
+
     /**
      * hash
      * (32 bytes)
@@ -75,6 +82,8 @@ function Transaction() {
     packet.set(vin.hash, offset);
 
     offset += HASH_TXID_SIZE;
+
+		assert.equal(HASH_TXID_SIZE,32);
     /**
      * index
      * (4 bytes)
@@ -83,16 +92,23 @@ function Transaction() {
 
     offset += INDEX_SIZE;
 
+		assert.equal(INDEX_SIZE,4);
+
     assert.equal(offset, 36);
     /**
      * Script bytes
      * (compactSize uint)
      */
     packet.set(encodeCompactSizeBytes(vin.signatureScript), offset);
+		if(vin.signatureScript.length <= 252){
+			assert.equal(encodeCompactSizeBytes(vin.signatureScript)[0],vin.signatureScript.length);
+		}
 
     offset += calculateCompactSize(vin.signatureScript);
+		if(vin.signatureScript.length <= 252){
+			assert.equal(offset,37);
+		}
 
-    assert.equal(offset, 37);
     /**
      * Signature script
      * (varies)
@@ -101,7 +117,12 @@ function Transaction() {
 
     offset += vin.signatureScript.length;
 
-    packet = setUint32(packet, vin.sequence, offset);
+    //packet = setUint32(packet, vin.sequence, offset);
+		/**
+		 * "Default for Dash Core and almost all other programs is 0xffffffff."
+		 * - from: https://docs.dash.org/projects/core/en/stable/docs/reference/transactions-raw-transaction-format.html
+		 */
+    packet = setUint32(packet, 0xffffffff, offset);
 
     return packet;
   };
@@ -150,6 +171,8 @@ function Transaction() {
       let encoded = self.encodeVin(vin);
       size += encoded.length;
     }
+		size += 1; // for compact size vout
+		// TODO: encode all vouts
     size += LOCK_TIME_SIZE; // lock_time uint32_t
     return {
       total: size,
@@ -187,29 +210,27 @@ function Transaction() {
     packet.set([self.nType, 0x0], offset);
     offset += SIZES.TYPE;
 
-		let encodedLength = 0;
-    for (let vin of self.vin) {
-      let encodedVin = self.encodeVin(vin);
-      encodedLength += encodedVin.length;
-    }
-    let encodedSize = encodeCompactSizeBytes(encodedLength);
+		/**
+		 * Set the tx_in count (compactSize)
+		 */
+    let encodedSize = encodeCompactSizeBytes(self.vin);
     packet.set(encodedSize, offset);
 		offset += encodedSize.length;
 
+		/**
+		 * Set the tx_in
+		 */
 		for(let vin of self.vin){
       let encodedVin = self.encodeVin(vin);
 			packet.set(encodedVin,offset);
 			offset += encodedVin.length;
 		}
     /**
-     * FIXME: we will need to process vout
-     */
-    /**
      * Set the tx_out count to zero for now FIXME
      */
-    //packet.set([0],offset);
+    packet.set([0],offset);
 
-    //offset += 1;
+    offset += 1;
 
     /**
      * Set the lock time

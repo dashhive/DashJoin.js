@@ -739,7 +739,10 @@ function dsa(args = {
 	packet.set([encodedDenom,0,0,0],offset);
 
 	offset += SIZES.DENOMINATION;
+	console.debug('collateral size:',args.collateral.length);
 	packet.set(args.collateral,offset);
+
+	console.debug({packet});
 
   return wrap_packet(args.chosen_network, "dsa", packet, packet.length );
 }

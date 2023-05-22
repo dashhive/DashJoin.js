@@ -12,16 +12,19 @@ let network = config.network;
 let ourIP = config.ourIP;
 let startBlockHeight = config.startBlockHeight;
 let Transaction = require('./ctransaction.js');
+const TxnConstants = require('./transaction-constants.js');
 const NetUtil = require('./network-util.js');
 const hexToBytes = NetUtil.hexToBytes;
+const {
+	DEFAULT_TXIN_SEQUENCE,
+} = TxnConstants;
 
 
+const Demo = require('./demodata.js');
 function makeCollateralTx() {
-  const inTx = hexToBytes(
-		'9f6c92b088961b2dce8935dbfda3901bbec9a2c5703e12d54bc5f39e00f3563f'
-  );
+  const inTx = Demo.getInTX(); 
   const vout = 0;
-	const script= hexToBytes('76a9145e648edc6e2321237443a7564074da5d59de9f2588ac');
+	const script= Demo.getTestScript();
 
 	let txn = new Transaction();
 	txn.addVin({
@@ -30,17 +33,12 @@ function makeCollateralTx() {
 		signatureScript: script,
 		sequence: DEFAULT_TXIN_SEQUENCE,
 	});
-  return tx.serialize();
+	txn.addVout({
+
+	});
+  return txn.serialize();
 }
 
-function makeCollateralTx(){
-	let txn = new Transaction();
-	txn.addVin({
-		hash: hexToBytes('9f6c92b088961b2dce8935dbfda3901bbec9a2c5703e12d54bc5f39e00f3563f'),
-		index: 0,
-	});
-	return txn.serialize();
-}
 function stateChanged(obj) {
   let masterNode = obj.self;
   switch (masterNode.status) {
