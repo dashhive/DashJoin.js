@@ -199,6 +199,14 @@ function MasterNode({
   };
   self.processHandshakeBuffer = function () {
     self.debug("[+] processHandshakeBuffer");
+      let i = PacketParser.extractItems(self.buffer, [
+        "command",
+        "payloadSize",
+      ]);
+      let command = i[0];
+      let payloadSize = i[1];
+
+			self.debug({command,payloadSize});
     if (self.status === "EXPECT_HCDP") {
       self.debug("EXPECT_HCDP status");
       const HCDP_SIZE =
@@ -214,18 +222,12 @@ function MasterNode({
         return;
       }
 
-      let i = PacketParser.extractItems(self.buffer, [
-        "command",
-        "payloadSize",
-      ]);
-      let command = i[0];
-      let payloadSize = i[1];
-
       /**
        * Step 5: Parse `getheaders` messages. We are now ready to
        * send coin join traffic
        */
       if (command === "getheaders") {
+				self.debug('getheaders received', self.buffer);
         self.handshakeStatePhase2.getheaders = true;
         let parsed = PacketParser.getheaders(self.buffer);
         payloadSize += parsed.hashes.length * 32;
@@ -270,6 +272,7 @@ function MasterNode({
             );
             break;
           default:
+						self.debug('defaulted:',{command,payloadSize});
             break;
         }
         self.buffer = self.extract(
@@ -284,6 +287,7 @@ function MasterNode({
         self.buffer.length <
         MESSAGE_HEADER_SIZE * 3 + VERSION_PACKET_MINIMUM_SIZE
       ) {
+				self.debug('EXPECT_VERACK but VERSION_PACKET_MINIMUM_SIZE not met:',self.buffer.length,'expected:',VERSION_PACKET_MINIMUM_SIZE);
         return;
       }
       /**
@@ -297,6 +301,7 @@ function MasterNode({
        */
       let command = PacketParser.commandName(self.buffer);
       let payloadSize = PacketParser.payloadSize(self.buffer);
+			self.debug('processing handshakePhase1...',{command,payloadSize});
       while (
         self.buffer.length &&
         command.length &&
@@ -304,6 +309,7 @@ function MasterNode({
       ) {
         payloadSize = PacketParser.payloadSize(self.buffer);
         if (command === "version") {
+					self.debug('got version');
           self.masterNodeVersion = self.extract(
             self.buffer,
             0,
@@ -316,6 +322,7 @@ function MasterNode({
           );
           self.handshakeState.version = true;
         } else if (command === "verack") {
+					self.debug('got verack',self.buffer);
           self.buffer = self.extract(
             self.buffer,
             MESSAGE_HEADER_SIZE,
@@ -323,6 +330,7 @@ function MasterNode({
           );
           self.handshakeState.verack = true;
         } else if (command === "sendaddrv2") {
+					self.debug('got sendaddrv2',self.buffer);
           self.buffer = self.extract(
             self.buffer,
             MESSAGE_HEADER_SIZE,
@@ -334,6 +342,7 @@ function MasterNode({
       }
     }
     if (self.handshakePhase1Completed() && self.status === "EXPECT_VERACK") {
+			self.debug('handshakePhase1Completed. EXPECT_VERACK is next');
       self.clearBuffer();
       self.setStatus("RESPOND_VERACK");
       self.client.write(
@@ -345,6 +354,7 @@ function MasterNode({
       );
       return;
     }
+		self.debug("reached end of function");
   };
 
   /**
@@ -408,7 +418,7 @@ function MasterNode({
         self.processRecvBuffer();
         clearInterval(self.processDebounce);
         self.processDebounce = null;
-      }, 500);
+      }, 200);
     });
 
     /**

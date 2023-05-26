@@ -18,6 +18,9 @@ const hexToBytes = NetUtil.hexToBytes;
 const {
 	DEFAULT_TXIN_SEQUENCE,
 } = TxnConstants;
+const {
+	OP_RETURN,
+} = require('./opcodes.js');
 
 
 const Demo = require('./demodata.js');
@@ -34,10 +37,12 @@ function makeCollateralTx() {
 		sequence: DEFAULT_TXIN_SEQUENCE,
 	});
 	txn.addVout({
-
+		value: 0,
+		pkScript: [OP_RETURN],
 	});
   return txn.serialize();
 }
+let dsaSent = false;
 
 function stateChanged(obj) {
   let masterNode = obj.self;
@@ -57,7 +62,8 @@ function stateChanged(obj) {
     case "READY":
       console.log("[+] Ready to start dealing with CoinJoin traffic...");
 			masterNode.switchHandlerTo('coinjoin');
-      setInterval(() => {
+			if(dsaSent === false){
+      setTimeout(() => {
         masterNode.client.write(
           Network.packet.coinjoin.dsa({
             chosen_network: network,
@@ -65,7 +71,9 @@ function stateChanged(obj) {
             collateral: makeCollateralTx(),
           })
         );
-      }, 1000);
+				dsaSent = true;
+      }, 10000);
+			}
       break;
     case "EXPECT_DSQ":
       console.info("[+] dsa sent");

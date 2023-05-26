@@ -30,6 +30,9 @@ The `dsa` packet creation functions are now encoding the denomination and collat
 We now need to:
 - [ ] Verify the collateral transaction is properly encoded (`SHA256(SHA256(txn))`)
 - [ ] Verify the signature script is correct
+## Using dash core's `CCoinJoin::IsCollateralValid`
+	- [ ] Add a `vout` to the `dsa` payload
+		- This seems to be *MANDATORY*
 - [ ] Create several collateral transactions for demo purposes and testing
 - [ ] Unit test the integrity of all fields within a transaction
 
@@ -92,4 +95,28 @@ then you should see the response to that in the masternode's `verack` packet.
 2023-04-29T13:14:19Z sending verack (0 bytes) peer=9
 2023-04-29T13:14:19Z receive version message: : version 70227, blocks=89245, us=[0:1::]:19999, peer=9, peeraddr=127.0.0.1:50710
 2023-04-29T13:14:21Z socket closed for peer=9
+```
+
+# Where we're at:
+```
+2023-05-24T07:58:40Z DSACCEPT -- 
+	nDenom 16 (0.00100001) 				## CORRECT
+	txCollateral CMutableTransaction(
+		hash=30e5887f48, 						## UNKNOWN(??)
+		ver=3,  										## CORRECT
+		type=0,  										## CORRECT
+		vin.size=1,  								## CORRECT
+		vout.size=1,  							## CORRECT
+		nLockTime=0,  							## CORRECT
+		vExtraPayload.size=0 				## CORRECT
+		)
+    CTxIn(
+			COutPoint(
+			940effdb84072ff65c64c7d0446afcc3957569dbf058583ddd4f9586cf8a35b8, 0), ## [unknown,correct]
+			scriptSig=000000006b483045022100f4)
+    CTxOut(
+				nValue=0.00000000,			## CORRECT
+				scriptPubKey=6a)				## INVALID
+
+2023-05-24T07:58:40Z sending dssu (16 bytes) peer=19
 ```

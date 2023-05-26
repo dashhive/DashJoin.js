@@ -8,7 +8,8 @@ const TRANSACTION_NORMAL = 0;
 const OPCODES = require("./opcodes.js");
 const NetUtil = require("./network-util.js");
 const assert = require("assert");
-const { calculateCompactSize, encodeCompactSizeBytes, setUint32, hexToBytes } =
+const { MAX_MONEY } = require('./coin.js');
+const { calculateCompactSize, encodeCompactSizeBytes, setUint32, setSignedInt64, hexToBytes } =
   NetUtil;
 
 function getTestScript() {
@@ -38,8 +39,70 @@ const SIZES = {
 };
 const DEFAULT_TXIN_SEQUENCE = TxnConstants.DEFAULT_TXIN_SEQUENCE;
 
+const MAX_PUBKEY_SCRIPT_SIZE = 10_000;
+const DUFF_SIZE = 8; // size of int64_t
+
 function Transaction() {
   let self = this;
+  self.encodeVout = function (vout) {
+		if('undefined' === typeof vout.value) {
+			throw new Error(`value must be set`);
+		}
+		if('undefined' === typeof vout.pkScript) {
+			throw new Error(`pkScript must be set`);
+		}
+		/**
+		 * Rules for txout values:
+		 * - May be zero
+		 * - the sum of all outputs may not exceed the sum of duffs previously spent to the outpoints provided in the input section. 
+		 * - Exception: coinbase transactions spend the block subsidy and collected transaction fees.
+		 */
+
+    /**
+     * Packet size (tx_out):
+     * ----------------------------------------------------
+     *  8 bytes 		- (int64_t) number of duffs to spend 
+		 *  compactSize	- pk_script bytes
+		 *  varies			- pk_script
+     */
+		if(vout.pkScript.length > MAX_PUBKEY_SCRIPT_SIZE){
+			throw new Error(`pkScript must not exceed ${MAX_PUBKEY_SCRIPT_SIZE}`);
+		}
+
+		if(BigInt(vout.value) > MAX_MONEY){
+			throw new Error(`value must not exceed ${MAX_MONEY}`);
+		}
+
+		let size = DUFF_SIZE;
+    size += calculateCompactSize(vout.pkScript);
+    size += vout.pkScript.length;
+
+    let packet = new Uint8Array(size);
+    let offset = 0;
+
+    /**
+     * value
+     * 8 bytes - (int64_t)
+     */
+    packet = setSignedInt64(packet,vout.value, offset);
+
+    offset += DUFF_SIZE;
+
+    /**
+     * pk_script bytes
+     * compactSize
+     */
+    packet.set(encodeCompactSizeBytes(vout.pkScript), offset);
+    offset += calculateCompactSize(vout.pkScript);
+
+    /**
+     * pk_script
+     * varies
+     */
+    packet.set(vout.pkScript, offset);
+
+    return packet;
+  };
   self.encodeVin = function (vin) {
     /**
      * Packet size (tx_in):
@@ -52,28 +115,14 @@ function Transaction() {
      */
     let size = 36;
     let compactSizeSigScript = calculateCompactSize(vin.signatureScript);
-		console.debug('sanity: compactSizeSigScript:', compactSizeSigScript);
-		console.debug('sanity: vin.signatureScript.length:', vin.signatureScript.length);
-    console.debug('sanity: vin.signatureScript encodedCompact size: ',encodeCompactSizeBytes(vin.signatureScript));
     let sigScriptLen = vin.signatureScript.length;
 
-    //console.debug({ 
-		//	HASH_TXID_SIZE,
-		//	INDEX_SIZE,
-		//	compactSizeSigScript,
-		//	sigScriptLen,
-		//	SEQUENCE_SIZE,
-		//});
     size += compactSizeSigScript;
     size += sigScriptLen;
     size += SEQUENCE_SIZE;
 
-		assert.equal(SEQUENCE_SIZE,4);
-
     let packet = new Uint8Array(size);
     let offset = 0;
-
-    assert.equal(32, vin.hash.length);
 
     /**
      * hash
@@ -83,7 +132,6 @@ function Transaction() {
 
     offset += HASH_TXID_SIZE;
 
-		assert.equal(HASH_TXID_SIZE,32);
     /**
      * index
      * (4 bytes)
@@ -92,23 +140,13 @@ function Transaction() {
 
     offset += INDEX_SIZE;
 
-		assert.equal(INDEX_SIZE,4);
-
-    assert.equal(offset, 36);
     /**
      * Script bytes
      * (compactSize uint)
      */
     packet.set(encodeCompactSizeBytes(vin.signatureScript), offset);
-		if(vin.signatureScript.length <= 252){
-			assert.equal(encodeCompactSizeBytes(vin.signatureScript)[0],vin.signatureScript.length);
-		}
 
     offset += calculateCompactSize(vin.signatureScript);
-		if(vin.signatureScript.length <= 252){
-			assert.equal(offset,37);
-		}
-
     /**
      * Signature script
      * (varies)
@@ -163,6 +201,7 @@ function Transaction() {
     let txoutCount = 0;
     let extraPayloadCount = 0;
     txinCount = calculateCompactSize(self.vin);
+    txoutCount = calculateCompactSize(self.vout);
 
 		size += 2; // FIXME: use VERSION constant
 		size += 2; // FIXME: use TYPE constant
@@ -171,8 +210,12 @@ function Transaction() {
       let encoded = self.encodeVin(vin);
       size += encoded.length;
     }
-		size += 1; // for compact size vout
-		// TODO: encode all vouts
+		size += txoutCount;
+		for(const vout of self.vout) {
+			let encoded = self.encodeVout(vout);
+			size += encoded.length;
+		}
+
     size += LOCK_TIME_SIZE; // lock_time uint32_t
     return {
       total: size,
@@ -226,11 +269,20 @@ function Transaction() {
 			offset += encodedVin.length;
 		}
     /**
-     * Set the tx_out count to zero for now FIXME
+     * Set the tx_out count
      */
-    packet.set([0],offset);
+    encodedSize = encodeCompactSizeBytes(self.vout);
+    packet.set(encodedSize, offset);
+		offset += encodedSize.length;
 
-    offset += 1;
+		/**
+		 * Set the tx_out
+		 */
+		for(let vout of self.vout){
+			let encodedVout = self.encodeVout(vout);
+			packet.set(encodedVout,offset);
+			offset += encodedVout.length;
+		}
 
     /**
      * Set the lock time
