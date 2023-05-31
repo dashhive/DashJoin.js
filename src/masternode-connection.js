@@ -77,6 +77,7 @@ function MasterNode({
     sendcmpct: false,
     senddsq: false,
     ping: false,
+		mnauth: false,
   };
   self.ip = ip;
   self.mnauth_challenge = null;
@@ -145,7 +146,7 @@ function MasterNode({
       self.handshakeStatePhase2.sendcmpct &&
       self.handshakeStatePhase2.senddsq &&
       self.handshakeStatePhase2.ping &&
-      self.handshakeStatePhase2.getheaders
+      self.handshakeStatePhase2.mnauth
     );
   };
   self.handshakePhase1Completed = function () {
@@ -228,19 +229,19 @@ function MasterNode({
        * Step 5: Parse `getheaders` messages. We are now ready to
        * send coin join traffic
        */
-      if (command === "getheaders") {
-				self.debug('getheaders received', self.buffer);
-        self.handshakeStatePhase2.getheaders = true;
-        let parsed = PacketParser.getheaders(self.buffer);
-        payloadSize += parsed.hashes.length * 32;
-        self.buffer = self.extract(
-          self.buffer,
-          MESSAGE_HEADER_SIZE + payloadSize,
-          self.buffer.length
-        );
-        self.setStatus("READY");
-        return;
-      }
+      //if (command === "getheaders") {
+			//	self.debug('getheaders received', self.buffer);
+      //  self.handshakeStatePhase2.getheaders = true;
+      //  let parsed = PacketParser.getheaders(self.buffer);
+      //  payloadSize += parsed.hashes.length * 32;
+      //  self.buffer = self.extract(
+      //    self.buffer,
+      //    MESSAGE_HEADER_SIZE + payloadSize,
+      //    self.buffer.length
+      //  );
+      //  self.setStatus("READY");
+      //  return;
+      //}
       /**
        * Step 4: Receive `getheaders`, `sendheaders`, `sendcmpct`, `senddsq`, and
        * `ping`. Respond with `pong` to `ping`. Parse `getheaders` in order to
@@ -257,6 +258,9 @@ function MasterNode({
             self.setStatus("READY");
             self.switchHandlerTo("coinjoin");
             break;
+          case "mnauth":
+            self.handshakeStatePhase2.mnauth = true;
+            break;
           case "sendheaders":
             self.handshakeStatePhase2.sendheaders = true;
             break;
@@ -265,6 +269,8 @@ function MasterNode({
             break;
           case "senddsq":
             self.handshakeStatePhase2.senddsq = true;
+        		self.setStatus("READY");
+            self.switchHandlerTo("coinjoin");
             break;
           case "ping":
             self.handshakeStatePhase2.ping = true;

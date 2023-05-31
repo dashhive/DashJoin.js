@@ -1,7 +1,1 @@
-{
-	"masterNodeIP":"1.2.3.4",
-	"masterNodePort":19999,
-	"network":"testnet",
-	"ourIP": "4.3.2.1",
-	"startBlockHeight": 854321
-}
+{"masterNodeIP":"10.0.2.15","masterNodePort":19996,"network":"devnet","startBlockHeight":90,"userAgent":"/Dash Core:19.1.0(devnet.devnet-privatesend)/"}
