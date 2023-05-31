@@ -55,6 +55,7 @@ function MasterNode({
   startBlockHeight,
   onStatusChange = null,
   debugFunction = null,
+	userAgent = null,
 }) {
   let self = this;
   /**
@@ -64,6 +65,7 @@ function MasterNode({
   self.client = null;
   self.debugFunction = debugFunction;
   self.frames = [];
+	self.userAgent = userAgent;
   self.handshakeState = {
     version: false,
     verack: false,
@@ -434,7 +436,7 @@ function MasterNode({
       /**
        * see: https://dashcore.readme.io/docs/core-ref-p2p-network-control-messages#version
        */
-      const versionPayload = {
+      let versionPayload = {
         chosen_network: self.network,
         protocol_version: PROTOCOL_VERSION,
         services: [
@@ -453,6 +455,9 @@ function MasterNode({
         relay: false,
         mnauth_challenge: self.createMNAuthChallenge(),
       };
+			if(null !== self.userAgent) {
+				versionPayload.user_agent = self.userAgent;
+			}
       self.setStatus("EXPECT_VERACK");
       self.client.write(Network.packet.version(versionPayload));
     });

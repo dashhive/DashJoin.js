@@ -91,6 +91,7 @@ let masterNodeConnection = new MasterNodeConnection({
   startBlockHeight,
   onStatusChange: stateChanged,
   debugFunction: console.debug,
+	userAgent: config.userAgent ?? null,
 });
 
 masterNodeConnection.connect();

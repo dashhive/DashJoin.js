@@ -590,7 +590,7 @@ const version = function (
   }
 
   let USER_AGENT_BYTES_OFFSET = NONCE_OFFSET + SIZES.NONCE;
-  if ("undefined" !== typeof args.user_agent) {
+  if (null !== args.user_agent && typeof args.user_agent === 'string') {
     let userAgentSize = args.user_agent.length;
     packet.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
     packet.set(str2uint8(args.user_agent), USER_AGENT_BYTES_OFFSET + 1);
