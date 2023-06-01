@@ -24,7 +24,7 @@ const TESTNET = "testnet";
 const DEVNET = "devnet";
 const REGTEST = "regtest";
 const DEVNET_PS = "devnet-privatesend";
-const VALID_NETS = [MAINNET, TESTNET, DEVNET, REGTEST,DEVNET_PS];
+const VALID_NETS = [MAINNET, TESTNET, DEVNET, REGTEST];
 const MAINNET_PORT = 9999;
 const TESTNET_PORT = 19999;
 const REGTEST_PORT = 19899;
@@ -177,15 +177,6 @@ const NETWORKS = {
   },
   [DEVNET]: {
     port: DEVTEST_PORT,
-    magic: new Uint8Array([
-      //0xCEFFCAE2,
-      0xe2, 0xca, 0xff, 0xce,
-    ]),
-    start: 0xe2caffce,
-    nBits: 0x207fffff,
-  },
-  [DEVNET_PS]: {
-    port: DEVNET_PS_PORT,
     magic: new Uint8Array([
       //0xCEFFCAE2,
       0xe2, 0xca, 0xff, 0xce,
