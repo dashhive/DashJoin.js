@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 "use strict";
 const COIN = require("./coin-join-constants.js").COIN;
 const Network = require("./network.js");
@@ -20,27 +21,46 @@ const {
 } = TxnConstants;
 const {
 	OP_RETURN,
+  OP_RESERVED,
 } = require('./opcodes.js');
 
 
-const Demo = require('./demodata.js');
-function makeCollateralTx() {
-  const inTx = Demo.getInTX(); 
-  const vout = 0;
-	const script= Demo.getTestScript();
+let Demo = require('./demodata.js');
+let Tx = require('dashtx');
+let DemoLib = require('./tx-dashcore-lib.js');
 
-	let txn = new Transaction();
-	txn.addVin({
-		hash: inTx,
-		index: vout,
-		signatureScript: script,
-		sequence: DEFAULT_TXIN_SEQUENCE,
-	});
-	txn.addVout({
-		value: 0,
-		pkScript: [OP_RETURN],
-	});
-  return txn.serialize();
+
+let d = DemoLib.demo();
+return;
+
+function makeCollateralTx() {
+  return hexToBytes(DemoLib.demo().serialize());
+
+  //let tx = Tx.create({ sign: sign });
+  //let Secp256k1 = require("@dashincubator/secp256k1");
+  //async function sign({ privateKey, hash }) {
+  //  let sigOpts = { canonical: true, extraEntropy: true };
+  //  let sigBuf = await Secp256k1.sign(hash, privateKey, sigOpts);
+  //  return Tx.utils.u8ToHex(sigBuf);
+  //}
+
+  //const inTx = Demo.getInTX(); 
+  //const vout = 0;
+	//const script= Demo.getTestScript();
+
+	//let txn = new Transaction();
+	//txn.addVin({
+	//	hash: inTx,
+	//	index: vout,
+	//	signatureScript: script,
+	//	sequence: DEFAULT_TXIN_SEQUENCE,
+	//});
+	//txn.addVout({
+	//	value: 0,
+	//	pkScript: [OP_RETURN],
+	//});
+  //txn.setVersion(Demo.getVersion());
+  //return txn.serialize();
 }
 let dsaSent = false;
 

@@ -8,7 +8,8 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "./node_modules/mocha/bin/mocha.js"
+    "test": "./node_modules/mocha/bin/mocha.js",
+    "demo": "./src/demo.js"
   },
   "repository": {
     "type": "git",
@@ -31,5 +32,9 @@
   "homepage": "https://github.com/dashhive/DashJoin.js#readme",
   "devDependencies": {
     "mocha": "^10.2.0"
+  },
+  "dependencies": {
+    "@dashevo/dashcore-lib": "^0.20.6",
+    "dashtx": "^0.9.0"
   }
 }

@@ -183,6 +183,9 @@ function Transaction() {
   self.clearVout = function () {
     self.vout = [];
   };
+  self.setVersion = function(_in_version){
+    self.nVersion = _in_version;
+  };
   self.addVin = function (_in_vin) {
     if (32 !== _in_vin.hash.length) {
       throw new Error("hash must be 32 bytes");

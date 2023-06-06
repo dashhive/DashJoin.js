@@ -6,6 +6,14 @@ function hashOfHash(data){
 		crypto.createHash('sha256').update(data).digest()
 	).digest();
 }
+function hashByteOrder(str){
+  let bytes = [];
+  for(let i=str.length - 1; i >= 0; i -= 2){
+    bytes.push(str.substr(i-1,2));
+  }
+  return bytes.join('');
+}
+
 
 
 /**
@@ -165,6 +173,7 @@ function mapIPv4ToIpv6(ip) {
 }
 let Lib = {
   dot2num,
+  hashByteOrder,
 	hashOfHash,
   htonl,
   htons,
