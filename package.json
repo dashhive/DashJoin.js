@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@dashevo/dashcore-lib": "^0.20.6",
+    "@dashincubator/secp256k1": "^1.7.1-5",
     "dashtx": "^0.9.0"
   }
 }
