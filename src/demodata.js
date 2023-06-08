@@ -1,48 +1,151 @@
+"use strict";
+const COIN = require("./coin-join-constants.js").COIN;
+const Network = require("./network.js");
 
-const NetUtil = require('./network-util.js');
-const hexToBytes = NetUtil.hexToBytes;
-const hashOfHash = NetUtil.hashOfHash;
-const hashByteOrder = NetUtil.hashByteOrder;
-const opcodes = require('./opcodes.js');
+let Lib = {};
+module.exports = Lib;
+const exit = () => process.exit(0);
 
-const data = require('./data.json'); /** FIXME: remove prior to prod */
+let config = require("./.config.json");
+let network = config.network;
 
-module.exports = {
-  getVersion: function(){
-    return data.version;
-  },
-  getType: function(){
-    return data.type;
-  },
-	getTestScript: function() {
-    //return [opcodes.OP_RESERVED];
-		//'OP_DUP OP_HASH160 6f608cf778ab1c9ed1730fc21f6eb3ec01b4cf70 OP_EQUALVERIFY OP_CHECKSIG'
-return hexToBytes('000000006b483045022100f4d8fa0ae4132235fe' +
-'cd540a62715ccfb1c9a97f8698d066656e30bb1e' +
-'1e06b90220301b4cc93f38950a69396ed89dfcc0' +
-'8e72ec8e6e7169463592a0bf504946d98b812102' +
-'fa4b9c0f9e76e06d57c75cab9c8368a62a1ce8db' +
-'6eb0c25c3e0719ddd9ab549cffffffff01e09304' +
-'00000000001976a914f895');
-	return hexToBytes('000000006b483045022100f4d8fa0ae4132235fecd540a62715ccfb1c9a97f8698d066656e30bb1e' +
-		'1e06b90220301b4cc93f38950a69396ed89dfcc0' +
-		'8e72ec8e6e7169463592a0bf504946d98b812102' +
-		'fa4b9c0f9e76e06d57c75cab9c8368a62a1ce8db' +
-		'6eb0c25c3e0719ddd9ab549cffffffff01e09304' +
-		'00000000001976a914f895'
+let DashCore = require("@dashevo/dashcore-lib");
+let Transaction = DashCore.Transaction;
+let Script = DashCore.Script;
+let PrivateKey = DashCore.PrivateKey;
+let Address = DashCore.Address;
+const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
+const HI_COLLATERAL = LOW_COLLATERAL * 4;
+const fs = require("fs");
+const NETWORK = "regtest";
+const { 
+  read_file,
+  logUsedTransaction,
+  isUsed,
+  sendCoins,
+} = require('./ctransaction.js');
+
+async function fetchData(){
+  let PsendUsedTxnFile = "/home/foobar/docs/dp-used-txn.json";
+  let PsendTxnList = require("/home/foobar/docs/dp-txn.json");
+  let PsendChangeAddress = await read_file(
+    "/home/foobar/docs/dp-change-address-0"
   );
-		//TODO:
-		//At some point we'll need to construct something like this:
-		//'OP_DUP OP_HASH160 98dcf362b3b5a977d94dcba884468949d418c9d0 OP_EQUALVERIFY OP_CHECKSIG'
-	},
-	getInTX: function(){
-    /**
-     * How to get the txid:
-     * 1) Get the block height of the transaction
-     * 2) call the RPC `dash-cli getblockhash HEIGHT`
-     * 3) pass that value to RPC: `dash-cli getblock $(dash-cli getblockhash HEIGHT) true`
-     * 4) Copy the tx value
-     */
-		return hexToBytes(hashByteOrder(data.txid));
-	},
+  let sourceAddress = await read_file("/home/foobar/docs/dp-address-0");
+  let payeeAddress = await read_file("/home/foobar/docs/df-address-0");
+  let privkeySet = PrivateKey(
+    PrivateKey.fromWIF(await read_file("/home/foobar/docs/dp-privkey-0"), NETWORK)
+  );
+  return {
+    PsendUsedTxnFile,
+    PsendTxnList,
+    PsendChangeAddress,
+    sourceAddress,
+    payeeAddress,
+    privkeySet,
+  };
 }
+async function getUnusedTxn(){
+  let {
+    PsendTxnList,
+    sourceAddress,
+    PsendUsedTxnFile,
+  } = await fetchData();
+  for (let txn of PsendTxnList) {
+    /**
+     * Pull from PsendTxnList where:
+     * 1) category is 'generate'.
+     * 2) has more than zero confirmations
+     * 3) where address matches dp-address-0
+     * 4) txid does NOT exist in /home/foobar/docs/dp-used-txn.json
+     */
+    if (txn.category !== "generate") {
+      continue;
+    }
+    if (txn.confirmations === 0) {
+      continue;
+    }
+    if (txn.address !== sourceAddress) {
+      continue;
+    }
+    if (await isUsed(PsendUsedTxnFile, txn.txid)) {
+      continue;
+    }
+    return txn;
+  }
+  return null;
+};
+Lib.logUsedTransaction = async function(txnId) {
+  let fileName = await fetchData();
+  fileName = fileName.PsendUsedTxnFile;
+  let buffer = await fs.readFileSync(fileName);
+  buffer = buffer.toString();
+  let data = JSON.parse(buffer);
+  data.list.push(txnId);
+  await fs.writeFileSync(fileName, JSON.stringify(data, null, 2));
+};
+/**
+ * Returns {
+ *  txid,
+ *  vout,
+ *  sourceAddress,
+ *  satoshis,
+ *  privateKey,
+ *  changeAddress,
+ *  payeeAddress,
+ * }
+ */
+Lib.getUnusedTransaction = async function(){
+  let data = await fetchData();
+  let txn = await getUnusedTxn();
+  return {
+    txid: txn.txid,
+    sourceAddress: Address(data.sourceAddress,NETWORK),
+    vout: parseInt(txn.vout,10),
+    satoshis: parseInt(txn.amount * COIN,10),
+    privateKey: data.privkeySet,
+    changeAddress: data.PsendChangeAddress,
+    payeeAddress: data.payeeAddress,
+    _origTxin: txn,
+    _data: data,
+  };
+};
+
+Lib.makeCollateralTx = async function(){
+  let PsendTx = await Lib.getUnusedTransaction();
+
+  if (PsendTx === null) {
+    throw new Error("Couldnt find unused transaction");
+  }
+
+  async function makeCollateralTx() {
+    let amount = parseInt(LOW_COLLATERAL * 2, 10);
+    let fee = 50000;
+    let { payeeAddress, sourceAddress, txid, vout, satoshis, changeAddress, privateKey } =
+      PsendTx;
+    console.debug({ PsendTx });
+    let unspent = satoshis - amount;
+    let utxos = {
+      txId: txid,
+      outputIndex: vout,
+      sequenceNumber: 0xffffffff,
+      scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+      satoshis,
+    };
+    var tx = new Transaction()
+      .from(utxos)
+      .to(payeeAddress, amount)
+      .to(changeAddress, unspent - fee)
+      .sign(privateKey);
+    return hexToBytes(tx.uncheckedSerialize());
+  };
+  return await makeCollateralTx();
+};
+
+/*
+(async function(){
+  let tx = await Lib.getUnusedTransaction();
+  console.debug({tx});
+  exit();
+})();
+*/
