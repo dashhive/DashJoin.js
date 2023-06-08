@@ -1,0 +1,29 @@
+#!/bin/bash
+
+if [[ "$1" == "--create" ]]; then
+  ~/bin/create-foobar-wallet.sh
+  ~/bin/create-psend-wallet.sh
+  ~/bin/dp getnewaddress > ~/docs/dp-address-0
+  ~/bin/df getnewaddress > ~/docs/df-address-0
+  ~/bin/df getrawchangeaddress > ~/docs/df-change-address-0
+  ~/bin/dp getrawchangeaddress > ~/docs/dp-change-address-0
+fi
+
+if [[ "$1" == "--unlock" ]]; then
+  ~/bin/df walletpassphrase funbar 100000000
+  ~/bin/dp walletpassphrase foobar 100000000
+  ~/bin/df dumpprivkey $(cat ~/docs/df-address-0) > ~/docs/df-privkey-0
+  ~/bin/dp dumpprivkey $(cat ~/docs/dp-address-0) > ~/docs/dp-privkey-0
+fi
+
+if [[ "$1" == "--txn" ]]; then
+  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
+  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
+  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
+  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
+fi
+
+if [[ "$1" == "--get-unused-txn" ]]; then
+  ~/bin/dptx.sh 200 > ~/docs/dp-txn.json
+  #~/bin/dftx.sh 200 > ~/docs/df-txn.json
+fi
