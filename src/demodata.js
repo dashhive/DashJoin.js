@@ -98,8 +98,6 @@ Lib.logUsedTransaction = async function(txnId) {
  */
 Lib.getUnusedTransaction = async function(){
   let data = await fetchData();
-  console.debug({data});
-  exit();
   let txn = await getUnusedTxn();
   return {
     txid: txn.txid,
