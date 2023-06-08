@@ -26,15 +26,16 @@ const {
 } = require('./ctransaction.js');
 
 async function fetchData(){
-  let PsendUsedTxnFile = "/home/foobar/docs/dp-used-txn.json";
-  let PsendTxnList = require("/home/foobar/docs/dp-txn.json");
+  let files = require('./config.demodata.json');
+  let PsendUsedTxnFile = files.usedTxn;
+  let PsendTxnList = require(files.txnList);
   let PsendChangeAddress = await read_file(
-    "/home/foobar/docs/dp-change-address-0"
+    files.changeAddress
   );
-  let sourceAddress = await read_file("/home/foobar/docs/dp-address-0");
-  let payeeAddress = await read_file("/home/foobar/docs/df-address-0");
+  let sourceAddress = await read_file(files.sourceAddress);
+  let payeeAddress = await read_file(files.payeeAddress);
   let privkeySet = PrivateKey(
-    PrivateKey.fromWIF(await read_file("/home/foobar/docs/dp-privkey-0"), NETWORK)
+    PrivateKey.fromWIF(await read_file(files.wif), NETWORK)
   );
   return {
     PsendUsedTxnFile,
@@ -97,6 +98,8 @@ Lib.logUsedTransaction = async function(txnId) {
  */
 Lib.getUnusedTransaction = async function(){
   let data = await fetchData();
+  console.debug({data});
+  exit();
   let txn = await getUnusedTxn();
   return {
     txid: txn.txid,
