@@ -279,6 +279,20 @@ let allZeroes = NetUtil.allZeroes;
 let hexToBytes = NetUtil.hexToBytes;
 let str2uint8 = NetUtil.str2uint8;
 
+function extractInt64(data, at) {
+  let a = new Uint8Array([
+    data[at],
+    data[at + 1],
+    data[at + 2],
+    data[at + 3],
+    data[at + 4],
+    data[at + 5],
+    data[at + 6],
+    data[at + 7],
+  ]);
+  let b = new BigInt64Array(a.buffer);
+  return b[0];
+}
 function extractUint64(data, at) {
   let a = new Uint8Array([
     data[at],
@@ -1000,14 +1014,13 @@ Lib.packet.parse.dsq = function (buffer) {
   };
   const SIZES = {
     DENOM: 4,
-    OUTPOINT: 36,
     PROTX: 32,
     TIME: 8,
     READY: 1,
     SIG: 97,
   };
 
-  console.debug("Size of dsq packet:", buffer.length);
+  //console.debug("Size of dsq packet:", buffer.length);
   /**
    * We'll need to point past the message header in
    * order to get to the dsq packet details.
@@ -1015,19 +1028,13 @@ Lib.packet.parse.dsq = function (buffer) {
   let offset = MESSAGE_HEADER_SIZE;
 
   let dsqPacket = extractChunk(buffer, offset, buffer.length);
-  console.debug("packet details (minus header):", dsqPacket);
+  //console.debug("packet details (minus header):", dsqPacket);
 
   /**
    * Grab the denomination
    */
   parsed.nDenom = extractUint32(buffer, offset);
   offset += SIZES.DENOM;
-
-  /**
-   * Grab the MNOP
-   */
-  parsed.masternodeOutPoint = extractChunk(buffer, offset, offset + SIZES.OUTPOINT);
-  offset += SIZES.OUTPOINT;
 
   /**
    * Grab the protxhash
@@ -1038,7 +1045,7 @@ Lib.packet.parse.dsq = function (buffer) {
   /**
    * Grab the time
    */
-  parsed.nTime = extractUint64(buffer, offset);
+  parsed.nTime = extractInt64(buffer, offset);
   offset += SIZES.TIME;
 
   /**
