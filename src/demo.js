@@ -34,7 +34,7 @@ let DemoData = require("./demodata.js");
         break;
       case "READY":
         console.log("[+] Ready to start dealing with CoinJoin traffic...");
-        masterNode.switchHandlerTo("coinjoin");
+        //masterNode.switchHandlerTo("coinjoin");
         if (dsaSent === false) {
           setTimeout(async () => {
             masterNode.client.write(
@@ -45,6 +45,7 @@ let DemoData = require("./demodata.js");
               })
             );
             dsaSent = true;
+            console.debug('sent dsa');
           }, 2000);
         }
         break;

@@ -260,7 +260,12 @@ let allZeroes = NetUtil.allZeroes;
 let hexToBytes = NetUtil.hexToBytes;
 let str2uint8 = NetUtil.str2uint8;
 
-function extractUint32(data, at) {
+function extractUint32(data,at){
+  let a = new Uint8Array([data[at],data[at+1],data[at+2],data[at+3]]);
+  let b = new Uint32Array(a.buffer);
+  return b[0];
+}
+function accumulateUint32(data, at) {
   let uiArray = new Uint32Array([0]);
   for (let i = at; i < at + 4; i++) {
     uiArray[0] += data[at];
@@ -911,7 +916,7 @@ Lib.packet.parse.getheaders = function (buffer) {
   for (let i = 0; i < 4; i++) {
     parsed.version[i] = buffer[i];
   }
-  parsed.hashCount = extractUint32(buffer, 4);
+  parsed.hashCount = accumulateUint32(buffer, 4);
   const OFFSET = 8;
   const HASH_SIZE = 32;
   let hash = new Uint8Array(32);

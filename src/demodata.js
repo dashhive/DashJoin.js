@@ -13,6 +13,7 @@ let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
 let PrivateKey = DashCore.PrivateKey;
 let Address = DashCore.Address;
+let { hexToBytes } = require('./network-util.js');
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const fs = require("fs");
 const {
@@ -121,7 +122,6 @@ Lib.makeCollateralTx = async function () {
       changeAddress,
       privateKey,
     } = PsendTx;
-    console.debug({ PsendTx });
     let unspent = satoshis - amount;
     let utxos = {
       txId: txid,
