@@ -46,7 +46,7 @@ async function isUsed(fileName, txnId) {
   let data = JSON.parse(buffer);
   return data.list.indexOf(txnId) !== -1;
 }
-const NETWORK = 'regtest';
+const NETWORK = "regtest";
 
 (async function () {
   /**
@@ -96,11 +96,42 @@ const NETWORK = 'regtest';
       NETWORK
     )
   );
+  async function makeCollateralTx(prefs) {
+    let origAmount = PsendTx.amount * COIN;
+    let times = 1;
+
+    let fee = 5000;
+    amount = parseInt(amount, 10);
+    let unspent = origAmount - amount;
+    let sourceAddress = Address(PsendTx.address, NETWORK);
+    /**
+     * Take the input of the PrevTx, send it to another wallet
+     * which will hold the new funds and the change will go to
+     * a change address.
+     */
+    let utxos = {
+      txId: PsendTx.txid,
+      outputIndex: PsendTx.vout,
+      sequenceNumber: 0xffffffff,
+      scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+      satoshis: origAmount,
+    };
+    var tx = new Transaction()
+      .from(utxos) // Feed information about what unspent outputs one can use
+      .to(payeeAddress, amount) // Add an output with the given amount of satoshis
+      .to(PsendChangeAddress, unspent - (fee * 10))
+      .sign(privkeySet); // Signs all the inputs it can
+
+    if (typeof prefs.logUsed !== "undefined" && prefs.logUsed) {
+      await logUsedTransaction(PsendUsedTxnFile, utxos.txId);
+    }
+    return hexToBytes(tx.uncheckedSerialize());
+  }
 
   function exit() {
     process.exit(0);
   }
-  async function createCollateralTransaction(prefs) {
+  async function sendCoins(prefs) {
     let origAmount = PsendTx.amount * COIN;
     let times = 1;
 
@@ -144,19 +175,14 @@ const NETWORK = 'regtest';
   if (process.argv.includes("--log-used")) {
     logUsed = true;
   }
-  createCollateralTransaction({
-    logUsed,
-  }).then(function(){
-    process.exit(0);
-  });
-
-  //let DemoLib = require('./tx-dashcore-lib.js');
-
-  //let d = DemoLib.demo(1);
-
-  function makeCollateralTx() {
-    return txn.serialize();
+  if (process.argv.includes("--send-coin")) {
+    sendCoins({
+      logUsed,
+    }).then(function () {
+      process.exit(0);
+    });
   }
+
   let dsaSent = false;
 
   function stateChanged(obj) {
@@ -178,12 +204,12 @@ const NETWORK = 'regtest';
         console.log("[+] Ready to start dealing with CoinJoin traffic...");
         masterNode.switchHandlerTo("coinjoin");
         if (dsaSent === false) {
-          setTimeout(() => {
+          setTimeout(async () => {
             masterNode.client.write(
               Network.packet.coinjoin.dsa({
                 chosen_network: network,
                 denomination: COIN / 1000 + 1,
-                collateral: makeCollateralTx(),
+                collateral: await makeCollateralTx({logUsed}),
               })
             );
             dsaSent = true;
