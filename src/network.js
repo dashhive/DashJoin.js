@@ -260,6 +260,11 @@ let allZeroes = NetUtil.allZeroes;
 let hexToBytes = NetUtil.hexToBytes;
 let str2uint8 = NetUtil.str2uint8;
 
+function extractUint64(data,at){
+  let a = new Uint8Array([data[at],data[at+1],data[at+2],data[at+3],data[at+4],data[at+5],data[at+6],data[at+7]]);
+  let b = new Uint64Array(a.buffer);
+  return b[0];
+}
 function extractUint32(data,at){
   let a = new Uint8Array([data[at],data[at+1],data[at+2],data[at+3]]);
   let b = new Uint32Array(a.buffer);
@@ -935,6 +940,75 @@ Lib.packet.parse.getheaders = function (buffer) {
   return parsed;
 };
 
+Lib.packet.parse.dsq = function (buffer) {
+  if (!(buffer instanceof Uint8Array)) {
+    throw new Error("Must be an instance of Uint8Array");
+  }
+  let commandName = Lib.packet.parse.commandName(buffer);
+  if (commandName !== "dsq") {
+    throw new Error("Not a dsq packet");
+  }
+  let parsed = {
+		nDenom: 0,
+		masternodeOutPoint: 0,
+    proTxHash: 0,
+    nTime: 0,
+    fReady: false,
+    vchSig: null,
+  };
+	const SIZES = {
+		DENOM: 4,
+    OUTPOINT: 36,
+    PROTX: 32,
+    TIME: 8,
+    READY: 1,
+    SIG: 97,
+	};
+
+	console.debug('Size of dsq packet:',buffer.length);
+	/**
+	 * We'll need to point past the message header in
+	 * order to get to the dsq packet details.
+	 */
+	let offset = MESSAGE_HEADER_SIZE;
+
+	let dsqPacket = extractChunk(buffer, offset, buffer.length);
+	console.debug('packet details (minus header):', dsqPacket);
+
+	/**
+	 * Grab the denomination
+	 */
+  parsed.nDenom = extractUint32(buffer, offset);
+	offset += SIZES.DENOM;
+
+	/**
+	 * Grab the MNOP
+	 */
+  parsed.masternodeOutPoint = extractChunk(buffer,offset,SIZES.OUTPOINT);
+	offset += SIZES.OUTPOINT;
+
+	/**
+	 * Grab the protxhash
+	 */
+  parsed.proTxHash = extractChunk(buffer,offset,SIZES.PROTX);
+	offset += SIZES.PROTX;
+
+	/**
+	 * Grab the time
+	 */
+  parsed.nTime = extractUint64(buffer, offset);
+	offset += SIZES.TIME;
+
+	/**
+	 * Grab the fReady
+	 */
+  parsed.fReady = buffer[offset];
+  offset += SIZES.READY;
+
+  parsed.vchSig = extractChunk(buffer,offset,SIZES.SIG);
+  return parsed;
+
+};
 Lib.packet.parse.dssu = function (buffer) {
   if (!(buffer instanceof Uint8Array)) {
     throw new Error("Must be an instance of Uint8Array");
@@ -987,11 +1061,13 @@ Lib.packet.parse.dssu = function (buffer) {
   let state = extractUint32(buffer, offset);
 	offset += SIZES.STATE;
 
-	/**
-	 * Grab the entries count
-	 */
-  parsed.entries_count = extractUint32(buffer, offset);
-	offset += SIZES.ENTRIES_COUNT;
+	///**
+	// * Grab the entries count
+  // Not parsed because apparently master nodes no longer send
+  // the entries count.
+	// */
+  //parsed.entries_count = extractUint32(buffer, offset);
+	//offset += SIZES.ENTRIES_COUNT;
 
 	/**
 	 * Grab the status update

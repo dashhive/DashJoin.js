@@ -3,7 +3,23 @@
 const COIN = require("./coin-join-constants.js").COIN;
 const Network = require("./network.js");
 
-let config = require("./.config.json");
+let id = {};
+
+let config = require('./.mn0-config.json');
+id.mn = 0;
+if(process.argv.includes('--mn0')){
+  config = require('./.mn0-config.json');
+  id.mn = 0;
+}
+if(process.argv.includes('--mn1')){
+  config = require('./.mn1-config.json');
+  id.mn = 1;
+}
+if(process.argv.includes('--mn2')){
+  config = require('./.mn2-config.json');
+  id.mn = 2;
+}
+
 let masterNodeIP = config.masterNodeIP;
 let masterNodePort = config.masterNodePort;
 let network = config.network;
@@ -14,11 +30,35 @@ let DashCore = require("@dashevo/dashcore-lib");
 
 let DemoData = require("./demodata.js");
 
+if(process.argv.includes('--psend')){
+  DemoData.initialize('dp');
+  id.data_set = 'dp';
+}
+if(process.argv.includes('--foobar')){
+  DemoData.initialize('df');
+  id.data_set = 'df';
+}
+if(process.argv.includes('--luke')){
+  DemoData.initialize('dl');
+  id.data_set = 'dl';
+}
+if(process.argv.includes('--han')){
+  DemoData.initialize('dh');
+  id.data_set = 'dh';
+}
+if(process.argv.includes('--chewie')){
+  DemoData.initialize('dche');
+  id.data_set = 'dche';
+}
+
+setInterval(() => {
+  console.info(id);
+},10000);
 (async function () {
   let dsaSent = false;
 
   function stateChanged(obj) {
-    let masterNode = obj.self;
+      let masterNode = obj.self;
     switch (masterNode.status) {
       default:
         console.info("unhandled status:", masterNode.status);

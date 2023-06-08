@@ -211,41 +211,46 @@ function MasterNode({
     let command = i[0];
     let payloadSize = i[1];
 
-    self.debug({ command, payloadSize });
+    self.debug({ justParsed: { command, payloadSize } });
     if (self.status === "EXPECT_HCDP" || self.status === 'READY') {
       self.debug("EXPECT_HCDP status");
+      let packet;
+      let parsed = null;
       while (self.buffer.length){
         command = PacketParser.commandName(self.buffer);
         payloadSize = PacketParser.payloadSize(self.buffer);
+        packet = {};
         switch (command) {
           case "getheaders":
             self.handshakeStatePhase2.getheaders = true;
-            let parsed = PacketParser.getheaders(self.buffer);
+            parsed = PacketParser.getheaders(self.buffer);
             payloadSize += parsed.hashes.length * 32;
             break;
           case "mnauth":
-            self.handshakeStatePhase2.mnauth = true;
-            break;
           case "sendheaders":
-            self.handshakeStatePhase2.sendheaders = true;
-            break;
           case "sendcmpct":
-            self.handshakeStatePhase2.sendcmpct = true;
+            //self.handshakeStatePhase2.mnauth = true;
+            //self.handshakeStatePhase2.sendheaders = true;
+            //self.handshakeStatePhase2.sendcmpct = true;
+            //self.handshakeStatePhase2.senddsq = true;
             break;
           case "senddsq":
-            self.handshakeStatePhase2.senddsq = true;
             self.setStatus("READY");
+            break;
+          case 'dsq':
+            self.debugFunction({command,payloadSize});
+            packet = PacketParser.dsq(self.buffer);
+            self.debugFunction(command,packet);
             break;
           case 'dssu':
             self.debugFunction({command,payloadSize});
-            let packet = PacketParser.dssu(self.buffer);
+            packet = PacketParser.dssu(self.buffer);
             self.debugFunction(command,packet);
             break;
           case "ping":
             self.handshakeStatePhase2.ping = true;
-            let nonce = PacketParser.extractPingNonce(self.buffer);
             self.client.write(
-              Network.packet.pong({ chosen_network: network, nonce })
+              Network.packet.pong({ chosen_network: network, nonce: PacketParser.extractPingNonce(self.buffer)})
             );
             break;
           default:

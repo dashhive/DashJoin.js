@@ -21,9 +21,31 @@ const {
   logUsedTransaction,
   isUsed,
 } = require("./ctransaction.js");
+let user = 'dp';
+Lib.initialize = function(uname){
+  user = uname;
+};
 
 async function fetchData() {
-  let files = require("./config.demodata.json");
+  let files = {};
+  switch(user){
+    default:
+    case 'dh': 
+      files = require("./dh-config.demodata.json");
+      break;
+    case 'dche': 
+      files = require("./dche-config.demodata.json");
+      break;
+    case 'dl': 
+      files = require("./dl-config.demodata.json");
+      break;
+    case 'dp': 
+      files = require("./dp-config.demodata.json");
+      break;
+    case 'df':
+      files = require("./df-config.demodata.json");
+      break;
+  }
   let PsendUsedTxnFile = files.usedTxn;
   let PsendTxnList = require(files.txnList);
   let PsendChangeAddress = await read_file(files.changeAddress);
@@ -51,7 +73,7 @@ async function getUnusedTxn() {
      * 3) where address matches dp-address-0
      * 4) txid does NOT exist in /home/foobar/docs/dp-used-txn.json
      */
-    if (txn.category !== "generate") {
+    if (txn.category === 'receive' || txn.category === 'send') {
       continue;
     }
     if (txn.confirmations === 0) {
