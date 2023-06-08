@@ -142,11 +142,3 @@ Lib.makeCollateralTx = async function(){
   };
   return await makeCollateralTx();
 };
-
-/*
-(async function(){
-  let tx = await Lib.getUnusedTransaction();
-  console.debug({tx});
-  exit();
-})();
-*/
