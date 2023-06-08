@@ -8,6 +8,23 @@ const COIN = require("./coin-join-constants.js").COIN;
 let Lib = {};
 module.exports = Lib;
 
+function getopt(opt){
+  /**
+   * Accepts something like: 
+   * 'ip'
+   * and will search argv for anything like:
+   * --ip=127.0.0.1
+   *
+   */
+  for(let arg of process.argv){
+    let matches = arg.match(/^[\-]{2}([^=]+)=(.*)$/);
+    if(matches){
+      if(matches[1] === opt){
+        return matches[2];
+      }
+    }
+  }
+}
 const {
   PROTOCOL_VERSION,
   MNAUTH_CHALLENGE_SIZE,
@@ -205,6 +222,7 @@ function MasterNode({
       handshake: self.processHandshakeBuffer,
     };
   };
+  self.senddsq = null;
   self.processHandshakeBuffer = function () {
     self.debug("[+] processHandshakeBuffer");
     let i = PacketParser.extractItems(self.buffer, ["command", "payloadSize"]);
@@ -227,15 +245,24 @@ function MasterNode({
             payloadSize += parsed.hashes.length * 32;
             break;
           case "mnauth":
+            /**
+             * No specific response needed
+             */
+            break;
           case "sendheaders":
+            /**
+             * No specific response needed
+             */
+            break;
           case "sendcmpct":
-            //self.handshakeStatePhase2.mnauth = true;
-            //self.handshakeStatePhase2.sendheaders = true;
-            //self.handshakeStatePhase2.sendcmpct = true;
-            //self.handshakeStatePhase2.senddsq = true;
             break;
           case "senddsq":
-            self.setStatus("READY");
+            setTimeout(function(){
+              self.client.write(
+                Network.packet.senddsq({ chosen_network: network, fSendDSQueue: true })
+              );
+              self.setStatus("READY");
+            },10000);
             break;
           case 'dsq':
             self.debugFunction({command,payloadSize});
@@ -330,6 +357,7 @@ function MasterNode({
     }
     if (self.handshakePhase1Completed() && self.status === "EXPECT_VERACK") {
       self.debug("handshakePhase1Completed. EXPECT_VERACK is next");
+      self.debugFunction('buffer before clear: ',self.buffer);
       self.clearBuffer();
       self.setStatus("RESPOND_VERACK");
       self.client.write(
@@ -405,7 +433,7 @@ function MasterNode({
         self.processRecvBuffer();
         clearInterval(self.processDebounce);
         self.processDebounce = null;
-      }, 200);
+      }, 800);
     });
 
     /**
@@ -425,19 +453,20 @@ function MasterNode({
         chosen_network: self.network,
         protocol_version: PROTOCOL_VERSION,
         services: [
-          SERVICE_IDENTIFIERS.NODE_NETWORK,
-          SERVICE_IDENTIFIERS.NODE_BLOOM,
+          SERVICE_IDENTIFIERS.NODE_UNNAMED,
+          //SERVICE_IDENTIFIERS.NODE_NETWORK,
+          //SERVICE_IDENTIFIERS.NODE_BLOOM,
         ],
         addr_recv_services: [
           SERVICE_IDENTIFIERS.NODE_NETWORK,
-          SERVICE_IDENTIFIERS.NODE_BLOOM,
+          //SERVICE_IDENTIFIERS.NODE_BLOOM,
         ],
         start_height: self.startBlockHeight,
         addr_recv_ip: mapIPv4ToIpv6(self.ip),
         addr_recv_port: self.port,
         addr_trans_ip: mapIPv4ToIpv6(self.ourIP),
         addr_trans_port: self.client.localPort,
-        relay: false,
+        relay: true,
         mnauth_challenge: self.createMNAuthChallenge(),
       };
       if (null !== self.userAgent) {
@@ -450,12 +479,22 @@ function MasterNode({
      * Step 1: connect to the remote host
      */
     self.setStatus("NEEDS_AUTH");
-    self.client.connect({
+    let data = {
       port: self.port,
       host: self.ip,
       keepAlive: true,
       keepAliveInitialDelay: 3,
-    });
+    };
+    let ip = getopt('ip');
+    if(ip){
+      data.localAddress = '127.0.0.' + ip;
+    }
+    ip = getopt('absip');
+    if(ip){
+      data.localAddress = ip;
+    }
+    console.debug({data});
+    self.client.connect(data);
   };
 }
 

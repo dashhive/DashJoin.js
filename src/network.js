@@ -9,10 +9,29 @@
 const net = require("net");
 const crypto = require("crypto");
 const { createHash } = crypto;
-const NetUtil = require('./network-util.js');
+const NetUtil = require("./network-util.js");
 
 let Lib = {};
 module.exports = Lib;
+Lib.packet = {
+  coinjoin: {
+    dsa,
+    dsc,
+    dsf,
+    dsi,
+    dsq,
+    dssu,
+    dstx,
+  },
+  getaddr,
+  senddsq,
+  sendaddr,
+  sendaddrv2,
+  parse: {},
+  pong,
+  verack,
+  version,
+};
 
 const PROTOCOL_VERSION = 70227;
 const RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
@@ -39,72 +58,72 @@ const MSG_HEADER = {
 };
 
 const POOL_STATE = {
-	IDLE : 0,
-	QUEUE : 1,
-	ACCEPTING_ENTRIES: 2,
-	SIGNING: 3,
-	ERROR: 4,
-	SUCCESS: 5,
-	toString: function(i){
-		for(const key in POOL_STATE){
-			if(key === 'toString'){
-				continue;
-			}
-			if(POOL_STATE[key] === i){
-				return String(key);
-			}
-		}
-	},
+  IDLE: 0,
+  QUEUE: 1,
+  ACCEPTING_ENTRIES: 2,
+  SIGNING: 3,
+  ERROR: 4,
+  SUCCESS: 5,
+  toString: function (i) {
+    for (const key in POOL_STATE) {
+      if (key === "toString") {
+        continue;
+      }
+      if (POOL_STATE[key] === i) {
+        return String(key);
+      }
+    }
+  },
 };
 const POOL_STATUS_UPDATE = {
-	REJECTED: 0,
-	ACCEPTED: 1,
-	toString: function(i){
-		switch(i){
-			case POOL_STATUS_UPDATE.REJECTED:
-				return 'REJECTED';
-			case POOL_STATUS_UPDATE.ACCEPTED:
-				return 'ACCEPTED';
-			default:
-				return null;
-		}
-	},
+  REJECTED: 0,
+  ACCEPTED: 1,
+  toString: function (i) {
+    switch (i) {
+      case POOL_STATUS_UPDATE.REJECTED:
+        return "REJECTED";
+      case POOL_STATUS_UPDATE.ACCEPTED:
+        return "ACCEPTED";
+      default:
+        return null;
+    }
+  },
 };
 
 const MESSAGE_ID = {
-ERR_ALREADY_HAVE:0x00,
-ERR_DENOM: 0x01,
-ERR_ENTRIES_FULL: 0x02,
-ERR_EXISTING_TX: 0x03,
-ERR_FEES: 0x04,
-ERR_INVALID_COLLATERAL: 0x05,
-ERR_INVALID_INPUT: 0x06,
-ERR_INVALID_SCRIPT: 0x07,
-ERR_INVALID_TX: 0x08,
-ERR_MAXIMUM: 0x09,
-ERR_MN_LIST: 0x0A,// <--
-ERR_MODE: 0x0B,
-ERR_NON_STANDARD_PUBKEY: 0x0C,//	 (Not used)
-ERR_NOT_A_MN: 0x0D, //(Not used)
-ERR_QUEUE_FULL: 0x0E,
-ERR_RECENT: 0x0F,	
-ERR_SESSION: 0x10,	
-ERR_MISSING_TX: 0x11,
-ERR_VERSION: 0x12,
-MSG_NOERR: 0x13,
-MSG_SUCCESS: 0x14,
-MSG_ENTRIES_ADDED: 0x15,
-ERR_SIZE_MISMATCH: 0x16,
-	toString: function(i){
-		for(const key in MESSAGE_ID){
-			if(key === 'toString'){
-				continue;
-			}
-			if(MESSAGE_ID[key] === i){
-				return String(key);
-			}
-		}
-	},
+  ERR_ALREADY_HAVE: 0x00,
+  ERR_DENOM: 0x01,
+  ERR_ENTRIES_FULL: 0x02,
+  ERR_EXISTING_TX: 0x03,
+  ERR_FEES: 0x04,
+  ERR_INVALID_COLLATERAL: 0x05,
+  ERR_INVALID_INPUT: 0x06,
+  ERR_INVALID_SCRIPT: 0x07,
+  ERR_INVALID_TX: 0x08,
+  ERR_MAXIMUM: 0x09,
+  ERR_MN_LIST: 0x0a, // <--
+  ERR_MODE: 0x0b,
+  ERR_NON_STANDARD_PUBKEY: 0x0c, //	 (Not used)
+  ERR_NOT_A_MN: 0x0d, //(Not used)
+  ERR_QUEUE_FULL: 0x0e,
+  ERR_RECENT: 0x0f,
+  ERR_SESSION: 0x10,
+  ERR_MISSING_TX: 0x11,
+  ERR_VERSION: 0x12,
+  MSG_NOERR: 0x13,
+  MSG_SUCCESS: 0x14,
+  MSG_ENTRIES_ADDED: 0x15,
+  ERR_SIZE_MISMATCH: 0x16,
+  toString: function (i) {
+    for (const key in MESSAGE_ID) {
+      if (key === "toString") {
+        continue;
+      }
+      if (MESSAGE_ID[key] === i) {
+        return String(key);
+      }
+    }
+  },
 };
 
 let MESSAGE_HEADER_SIZE = 0;
@@ -234,12 +253,12 @@ let SERVICE_IDENTIFIERS = {
 };
 Lib.constants = {
   MAINNET,
-	MESSAGE_ID,
+  MESSAGE_ID,
   MNAUTH_PROTOCOL_VERSION_INTRODUCTION,
   MNAUTH_CHALLENGE_SIZE,
   NETWORKS,
   PING_NONCE_SIZE,
-	POOL_STATE,
+  POOL_STATE,
   PROTOCOL_VERSION,
   RELAY_PROTOCOL_VERSION_INTRODUCTION,
   TESTNET,
@@ -260,13 +279,22 @@ let allZeroes = NetUtil.allZeroes;
 let hexToBytes = NetUtil.hexToBytes;
 let str2uint8 = NetUtil.str2uint8;
 
-function extractUint64(data,at){
-  let a = new Uint8Array([data[at],data[at+1],data[at+2],data[at+3],data[at+4],data[at+5],data[at+6],data[at+7]]);
-  let b = new Uint64Array(a.buffer);
+function extractUint64(data, at) {
+  let a = new Uint8Array([
+    data[at],
+    data[at + 1],
+    data[at + 2],
+    data[at + 3],
+    data[at + 4],
+    data[at + 5],
+    data[at + 6],
+    data[at + 7],
+  ]);
+  let b = new BigUint64Array(a.buffer);
   return b[0];
 }
-function extractUint32(data,at){
-  let a = new Uint8Array([data[at],data[at+1],data[at+2],data[at+3]]);
+function extractUint32(data, at) {
+  let a = new Uint8Array([data[at], data[at + 1], data[at + 2], data[at + 3]]);
   let b = new Uint32Array(a.buffer);
   return b[0];
 }
@@ -353,7 +381,7 @@ Lib.net = {
  * DO NOT convert any values from host to network byte order! The
  * function will handle that for you!
  */
-const version = function (
+function version(
   args = {
     /**
      * Required.
@@ -482,7 +510,7 @@ const version = function (
     "undefined" !== typeof args.mnauth_challenge
   ) {
     throw new Error(
-      `"mnauth_challenge" field is not support in protocol versions prior to ${MNAUTH_CHALLENGE_OFFSET}`
+      `"mnauth_challenge" field is not supported in protocol versions prior to ${MNAUTH_CHALLENGE_OFFSET}`
     );
   }
   if ("undefined" !== typeof args.mnauth_challenge) {
@@ -591,7 +619,7 @@ const version = function (
   }
 
   let USER_AGENT_BYTES_OFFSET = NONCE_OFFSET + SIZES.NONCE;
-  if (null !== args.user_agent && typeof args.user_agent === 'string') {
+  if (null !== args.user_agent && typeof args.user_agent === "string") {
     let userAgentSize = args.user_agent.length;
     packet.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
     packet.set(str2uint8(args.user_agent), USER_AGENT_BYTES_OFFSET + 1);
@@ -616,7 +644,7 @@ const version = function (
   packet = wrap_packet(args.chosen_network, "version", packet, TOTAL_SIZE);
   return packet;
 };
-const getaddr = function () {
+function getaddr() {
   const cmd = "getaddr";
   const MAGIC_BYTES_SIZE = 4;
   const COMMAND_SIZE = 12;
@@ -698,6 +726,15 @@ function verack(
 ) {
   return wrap_packet(args.chosen_network, "verack", null, 0);
 }
+function senddsq(
+  args = {
+    chosen_network,
+    fSendDSQueue,
+  }
+) {
+  let buffer = new Uint8Array([args.fSendDSQueue ? 1 : 0]);
+  return wrap_packet(args.chosen_network, "senddsq", buffer, buffer.length);
+}
 function sendaddrv2(
   args = {
     chosen_network,
@@ -713,88 +750,93 @@ function sendaddr(
   return wrap_packet(args.chosen_network, "sendaddr", null, 0);
 }
 
-const CJDenoms = require('./coin-join-constants.js').STANDARD_DENOMINATIONS;
-let CJLib = require('./coin-join-denominations.js');
+const CJDenoms = require("./coin-join-constants.js").STANDARD_DENOMINATIONS;
+let CJLib = require("./coin-join-denominations.js");
 
-function isStandardDenomination(d){
-	return CJDenoms.includes(d);
+function isStandardDenomination(d) {
+  return CJDenoms.includes(d);
 }
 
+function dsa(
+  args = {
+    chosen_network, // 'testnet'
+    denomination, // COIN / 1000 + 1
+    collateral, // see: ctransaction.js
+  }
+) {
+  if (!isStandardDenomination(args.denomination)) {
+    throw new Error(`Invalid denomination value`);
+  }
+  let encodedDenom = CJLib.AmountToDenomination(args.denomination);
+  if (encodedDenom === 0) {
+    throw new Error(`Couldn't serialize denomination`);
+  }
 
-function dsa(args = {
-	chosen_network,	 // 'testnet'
-	denomination,		// COIN / 1000 + 1
-	collateral,			// see: ctransaction.js
-}) {
-	if(!isStandardDenomination(args.denomination)){
-		throw new Error(`Invalid denomination value`);
-	}
-	let encodedDenom = CJLib.AmountToDenomination(args.denomination);
-	if(encodedDenom === 0){
-		throw new Error(`Couldn't serialize denomination`);
-	}
+  const SIZES = {
+    DENOMINATION: 4,
+    COLLATERAL: args.collateral.length,
+  };
+  let TOTAL_SIZE = 0;
+  for (const key in SIZES) {
+    TOTAL_SIZE += SIZES[key];
+  }
 
-	const SIZES = {
-		DENOMINATION: 4,
-		COLLATERAL: args.collateral.length,
-	};
-	let TOTAL_SIZE = 0;
-	for(const key in SIZES){
-		TOTAL_SIZE += SIZES[key];
-	}
+  let offset = 0;
+  /**
+   * Packet payload
+   */
+  let packet = new Uint8Array(TOTAL_SIZE);
 
-	let offset = 0;
-	/**
-	 * Packet payload
-	 */
-	let packet = new Uint8Array(TOTAL_SIZE);
+  packet.set([encodedDenom, 0, 0, 0], offset);
 
-	packet.set([encodedDenom,0,0,0],offset);
+  offset += SIZES.DENOMINATION;
+  console.debug("collateral size:", args.collateral.length);
+  packet.set(args.collateral, offset);
 
-	offset += SIZES.DENOMINATION;
-	console.debug('collateral size:',args.collateral.length);
-	packet.set(args.collateral,offset);
+  console.debug({ packet });
 
-	console.debug({packet});
-
-  return wrap_packet(args.chosen_network, "dsa", packet, packet.length );
+  return wrap_packet(args.chosen_network, "dsa", packet, packet.length);
 }
-function dsc() {
+function dsc() {}
+function dsf() {}
+function dsi(
+  args = {
+    chosen_network, // 'testnet'
+    userInputs,
+    collateralTxn,
+    userOutputs,
+  }
+) {
+  const SIZES = {
+    NUMBER_OF_INPUTS: userInputs.length, // FIXME compactSize
+    INPUTS: userInputs.length * 82,
+    COLLATERAL: collateralTxn.length,
+  };
+  let TOTAL_SIZE = 0;
+  for (const key in SIZES) {
+    TOTAL_SIZE += SIZES[key];
+  }
 
-}
-function dsf() {
+  let offset = 0;
+  /**
+   * Packet payload
+   */
+  let packet = new Uint8Array(TOTAL_SIZE);
 
-}
-function dsi() {
+  packet.set([encodedDenom, 0, 0, 0], offset);
 
-}
-function dsq() {
+  offset += SIZES.DENOMINATION;
+  console.debug("collateral size:", args.collateral.length);
+  packet.set(args.collateral, offset);
 
-}
-function dssu() {
+  console.debug({ packet });
 
+  return wrap_packet(args.chosen_network, "dsa", packet, packet.length);
 }
-function dstx() {
 
-}
-Lib.packet = {
-  coinjoin: {
-    dsa,
-    dsc,
-    dsf,
-    dsi,
-    dsq,
-    dssu,
-    dstx,
-  },
-  getaddr,
-  sendaddr,
-  sendaddrv2,
-  parse: {},
-  pong,
-  verack,
-  version,
-};
+function dsq() {}
+function dssu() {}
+function dstx() {}
 
 Lib.packet.messagesWithNoPayload = [
   "filterclear",
@@ -949,65 +991,64 @@ Lib.packet.parse.dsq = function (buffer) {
     throw new Error("Not a dsq packet");
   }
   let parsed = {
-		nDenom: 0,
-		masternodeOutPoint: 0,
+    nDenom: 0,
+    masternodeOutPoint: 0,
     proTxHash: 0,
     nTime: 0,
     fReady: false,
     vchSig: null,
   };
-	const SIZES = {
-		DENOM: 4,
+  const SIZES = {
+    DENOM: 4,
     OUTPOINT: 36,
     PROTX: 32,
     TIME: 8,
     READY: 1,
     SIG: 97,
-	};
+  };
 
-	console.debug('Size of dsq packet:',buffer.length);
-	/**
-	 * We'll need to point past the message header in
-	 * order to get to the dsq packet details.
-	 */
-	let offset = MESSAGE_HEADER_SIZE;
+  console.debug("Size of dsq packet:", buffer.length);
+  /**
+   * We'll need to point past the message header in
+   * order to get to the dsq packet details.
+   */
+  let offset = MESSAGE_HEADER_SIZE;
 
-	let dsqPacket = extractChunk(buffer, offset, buffer.length);
-	console.debug('packet details (minus header):', dsqPacket);
+  let dsqPacket = extractChunk(buffer, offset, buffer.length);
+  console.debug("packet details (minus header):", dsqPacket);
 
-	/**
-	 * Grab the denomination
-	 */
+  /**
+   * Grab the denomination
+   */
   parsed.nDenom = extractUint32(buffer, offset);
-	offset += SIZES.DENOM;
+  offset += SIZES.DENOM;
 
-	/**
-	 * Grab the MNOP
-	 */
-  parsed.masternodeOutPoint = extractChunk(buffer,offset,SIZES.OUTPOINT);
-	offset += SIZES.OUTPOINT;
+  /**
+   * Grab the MNOP
+   */
+  parsed.masternodeOutPoint = extractChunk(buffer, offset, offset + SIZES.OUTPOINT);
+  offset += SIZES.OUTPOINT;
 
-	/**
-	 * Grab the protxhash
-	 */
-  parsed.proTxHash = extractChunk(buffer,offset,SIZES.PROTX);
-	offset += SIZES.PROTX;
+  /**
+   * Grab the protxhash
+   */
+  parsed.proTxHash = extractChunk(buffer, offset,offset + SIZES.PROTX);
+  offset += SIZES.PROTX;
 
-	/**
-	 * Grab the time
-	 */
+  /**
+   * Grab the time
+   */
   parsed.nTime = extractUint64(buffer, offset);
-	offset += SIZES.TIME;
+  offset += SIZES.TIME;
 
-	/**
-	 * Grab the fReady
-	 */
+  /**
+   * Grab the fReady
+   */
   parsed.fReady = buffer[offset];
   offset += SIZES.READY;
 
-  parsed.vchSig = extractChunk(buffer,offset,SIZES.SIG);
+  parsed.vchSig = extractChunk(buffer, offset, offset + SIZES.SIG);
   return parsed;
-
 };
 Lib.packet.parse.dssu = function (buffer) {
   if (!(buffer instanceof Uint8Array)) {
@@ -1018,69 +1059,72 @@ Lib.packet.parse.dssu = function (buffer) {
     throw new Error("Not a dssu packet");
   }
   let parsed = {
-		session_id: 0,
-		state: 0,
-		entries_count: 0,
-		status_update: 0,
-		message_id: 0,
+    session_id: 0,
+    state: 0,
+    entries_count: 0,
+    status_update: 0,
+    message_id: 0,
   };
-/**
-	* 4	nMsgSessionID			-	Required			-	Session ID
-	* 4	nMsgState					- Required			- Current state of processing
-	* 4	nMsgEntriesCount	- Required			- Number of entries in the pool (deprecated)
-	* 4	nMsgStatusUpdate	-	Required			- Update state and/or signal if entry was accepted or not
-	* 4	nMsgMessageID			- Required			- ID of the typical masternode reply message
-	*/
-	const SIZES = {
-		SESSION_ID: 4,
-		STATE: 4,
-		ENTRIES_COUNT: 4,
-		STATUS_UPDATE: 4,
-		MESSAGE_ID: 4,
-	};
+  /**
+   * 4	nMsgSessionID			-	Required			-	Session ID
+   * 4	nMsgState					- Required			- Current state of processing
+   * 4	nMsgEntriesCount	- Required			- Number of entries in the pool (deprecated)
+   * 4	nMsgStatusUpdate	-	Required			- Update state and/or signal if entry was accepted or not
+   * 4	nMsgMessageID			- Required			- ID of the typical masternode reply message
+   */
+  const SIZES = {
+    SESSION_ID: 4,
+    STATE: 4,
+    ENTRIES_COUNT: 4,
+    STATUS_UPDATE: 4,
+    MESSAGE_ID: 4,
+  };
 
-	console.debug('Size of dssu packet:',buffer.length);
-	/**
-	 * We'll need to point past the message header in
-	 * order to get to the dssu packet details.
-	 */
-	let offset = MESSAGE_HEADER_SIZE;
+  console.debug("Size of dssu packet:", buffer.length);
+  /**
+   * We'll need to point past the message header in
+   * order to get to the dssu packet details.
+   */
+  let offset = MESSAGE_HEADER_SIZE;
 
-	let dssuPacket = extractChunk(buffer, offset, buffer.length);
-	console.debug('packet details (minus header):', dssuPacket);
+  let dssuPacket = extractChunk(buffer, offset, buffer.length);
+  console.debug("packet details (minus header):", dssuPacket);
 
-	/**
-	 * Grab the session id
-	 */
-  parsed.session_id= extractUint32(buffer, offset);
-	offset += SIZES.SESSION_ID;
+  /**
+   * Grab the session id
+   */
+  parsed.session_id = extractUint32(buffer, offset);
+  offset += SIZES.SESSION_ID;
 
-	/**
-	 * Grab the state
-	 */
+  /**
+   * Grab the state
+   */
   let state = extractUint32(buffer, offset);
-	offset += SIZES.STATE;
+  offset += SIZES.STATE;
 
-	///**
-	// * Grab the entries count
+  ///**
+  // * Grab the entries count
   // Not parsed because apparently master nodes no longer send
   // the entries count.
-	// */
+  // */
   //parsed.entries_count = extractUint32(buffer, offset);
-	//offset += SIZES.ENTRIES_COUNT;
+  //offset += SIZES.ENTRIES_COUNT;
 
-	/**
-	 * Grab the status update
-	 */
+  /**
+   * Grab the status update
+   */
   let status_update = extractUint32(buffer, offset);
-	offset += SIZES.STATUS_UPDATE;
+  offset += SIZES.STATUS_UPDATE;
 
-	/**
-	 * Grab the message id
-	 */
+  /**
+   * Grab the message id
+   */
   let message_id = extractUint32(buffer, offset);
-  parsed.message_id = [message_id,MESSAGE_ID.toString(message_id)];
-	parsed.state = [state,POOL_STATE.toString(state)];
-	parsed.status_update = [status_update,POOL_STATUS_UPDATE.toString(status_update)];
+  parsed.message_id = [message_id, MESSAGE_ID.toString(message_id)];
+  parsed.state = [state, POOL_STATE.toString(state)];
+  parsed.status_update = [
+    status_update,
+    POOL_STATUS_UPDATE.toString(status_update),
+  ];
   return parsed;
 };
