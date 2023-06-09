@@ -1,0 +1,8 @@
+{
+  "usedTxn": "/home/foobar/docs/dl-used-txn.json",
+  "txnList": "/home/foobar/docs/dl-txn.json",
+  "changeAddress": "/home/foobar/docs/dl-change-address-0",
+  "sourceAddress": "/home/foobar/docs/dl-address-0",
+  "wif": "/home/foobar/docs/dl-privkey-0",
+  "payeeAddress": "/home/foobar/docs/df-address-0"
+}

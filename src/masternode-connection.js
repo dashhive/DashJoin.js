@@ -8,6 +8,23 @@ const COIN = require("./coin-join-constants.js").COIN;
 let Lib = {};
 module.exports = Lib;
 
+function getopt(opt){
+  /**
+   * Accepts something like: 
+   * 'ip'
+   * and will search argv for anything like:
+   * --ip=127.0.0.1
+   *
+   */
+  for(let arg of process.argv){
+    let matches = arg.match(/^[\-]{2}([^=]+)=(.*)$/);
+    if(matches){
+      if(matches[1] === opt){
+        return matches[2];
+      }
+    }
+  }
+}
 const {
   PROTOCOL_VERSION,
   MNAUTH_CHALLENGE_SIZE,
@@ -55,6 +72,7 @@ function MasterNode({
   startBlockHeight,
   onStatusChange = null,
   debugFunction = null,
+  userAgent = null,
 }) {
   let self = this;
   /**
@@ -64,6 +82,7 @@ function MasterNode({
   self.client = null;
   self.debugFunction = debugFunction;
   self.frames = [];
+  self.userAgent = userAgent;
   self.handshakeState = {
     version: false,
     verack: false,
@@ -75,6 +94,7 @@ function MasterNode({
     sendcmpct: false,
     senddsq: false,
     ping: false,
+    mnauth: false,
   };
   self.ip = ip;
   self.mnauth_challenge = null;
@@ -143,7 +163,7 @@ function MasterNode({
       self.handshakeStatePhase2.sendcmpct &&
       self.handshakeStatePhase2.senddsq &&
       self.handshakeStatePhase2.ping &&
-      self.handshakeStatePhase2.getheaders
+      self.handshakeStatePhase2.mnauth
     );
   };
   self.handshakePhase1Completed = function () {
@@ -160,10 +180,15 @@ function MasterNode({
     let command = i[0];
     let payloadSize = i[1];
     self.debugFunction({ command, payloadSize });
-		if(command === 'dssu'){
+    if (command === "getheaders") {
+      let parsed = PacketParser.getheaders(self.buffer);
+      payloadSize += parsed.hashes.length * 32;
+      self.debugFunction({parsed,payloadSize});
+    }
+    if (command === "dssu") {
       let dssu = PacketParser.dssu(self.buffer);
-			self.debugFunction('dssu:',dssu);
-		}
+      self.debugFunction("dssu:", dssu);
+    }
     if (command === "ping") {
       let nonce = PacketParser.extractPingNonce(self.buffer);
       self.client.write(
@@ -197,82 +222,66 @@ function MasterNode({
       handshake: self.processHandshakeBuffer,
     };
   };
+  self.senddsq = null;
   self.processHandshakeBuffer = function () {
     self.debug("[+] processHandshakeBuffer");
-      let i = PacketParser.extractItems(self.buffer, [
-        "command",
-        "payloadSize",
-      ]);
-      let command = i[0];
-      let payloadSize = i[1];
+    let i = PacketParser.extractItems(self.buffer, ["command", "payloadSize"]);
+    let command = i[0];
+    let payloadSize = i[1];
 
-			self.debug({command,payloadSize});
-    if (self.status === "EXPECT_HCDP") {
+    self.debug({ justParsed: { command, payloadSize } });
+    if (self.status === "EXPECT_HCDP" || self.status === 'READY') {
       self.debug("EXPECT_HCDP status");
-      const HCDP_SIZE =
-        MESSAGE_HEADER_SIZE * 4 +
-        (SENDHEADERS_PAYLOAD_SIZE /* (H) sendheaders payload */ +
-          SENDCMPCT_PAYLOAD_SIZE /* (C) sendcmpct payload */ +
-          SENDDSQ_PAYLOAD_SIZE /* (D) senddsq payload */ +
-          PING_PAYLOAD_SIZE); /* (P) Ping message payload */
-      if (self.buffer.length < HCDP_SIZE) {
-        self.debug(
-          `[-] Need more data:${self.buffer.length} need: ${HCDP_SIZE}`
-        );
-        return;
-      }
-
-      /**
-       * Step 5: Parse `getheaders` messages. We are now ready to
-       * send coin join traffic
-       */
-      if (command === "getheaders") {
-				self.debug('getheaders received', self.buffer);
-        self.handshakeStatePhase2.getheaders = true;
-        let parsed = PacketParser.getheaders(self.buffer);
-        payloadSize += parsed.hashes.length * 32;
-        self.buffer = self.extract(
-          self.buffer,
-          MESSAGE_HEADER_SIZE + payloadSize,
-          self.buffer.length
-        );
-        self.setStatus("READY");
-        return;
-      }
-      /**
-       * Step 4: Receive `getheaders`, `sendheaders`, `sendcmpct`, `senddsq`, and
-       * `ping`. Respond with `pong` to `ping`. Parse `getheaders` in order to
-       * properly parse the next couple of messages.
-       */
-      while (self.buffer.length && self.handshakePhase2Completed() === false) {
+      let packet;
+      let parsed = null;
+      while (self.buffer.length){
         command = PacketParser.commandName(self.buffer);
         payloadSize = PacketParser.payloadSize(self.buffer);
+        packet = {};
         switch (command) {
           case "getheaders":
             self.handshakeStatePhase2.getheaders = true;
-            let parsed = PacketParser.getheaders(self.buffer);
+            parsed = PacketParser.getheaders(self.buffer);
             payloadSize += parsed.hashes.length * 32;
-            self.setStatus("READY");
-            self.switchHandlerTo("coinjoin");
+            break;
+          case "mnauth":
+            /**
+             * No specific response needed
+             */
             break;
           case "sendheaders":
-            self.handshakeStatePhase2.sendheaders = true;
+            /**
+             * No specific response needed
+             */
             break;
           case "sendcmpct":
-            self.handshakeStatePhase2.sendcmpct = true;
             break;
           case "senddsq":
-            self.handshakeStatePhase2.senddsq = true;
+            setTimeout(function(){
+              self.client.write(
+                Network.packet.senddsq({ chosen_network: network, fSendDSQueue: true })
+              );
+              self.setStatus("READY");
+            },10000);
+            break;
+          case 'dsq':
+            self.debugFunction({command,payloadSize});
+            packet = PacketParser.dsq(self.buffer);
+            self.debugFunction(command,packet);
+            break;
+          case 'dssu':
+            self.debugFunction({command,payloadSize});
+            packet = PacketParser.dssu(self.buffer);
+            self.debugFunction(command,packet);
             break;
           case "ping":
             self.handshakeStatePhase2.ping = true;
-            let nonce = PacketParser.extractPingNonce(self.buffer);
             self.client.write(
-              Network.packet.pong({ chosen_network: network, nonce })
+              Network.packet.pong({ chosen_network: network, nonce: PacketParser.extractPingNonce(self.buffer)})
             );
             break;
           default:
-						self.debug('defaulted:',{command,payloadSize});
+            self.debug("defaulted:", { command, payloadSize });
             break;
         }
         self.buffer = self.extract(
@@ -287,7 +296,12 @@ function MasterNode({
         self.buffer.length <
         MESSAGE_HEADER_SIZE * 3 + VERSION_PACKET_MINIMUM_SIZE
       ) {
-				self.debug('EXPECT_VERACK but VERSION_PACKET_MINIMUM_SIZE not met:',self.buffer.length,'expected:',VERSION_PACKET_MINIMUM_SIZE);
+        self.debug(
+          "EXPECT_VERACK but VERSION_PACKET_MINIMUM_SIZE not met:",
+          self.buffer.length,
+          "expected:",
+          VERSION_PACKET_MINIMUM_SIZE
+        );
         return;
       }
       /**
@@ -301,7 +315,7 @@ function MasterNode({
        */
       let command = PacketParser.commandName(self.buffer);
       let payloadSize = PacketParser.payloadSize(self.buffer);
-			self.debug('processing handshakePhase1...',{command,payloadSize});
+      self.debug("processing handshakePhase1...", { command, payloadSize });
       while (
         self.buffer.length &&
         command.length &&
@@ -309,7 +323,7 @@ function MasterNode({
       ) {
         payloadSize = PacketParser.payloadSize(self.buffer);
         if (command === "version") {
-					self.debug('got version');
+          self.debug("got version");
           self.masterNodeVersion = self.extract(
             self.buffer,
             0,
@@ -322,7 +336,7 @@ function MasterNode({
           );
           self.handshakeState.version = true;
         } else if (command === "verack") {
-					self.debug('got verack',self.buffer);
+          self.debug("got verack", self.buffer);
           self.buffer = self.extract(
             self.buffer,
             MESSAGE_HEADER_SIZE,
@@ -330,7 +344,7 @@ function MasterNode({
           );
           self.handshakeState.verack = true;
         } else if (command === "sendaddrv2") {
-					self.debug('got sendaddrv2',self.buffer);
+          self.debug("got sendaddrv2", self.buffer);
           self.buffer = self.extract(
             self.buffer,
             MESSAGE_HEADER_SIZE,
@@ -342,7 +356,8 @@ function MasterNode({
       }
     }
     if (self.handshakePhase1Completed() && self.status === "EXPECT_VERACK") {
-			self.debug('handshakePhase1Completed. EXPECT_VERACK is next');
+      self.debug("handshakePhase1Completed. EXPECT_VERACK is next");
+      self.debugFunction('buffer before clear: ',self.buffer);
       self.clearBuffer();
       self.setStatus("RESPOND_VERACK");
       self.client.write(
@@ -354,10 +369,10 @@ function MasterNode({
       );
       return;
     }
-		self.debug("reached end of function");
+    self.debug("reached end of function");
   };
 
-  /**
+    /**
    * Creates a socket descriptor and saves it to self.client.
    * The user may use self.client to write packets to the wire.
    * No message header is prefixed, so treat self.client.write as
@@ -418,7 +433,7 @@ function MasterNode({
         self.processRecvBuffer();
         clearInterval(self.processDebounce);
         self.processDebounce = null;
-      }, 200);
+      }, 800);
     });
 
     /**
@@ -434,25 +449,29 @@ function MasterNode({
       /**
        * see: https://dashcore.readme.io/docs/core-ref-p2p-network-control-messages#version
        */
-      const versionPayload = {
+      let versionPayload = {
         chosen_network: self.network,
         protocol_version: PROTOCOL_VERSION,
         services: [
-          SERVICE_IDENTIFIERS.NODE_NETWORK,
-          SERVICE_IDENTIFIERS.NODE_BLOOM,
+          SERVICE_IDENTIFIERS.NODE_UNNAMED,
+          //SERVICE_IDENTIFIERS.NODE_NETWORK,
+          //SERVICE_IDENTIFIERS.NODE_BLOOM,
         ],
         addr_recv_services: [
           SERVICE_IDENTIFIERS.NODE_NETWORK,
-          SERVICE_IDENTIFIERS.NODE_BLOOM,
+          //SERVICE_IDENTIFIERS.NODE_BLOOM,
         ],
         start_height: self.startBlockHeight,
         addr_recv_ip: mapIPv4ToIpv6(self.ip),
         addr_recv_port: self.port,
         addr_trans_ip: mapIPv4ToIpv6(self.ourIP),
         addr_trans_port: self.client.localPort,
-        relay: false,
+        relay: true,
         mnauth_challenge: self.createMNAuthChallenge(),
       };
+      if (null !== self.userAgent) {
+        versionPayload.user_agent = self.userAgent;
+      }
       self.setStatus("EXPECT_VERACK");
       self.client.write(Network.packet.version(versionPayload));
     });
@@ -460,12 +479,22 @@ function MasterNode({
      * Step 1: connect to the remote host
      */
     self.setStatus("NEEDS_AUTH");
-    self.client.connect({
+    let data = {
       port: self.port,
       host: self.ip,
       keepAlive: true,
       keepAliveInitialDelay: 3,
-    });
+    };
+    let ip = getopt('ip');
+    if(ip){
+      data.localAddress = '127.0.0.' + ip;
+    }
+    ip = getopt('absip');
+    if(ip){
+      data.localAddress = ip;
+    }
+    console.debug({data});
+    self.client.connect(data);
   };
 }
 

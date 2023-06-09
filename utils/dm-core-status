@@ -1,0 +1,6 @@
+#!/bin/bash
+
+~/bin/core-status-1
+~/bin/core-status-2
+~/bin/core-status-3
+~/bin/core-status-seed

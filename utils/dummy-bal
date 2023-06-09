@@ -1,0 +1,2 @@
+#!/bin/bash
+~/bin/dp getaddressbalance '{"addresses":["'"$(cat ~/docs/dummy-address)"'"]}'
