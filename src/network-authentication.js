@@ -12,16 +12,22 @@ let network = config.network;
 let ourIP = config.ourIP;
 let startBlockHeight = config.startBlockHeight;
 let Transaction = require('./ctransaction.js');
+const TxnConstants = require('./transaction-constants.js');
 const NetUtil = require('./network-util.js');
 const hexToBytes = NetUtil.hexToBytes;
+const {
+	DEFAULT_TXIN_SEQUENCE,
+} = TxnConstants;
+const {
+	OP_RETURN,
+} = require('./opcodes.js');
 
 
+const Demo = require('./demodata.js');
 function makeCollateralTx() {
-  const inTx = hexToBytes(
-		'9f6c92b088961b2dce8935dbfda3901bbec9a2c5703e12d54bc5f39e00f3563f'
-  );
+  const inTx = Demo.getInTX(); 
   const vout = 0;
-	const script= hexToBytes('76a9145e648edc6e2321237443a7564074da5d59de9f2588ac');
+	const script= Demo.getTestScript();
 
 	let txn = new Transaction();
 	txn.addVin({
@@ -30,17 +36,14 @@ function makeCollateralTx() {
 		signatureScript: script,
 		sequence: DEFAULT_TXIN_SEQUENCE,
 	});
-  return tx.serialize();
-}
-
-function makeCollateralTx(){
-	let txn = new Transaction();
-	txn.addVin({
-		hash: hexToBytes('9f6c92b088961b2dce8935dbfda3901bbec9a2c5703e12d54bc5f39e00f3563f'),
-		index: 0,
+	txn.addVout({
+		value: 0,
+		pkScript: [OP_RETURN],
 	});
-	return txn.serialize();
+  return txn.serialize();
 }
+let dsaSent = false;
+
 function stateChanged(obj) {
   let masterNode = obj.self;
   switch (masterNode.status) {
@@ -59,7 +62,8 @@ function stateChanged(obj) {
     case "READY":
       console.log("[+] Ready to start dealing with CoinJoin traffic...");
 			masterNode.switchHandlerTo('coinjoin');
-      setInterval(() => {
+			if(dsaSent === false){
+      setTimeout(() => {
         masterNode.client.write(
           Network.packet.coinjoin.dsa({
             chosen_network: network,
@@ -67,7 +71,9 @@ function stateChanged(obj) {
             collateral: makeCollateralTx(),
           })
         );
-      }, 1000);
+				dsaSent = true;
+      }, 10000);
+			}
       break;
     case "EXPECT_DSQ":
       console.info("[+] dsa sent");

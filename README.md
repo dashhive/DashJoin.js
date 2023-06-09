@@ -24,15 +24,19 @@ TBD
 		- Status: *IN PROGRESS*
 		- Overview: A partial implementation of a Transaction is working on a fundamental level. Encoding the transaction for the purpose of creating a collateral transaction is the priority right now.
 		- [ ] Craft a collateral transaction from user input
+			- [ ] Place the encoded raw transaction into the `dsa` message
+				- See: (DASH `dsa` docs)[https://docs.dash.org/projects/core/en/stable/docs/reference/p2p-network-privatesend-messages.html#dsa]
 			
 	- [ ] Transmitting CoinJoin to a Masternode
 		- Status: *IN PROGRESS*
-		- Overview: As of 2023-05-17, we barely have the first message in the CoinJoin handshake completed. We are not yet ready for a demo.
+		- Overview: `dsa` message is very close to being correct
 		- [ ] Send `dsa` message
-			- [x] Craft a `dsa` message
-				- [ ] Encode collateral transactions
+			- [ ] Craft a `dsa` message
+				- [x] Encode collateral transactions
+					- [x] Encode a single `vin` (transaction input hash - or: "outpoint")
+					- [x] Create raw transaction header with this encoded `vin`
 				- [ ] Transmit collateral transactions
-			- notes: dsa packet structure is correct, but the collateral tx needs work.
+			- notes: dsa packet structure is correct, collateral tx is *ALMOST THERE*
 		- [ ] Parse `dssu` messages
 			- Overview: Generic parsing of `dssu` works, but will need to identify other types of dssu packets. In addition, the dssu packet will likely affect logic moving forward based on things like the Message ID and Pool Status/Pool Status Update fields.
 			- [x] Basic parsing of `dssu`

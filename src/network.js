@@ -23,11 +23,13 @@ const MAINNET = "mainnet";
 const TESTNET = "testnet";
 const DEVNET = "devnet";
 const REGTEST = "regtest";
-const VALID_NETS = [MAINNET, TESTNET, DEVNET, REGTEST];
+const DEVNET_PS = "devnet-privatesend";
+const VALID_NETS = [MAINNET, TESTNET, DEVNET, REGTEST,DEVNET_PS];
 const MAINNET_PORT = 9999;
 const TESTNET_PORT = 19999;
 const REGTEST_PORT = 19899;
 const DEVTEST_PORT = 19799;
+const DEVNET_PS_PORT = 19999;
 const MAX_PAYLOAD_SIZE = 0x02000000;
 const MSG_HEADER = {
   MAGIC: 4,
@@ -175,6 +177,15 @@ const NETWORKS = {
   },
   [DEVNET]: {
     port: DEVTEST_PORT,
+    magic: new Uint8Array([
+      //0xCEFFCAE2,
+      0xe2, 0xca, 0xff, 0xce,
+    ]),
+    start: 0xe2caffce,
+    nBits: 0x207fffff,
+  },
+  [DEVNET_PS]: {
+    port: DEVNET_PS_PORT,
     magic: new Uint8Array([
       //0xCEFFCAE2,
       0xe2, 0xca, 0xff, 0xce,
@@ -648,6 +659,7 @@ const ping_message = function () {
   packet[1] = 0xe2;
   packet[2] = 0xca;
   packet[3] = 0xff;
+  packet.set(NETWORKS[net].magic, 0);
   // point us to the beginning of the command name char[12]
   let cmdArray = str2uint8(cmd);
   packet.set(cmdArray, MAGIC_BYTES_SIZE);
@@ -739,7 +751,10 @@ function dsa(args = {
 	packet.set([encodedDenom,0,0,0],offset);
 
 	offset += SIZES.DENOMINATION;
+	console.debug('collateral size:',args.collateral.length);
 	packet.set(args.collateral,offset);
+
+	console.debug({packet});
 
   return wrap_packet(args.chosen_network, "dsa", packet, packet.length );
 }
@@ -953,15 +968,44 @@ Lib.packet.parse.dssu = function (buffer) {
 		STATUS_UPDATE: 4,
 		MESSAGE_ID: 4,
 	};
+
+	console.debug('Size of dssu packet:',buffer.length);
+	/**
+	 * We'll need to point past the message header in
+	 * order to get to the dssu packet details.
+	 */
 	let offset = MESSAGE_HEADER_SIZE;
+
+	let dssuPacket = extractChunk(buffer, offset, buffer.length);
+	console.debug('packet details (minus header):', dssuPacket);
+
+	/**
+	 * Grab the session id
+	 */
   parsed.session_id= extractUint32(buffer, offset);
 	offset += SIZES.SESSION_ID;
+
+	/**
+	 * Grab the state
+	 */
   let state = extractUint32(buffer, offset);
 	offset += SIZES.STATE;
+
+	/**
+	 * Grab the entries count
+	 */
   parsed.entries_count = extractUint32(buffer, offset);
 	offset += SIZES.ENTRIES_COUNT;
+
+	/**
+	 * Grab the status update
+	 */
   let status_update = extractUint32(buffer, offset);
 	offset += SIZES.STATUS_UPDATE;
+
+	/**
+	 * Grab the message id
+	 */
   let message_id = extractUint32(buffer, offset);
   parsed.message_id = [message_id,MESSAGE_ID.toString(message_id)];
 	parsed.state = [state,POOL_STATE.toString(state)];

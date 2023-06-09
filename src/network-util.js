@@ -1,5 +1,13 @@
 "use strict";
 
+let crypto = require('crypto');
+function hashOfHash(data){
+	return crypto.createHash('sha256').update(
+		crypto.createHash('sha256').update(data).digest()
+	).digest();
+}
+
+
 /**
  * Compact Size UINT documentation:
  * https://docs.dash.org/projects/core/en/stable/docs/reference/transactions-compactsize-unsigned-integers.html
@@ -94,8 +102,29 @@ function extractChunk(buffer, start, end) {
   }
   return uiArray;
 }
+function setSignedInt32(pkt, data, at) {
+  pkt.set(new Uint8Array(new Int32Array([data]).buffer), at);
+  return pkt;
+}
 function setUint32(pkt, data, at) {
   pkt.set(new Uint8Array(new Uint32Array([data]).buffer), at);
+  return pkt;
+}
+function setSignedInt64(pkt, data, at) {
+	if(data === 0){
+  	pkt.set(new Uint8Array([0,0,0,0,0,0,0,0]), at);
+		return pkt;
+	}
+		
+  pkt.set(new Uint8Array(new BigInt64Array([data]).buffer), at);
+  return pkt;
+}
+function setUint64(pkt, data, at) {
+	if(data === 0){
+  	pkt.set(new Uint8Array([0,0,0,0,0,0,0,0]), at);
+		return pkt;
+	}
+  pkt.set(new Uint8Array(new BigUint64Array([data]).buffer), at);
   return pkt;
 }
 function dot2num(dot) {
@@ -136,6 +165,7 @@ function mapIPv4ToIpv6(ip) {
 }
 let Lib = {
   dot2num,
+	hashOfHash,
   htonl,
   htons,
   is_ipv6_mapped_ipv4,
@@ -143,6 +173,9 @@ let Lib = {
   hexToBytes,
   num2array,
   setUint32,
+	setUint64,
+	setSignedInt32,
+	setSignedInt64,
   str2uint8,
 	allZeroes,
 calculateCompactSize,
