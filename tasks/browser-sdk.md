@@ -67,7 +67,7 @@ The server object needs to communicate over https (bonus: if you can get websock
     - [ ] Make that happen ^. Set the base url to `origin_server` and replace `${VERSION}` with `api.version`
 - [ ] Pass in a `X-CoinJoin-UserAgent` header
   - value is `api.user_agent` (see above)
-- [ ] Each client will need a custom header to send
+- [ ] Each client will need a custom header to send, but only after you've hit the `/auth/create` route described below
   - The header key should be: `X-CoinJoin-SessionID`
   - This value will be a unique UUID string that is created once you authenticate (don't worry, there's no user/pw login lol)
 - [ ] The first route to hit before any other URL is the `auth` route:
@@ -100,12 +100,18 @@ The server object needs to communicate over https (bonus: if you can get websock
       outputs: [],
     }
   ```
+    - Must have `X-CoinJoin-SessionID` header in request
     - This portion of the server SDK is a work in progress.
     - each key/value pair is TBD
 - [ ] It's possible to get an updated status:
-  - `GET /api/${VERSION}/matchmaking/session`
+  - `GET /api/${VERSION}/matchmaking/session/${SESSION_ID}`
+    - `${SESSION_ID}` is the same value as what you place in `X-CoinJoin-SessionID`
+    - this is the only route where you have to pass `X-CoinJoin-SessionID` in the URL.
+      - if `X-CoinJoin-SessionID` is present in the headers, it will be ignored and ${SESSION_ID} will be honored instead
+    - This route should respond with something like:
   ```json
     {
+      stage: <see below>,
       status: <string>,
       status_code: <integral representation of status>
       error: // if errors
@@ -113,6 +119,23 @@ The server object needs to communicate over https (bonus: if you can get websock
     }
   ```
   - It is safe and most likely preferable to display the `status` to the user, but always sanitize. Never trust even integral inputs (parse them using parseInt())
+  - `stage` is an integer that corresponds to the numbers `0` through `11` in the link provided here: [dash-features-coinjoin.html#coinjoin-processing](https://docs.dash.org/projects/core/en/stable/docs/guide/dash-features-coinjoin.html#coinjoin-processing)
 - [ ] Canceling a session that's in progress is theoretically possible, but it will cause the masternode to charge you a fee. That's what the collateral inputs are for. That part of the SDK is TBD
 
+## Upcoming features TBD:
+- [ ] continuously check the `/matchmaking/session/${SESSION_ID}` route
+- [ ] start a websocket that connects to the origin server
+  - [ ] make sure it upgrades fully to the most secure proto (WSS, I believe)
+- [ ] A polyfill for the websocket API would be to continuously poll `/matchmaking/session/${SESSION_ID}`
+- [ ] A rate-limiting middleware will be built into the express server. Be prepared to handle:
+  - [ ] Rate limit hit. HTTP status `429 (Too Many Requests)`
+    - [ ] Might change, but: anything over 120 requests per minute will be rate limited
+      - rate limit punishment will be no requests can go through until 10 seconds after the rate limit was hit
 
+
+
+# Author(s)
+William Merfalen [github/wmerfalen](https://github.com/wmerfalen)
+
+# Date published
+`Tue Jun 13 15:25:52 UTC 2023`
