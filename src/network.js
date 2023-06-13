@@ -14,7 +14,7 @@ const COIN = require("./coin-join-constants.js").COIN;
 let DashCore = require("@dashevo/dashcore-lib");
 let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
-let assert = require('assert');
+let assert = require("assert");
 
 let Lib = {};
 module.exports = Lib;
@@ -823,8 +823,8 @@ function encodeInputs(inputs) {
   let satoshis = 0;
   for (let input of inputs) {
     satoshis = 0;
-    if(typeof input.amount !== 'undefined'){
-      satoshis = parseInt(input.amount * COIN,10);
+    if (typeof input.amount !== "undefined") {
+      satoshis = parseInt(input.amount * COIN, 10);
     }
     utxos.push({
       txId: input.txid,
@@ -854,19 +854,21 @@ function dsi(
     sourceAddress,
   }
 ) {
-    let satoshisSet = false;
-    let amountSet = false;
+  let satoshisSet = false;
+  let amountSet = false;
   for (let input of args.userInputs) {
-    satoshisSet = typeof input.satoshis !== 'undefined';
-    amountSet = typeof input.amount !== 'undefined';
+    satoshisSet = typeof input.satoshis !== "undefined";
+    amountSet = typeof input.amount !== "undefined";
     if (typeof input.txid === "undefined") {
       throw new Error(`input.txid must be defined on all userInputs`);
     }
     if (typeof input.vout === "undefined") {
       throw new Error(`input.vout must be defined on all userInputs`);
     }
-    if (!satoshisSet && !amountSet){
-      throw new Error(`input.satoshis or input.amount must be defined on all userInputs`);
+    if (!satoshisSet && !amountSet) {
+      throw new Error(
+        `input.satoshis or input.amount must be defined on all userInputs`
+      );
     }
   }
   if (!(args.collateralTxn instanceof Uint8Array)) {
@@ -883,46 +885,61 @@ function dsi(
   //console.debug({userOutputTxn,outputs: userInputTxn.outputs});
 
   // FIXME: very hacky
-  let trimmedUserInput = userInputTxn.uncheckedSerialize().substr(8).replace(/[0]{10}$/,'');
+  let trimmedUserInput = userInputTxn
+    .uncheckedSerialize()
+    .substr(8)
+    .replace(/[0]{10}$/, "");
   let userInputPayload = hexToBytes(trimmedUserInput);
   // FIXME: very hacky
-  let trimmedUserOutput = userOutputTxn.uncheckedSerialize().substr(10).replace(/00000000$/,'');
+  let trimmedUserOutput = userOutputTxn
+    .uncheckedSerialize()
+    .substr(10)
+    .replace(/00000000$/, "");
   let userOutputPayload = hexToBytes(trimmedUserOutput);
   let TOTAL_SIZE =
-    userInputPayload.length + userOutputPayload.length + args.collateralTxn.length;
+    userInputPayload.length +
+    userOutputPayload.length +
+    args.collateralTxn.length;
 
   /**
    * Packet payload
    */
   let offset = 0;
   let packet = new Uint8Array(TOTAL_SIZE);
-  console.debug({packetSize: TOTAL_SIZE, actual: packet.length});
-  console.debug({userInputPayloadSize: userInputPayload.length});
-  console.debug({userOutputPayloadSize: userOutputPayload.length});
-  console.debug({collateralTxnSize: args.collateralTxn.length});
+  console.debug({ packetSize: TOTAL_SIZE, actual: packet.length });
+  console.debug({ userInputPayloadSize: userInputPayload.length });
+  console.debug({ userOutputPayloadSize: userOutputPayload.length });
+  console.debug({ collateralTxnSize: args.collateralTxn.length });
   /**
    * Set the user inputs
    */
   packet.set(userInputPayload);
-  assert(packet[0],args.userInputs.length,'userInputs.length must be the first byte i payload');
+  assert(
+    packet[0],
+    args.userInputs.length,
+    "userInputs.length must be the first byte i payload"
+  );
   offset += userInputPayload.length;
-  console.debug({userInputPayload,packet});
+  console.debug({ userInputPayload, packet });
 
-  
   /**
    * Set the collateral txn(s)
    */
-  packet.set(args.collateralTxn,offset);
+  packet.set(args.collateralTxn, offset);
   offset += args.collateralTxn.length;
 
   /**
    * Set the outputs
    */
-  packet.set(userOutputPayload,offset);
+  packet.set(userOutputPayload, offset);
 
-  console.debug({ packet, offset, }); // FIXME
+  console.debug({ packet, offset }); // FIXME
 
-  assert.equal(packet.length,TOTAL_SIZE,'packet length doesnt match TOTAL_SIZE');
+  assert.equal(
+    packet.length,
+    TOTAL_SIZE,
+    "packet length doesnt match TOTAL_SIZE"
+  );
 
   return wrap_packet(args.chosen_network, "dsi", packet, TOTAL_SIZE);
 }
