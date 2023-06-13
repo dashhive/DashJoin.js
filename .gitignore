@@ -1,1 +1,5 @@
 node_modules/
+src/dcorelib
+src/dsi.js
+src/xdemo*.js
+src/log
