@@ -74,20 +74,20 @@ The server object needs to communicate over https (bonus: if you can get websock
   - `POST /api/${VERSION}/auth/create`
    ```json
     {
-      network: "testnet|devnet|regtest|mainnet|livenet",
-      coin_join: { pass in the entire coin_join object here },
-      dsi: { ... TBD .. },
-      dsa: { pass in return from makeCollateralTxn() here },
+      "network": "testnet|devnet|regtest|mainnet|livenet",
+      "coin_join": "pass in entire coin_join config object here",
+      "dsi": "tbd",
+      "dsa": "pass in return from makeCollateralTxn() here "
     }
     ```
   - The server will respond with a 200 and a response object
    ```json
     {
-      status: <string>,
-      status_code: <integral string relating to status>,
-      session_id: <integer>
-      error: [string] .. only present if error
-      error_code: [integer] .. only present if error
+      "status": "<string>",
+      "status_code": "<integral string relating to status>",
+      "session_id": "<integer>",
+      "error": "[string] .. only present if error",
+      "error_code": "[integer] .. only present if error"
     }
     ```
 - [ ] Take the `session_id` and use it to populate `X-CoinJoin-SessionID` header
@@ -95,9 +95,9 @@ The server object needs to communicate over https (bonus: if you can get websock
   - `POST /api/${VERSION}/matchmaking/session`
   ```json
     {
-      inputs: [],
-      collateral: [],
-      outputs: [],
+      "inputs": ["tbd"],
+      "collateral": ["tbd"],
+      "outputs": ["tbd"],
     }
   ```
     - Must have `X-CoinJoin-SessionID` header in request
@@ -111,11 +111,11 @@ The server object needs to communicate over https (bonus: if you can get websock
     - This route should respond with something like:
   ```json
     {
-      stage: <see below>,
-      status: <string>,
-      status_code: <integral representation of status>
-      error: // if errors
-      error_code: // if errors
+      "stage": "<see below>",
+      "status": "<string>",
+      "status_code": "<integral representation of status>",
+      "error": "// if errors",
+      "error_code": "// if errors"
     }
   ```
   - It is safe and most likely preferable to display the `status` to the user, but always sanitize. Never trust even integral inputs (parse them using parseInt())
