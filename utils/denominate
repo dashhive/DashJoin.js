@@ -1,6 +1,33 @@
 #!/usr/bin/env node
 //# vi: ft=js
 
+const usage = [
+  "Usage: denominate [--custom-source=N] [--dry-run]",
+  "",
+  "flags: ",
+  "   --custom-source=N   use a specific source wallet to pay all other wallets",
+  "   --dry-run           if set, wont actually run commands that spend DASH",
+  "   --help|-h           this help screen",
+  "",
+  "example: denominate --custom-source=han",
+  "example: denominate",
+  "",
+  "denominate will loop through scripts in the ~/bin directory ",
+  "and attempt to send denominations to each address it finds in the ",
+  "listaddressgroupings sub-cmd of dash-cli. The default mode is to ",
+  "do the above, or you can have one wallet sending to all other wallets ",
+  "by using --custom-source=N where N is the user. The user must exist ",
+  "in the scripts array.",
+  "",
+  "The scripts array is hard-coded, but if you need to, you can extend this",
+  "script to read from a json file or something.",
+  "",
+  "The scripts array can be dumped by passing in --dump-scripts",
+].join("\n");
+if (process.argv.includes("--help") || process.argv.includes("h")) {
+  console.info(usage);
+  process.exit(1);
+}
 const proc = require("child_process");
 const HOME_DIR = process.env.HOME;
 const DENOM_AMOUNT = 1.00001;
@@ -8,6 +35,13 @@ function denomination_count() {
   return DENOM_AMOUNT;
 }
 let source = "luke";
+for (let arg of process.argv) {
+  let matches = arg.match(/^\-\-custom\-source=(.*)$/);
+  if (matches) {
+    source = matches[1];
+    break;
+  }
+}
 let scripts = [
   {
     path: "~/bin/dl",
@@ -35,6 +69,10 @@ let scripts = [
     output: "",
   },
 ];
+if (process.argv.includes("--dump-scripts")) {
+  console.log(scripts);
+  process.exit(1);
+}
 function inspectScripts() {
   for (const s of scripts) {
     console.info("[path]:", s.path);
@@ -47,6 +85,16 @@ function inspectScripts() {
 async function processScript(script, address) {
   for (const s of scripts) {
     if (s.wallet === script.wallet) {
+      continue;
+    }
+    if (process.argv.includes("--dry-run")) {
+      console.log(
+        "mocking:",
+        s.path,
+        "sendtoaddress",
+        address[0],
+        denomination_count()
+      );
       continue;
     }
     let ps = await proc.spawnSync(s.path, [
@@ -66,7 +114,7 @@ async function processScript(script, address) {
 }
 function luke() {
   for (let i = 0; i < scripts.length; i++) {
-    if (scripts[i].wallet === "luke") {
+    if (scripts[i].wallet === source) {
       return scripts[i];
     }
   }
@@ -75,10 +123,20 @@ async function processScripts() {
   let src = luke();
   if (process.argv.includes("--only-luke")) {
     for (const s of scripts) {
-      if (s.wallet === "luke") {
+      if (s.wallet === source) {
         continue;
       }
       for (const g of s.groupings[0]) {
+        if (process.argv.includes("--dry-run")) {
+          console.log(
+            "mocking:",
+            src.path,
+            "sendtoaddress",
+            g[0],
+            denomination_count()
+          );
+          continue;
+        }
         let ps = await proc.spawnSync(src.path, [
           "sendtoaddress",
           g[0],
@@ -118,9 +176,6 @@ async function processScripts() {
   }
   if (process.argv.includes("--inspect")) {
     inspectScripts();
-  }
-  if (process.argv.includes("--dry-run")) {
-    process.exit();
   }
   await processScripts();
   if (process.argv.includes("--inspect")) {
