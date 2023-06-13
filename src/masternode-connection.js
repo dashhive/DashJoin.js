@@ -8,18 +8,18 @@ const COIN = require("./coin-join-constants.js").COIN;
 let Lib = {};
 module.exports = Lib;
 
-function getopt(opt){
+function getopt(opt) {
   /**
-   * Accepts something like: 
+   * Accepts something like:
    * 'ip'
    * and will search argv for anything like:
    * --ip=127.0.0.1
    *
    */
-  for(let arg of process.argv){
+  for (let arg of process.argv) {
     let matches = arg.match(/^[\-]{2}([^=]+)=(.*)$/);
-    if(matches){
-      if(matches[1] === opt){
+    if (matches) {
+      if (matches[1] === opt) {
         return matches[2];
       }
     }
@@ -81,6 +81,7 @@ function MasterNode({
   self.buffer = new Uint8Array();
   self.client = null;
   self.debugFunction = debugFunction;
+  self.dsq = null;
   self.frames = [];
   self.userAgent = userAgent;
   self.handshakeState = {
@@ -105,6 +106,7 @@ function MasterNode({
   self.processDebounce = null;
   self.processRecvBuffer = null;
   self.recv = [];
+  self.senddsq = null;
   self.startBlockHeight = startBlockHeight;
   self.status = null;
   self.statusChangedAt = 0;
@@ -120,7 +122,7 @@ function MasterNode({
   self.setStatus = function (s) {
     self.status = s;
     self.statusChangedAt = Date.now();
-    if (self.onStatusChange) {
+    if ("function" === typeof self.onStatusChange) {
       self.onStatusChange({
         self,
       });
@@ -183,7 +185,7 @@ function MasterNode({
     if (command === "getheaders") {
       let parsed = PacketParser.getheaders(self.buffer);
       payloadSize += parsed.hashes.length * 32;
-      self.debugFunction({parsed,payloadSize});
+      self.debugFunction({ parsed, payloadSize });
     }
     if (command === "dssu") {
       let dssu = PacketParser.dssu(self.buffer);
@@ -222,7 +224,13 @@ function MasterNode({
       handshake: self.processHandshakeBuffer,
     };
   };
-  self.senddsq = null;
+  self.extractRemaining = function (payloadSize) {
+    self.buffer = self.extract(
+      self.buffer,
+      MESSAGE_HEADER_SIZE + payloadSize,
+      self.buffer.length
+    );
+  };
   self.processHandshakeBuffer = function () {
     self.debug("[+] processHandshakeBuffer");
     let i = PacketParser.extractItems(self.buffer, ["command", "payloadSize"]);
@@ -230,11 +238,19 @@ function MasterNode({
     let payloadSize = i[1];
 
     self.debug({ justParsed: { command, payloadSize } });
-    if (self.status === "EXPECT_HCDP" || self.status === 'READY') {
+    if (command === "dsq") {
+      self.debugFunction({ command, payloadSize });
+      self.dsq = PacketParser.dsq(self.buffer);
+      self.dsqOrig = self.buffer;
+      self.extractRemaining(payloadSize);
+      self.setStatus("DSQ_RECEIVED");
+      return;
+    }
+    if (self.status === "EXPECT_HCDP" || self.status === "READY") {
       self.debug("EXPECT_HCDP status");
       let packet;
       let parsed = null;
-      while (self.buffer.length){
+      while (self.buffer.length) {
         command = PacketParser.commandName(self.buffer);
         payloadSize = PacketParser.payloadSize(self.buffer);
         packet = {};
@@ -257,38 +273,42 @@ function MasterNode({
           case "sendcmpct":
             break;
           case "senddsq":
-            setTimeout(function(){
+            setTimeout(function () {
               self.client.write(
-                Network.packet.senddsq({ chosen_network: network, fSendDSQueue: true })
+                Network.packet.senddsq({
+                  chosen_network: network,
+                  fSendDSQueue: true,
+                })
               );
               self.setStatus("READY");
-            },10000);
+            }, 10000);
             break;
-          case 'dsq':
-            self.debugFunction({command,payloadSize});
+          case "dsq":
+            self.debugFunction({ command, payloadSize });
             packet = PacketParser.dsq(self.buffer);
-            self.debugFunction(command,packet);
+            self.debugFunction(command, packet);
+            self.dsq = packet;
+            self.setStatus("DSQ_RECEIVED");
             break;
-          case 'dssu':
-            self.debugFunction({command,payloadSize});
+          case "dssu":
+            self.debugFunction({ command, payloadSize });
             packet = PacketParser.dssu(self.buffer);
-            self.debugFunction(command,packet);
+            self.debugFunction(command, packet);
             break;
           case "ping":
             self.handshakeStatePhase2.ping = true;
             self.client.write(
-              Network.packet.pong({ chosen_network: network, nonce: PacketParser.extractPingNonce(self.buffer)})
+              Network.packet.pong({
+                chosen_network: network,
+                nonce: PacketParser.extractPingNonce(self.buffer),
+              })
             );
             break;
           default:
             self.debug("defaulted:", { command, payloadSize });
             break;
         }
-        self.buffer = self.extract(
-          self.buffer,
-          MESSAGE_HEADER_SIZE + payloadSize,
-          self.buffer.length
-        );
+        self.extractRemaining(payloadSize);
       }
     }
     if (self.status === "EXPECT_VERACK") {
@@ -357,7 +377,7 @@ function MasterNode({
     }
     if (self.handshakePhase1Completed() && self.status === "EXPECT_VERACK") {
       self.debug("handshakePhase1Completed. EXPECT_VERACK is next");
-      self.debugFunction('buffer before clear: ',self.buffer);
+      self.debugFunction("buffer before clear: ", self.buffer);
       self.clearBuffer();
       self.setStatus("RESPOND_VERACK");
       self.client.write(
@@ -372,7 +392,7 @@ function MasterNode({
     self.debug("reached end of function");
   };
 
-    /**
+  /**
    * Creates a socket descriptor and saves it to self.client.
    * The user may use self.client to write packets to the wire.
    * No message header is prefixed, so treat self.client.write as
@@ -485,15 +505,15 @@ function MasterNode({
       keepAlive: true,
       keepAliveInitialDelay: 3,
     };
-    let ip = getopt('ip');
-    if(ip){
-      data.localAddress = '127.0.0.' + ip;
+    let ip = getopt("ip");
+    if (ip) {
+      data.localAddress = "127.0.0." + ip;
     }
-    ip = getopt('absip');
-    if(ip){
+    ip = getopt("absip");
+    if (ip) {
       data.localAddress = ip;
     }
-    console.debug({data});
+    console.debug({ data });
     self.client.connect(data);
   };
 }
