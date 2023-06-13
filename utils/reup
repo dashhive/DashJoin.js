@@ -1,5 +1,20 @@
 #!/bin/bash
 
+function dump_denoms(){
+  pushd $PWD
+  # han, luke, chewie, psend, foobar
+  #
+  cd ~/docs/
+  for u in df dh dl dp dche; do 
+    ~/bin/"$u"tx.sh 2000 > ~/docs/"$u"-denominations.json
+  done
+  
+  ~/bin/update-manifest
+  cd ~/docs/
+  git add ./*-denominations.json
+  git commit -m 'chore: update denominations'
+  popd
+}
 function chewie(){
   ~/bin/create-chewie-wallet.sh
   ~/bin/dche getnewaddress > ~/docs/dche-address-0
@@ -37,6 +52,7 @@ CREATE=0
 UNLOCK=0
 TXN=0
 UNUSED=0
+DUMP_DENOMS=0
 
 if [[ "$1" == "--all" ]]; then
   CREATE=1
@@ -46,8 +62,12 @@ if [[ "$1" == "--all" ]]; then
   han
   chewie
   luke
+  DUMP_DENOMS=1
 fi
 
+if [[ "$1" == "--dump-denoms" ]]; then
+  DUMP_DENOMS=1
+fi
 if [[ "$1" == "--create" ]]; then
   CREATE=1
 fi
@@ -122,4 +142,8 @@ if [[ "$UNUSED" == 1 ]]; then
   ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
   ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
   ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+fi
+
+if [[ "$DUMP_DENOMS" == 1 ]]; then
+  dump_denoms
 fi

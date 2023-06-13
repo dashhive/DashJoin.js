@@ -33,6 +33,14 @@ Lib.util.fetchData = async function () {
     privateKeySet: data.privkeySet,
   };
 };
+const CoinJoinDenominations = require('./coin-join-denominations.js');
+/**
+ * @param denomination - integer - one of `CoinJoinDenominations.GetStandardDenominations()`
+ * @return Array of transactions
+ */
+Lib.getDenominatedTransactions = async function(denomination){
+
+};
 Lib.getMultipleUnusedTransactions = async function(count){
   let txns = [];
   for(let i=0; i < count;i++){
@@ -205,6 +213,7 @@ async function fetchData() {
       files = require("./df-config.demodata.json");
       break;
   }
+  let denominations = require(`./${user}-denominations.json`);
   let PsendUsedTxnFile = files.usedTxn;
   let PsendTxnList = require(files.txnList);
   let PsendChangeAddress = await read_file(files.changeAddress);
@@ -214,6 +223,7 @@ async function fetchData() {
     PrivateKey.fromWIF(await read_file(files.wif), NETWORK)
   );
   return {
+    denominations,
     PsendUsedTxnFile,
     PsendTxnList,
     PsendChangeAddress,
