@@ -66,10 +66,26 @@ const script_dir = __dirname;
       "popd",
     ].join("\n");
     await fs.writeFileSync("/tmp/foo", SCRIPT);
-    await cproc.spawnSync('chmod',['+x','/tmp/foo']);
+    await cproc.spawnSync("chmod", ["+x", "/tmp/foo"]);
     let ps = await cproc.spawnSync("/tmp/foo");
     console.debug(ps.stdout.toString());
     console.debug(ps.stderr.toString());
+  }
+  async function get_priv_key(fileName,address){
+    let file = process.env.HOME + '/bin/' + fileName.substr(0,2);
+    if(fileName.substr(0,2) === 'dc'){
+      file = process.env.HOME + '/bin/dche';
+    }
+    let ps = await cproc.spawnSync(file,['dumpprivkey',address]);
+    let privateKey = ps.stdout.toString();
+    let script = file;
+    if(privateKey.length){
+      return privateKey;
+    }
+    //console.info(`[+] ${script} private key for "${address}": '${privateKey}'`);
+    if(ps.stderr?.toString && ps.stderr.toString().replace(/^\s+\s+$/,'').length){
+      console.error(`Exception: '${ps.stderr.toString()}'`);
+    }
   }
   {
     /**
@@ -82,18 +98,27 @@ const script_dir = __dirname;
     let keep = [];
     let sorted = {};
     for (const file of files) {
-      if (file.match(/[a-z]{2}\-txn-staged.json$/)) {
+      if (file.match(/^[a-z]{2}\-txn\-staged\.json$/) || file.match(/^dche\-txn\-staged\.json$/)) {
         sorted = {};
-        let finalName = `${dir}/${file.substr(0,2)}-denominations.json`;
+        let finalName = `${dir}/${file.substr(0, 2)}-denominations.json`;
+        if(file.substr(0,4) === 'dche'){
+          finalName = `${dir}/${file.substr(0,4)}-denominations.json`;
+        }
         let fullName = `${dir}/${file}`;
         let contents = require(fullName);
         keep = [];
         for (let entry of contents) {
           if (entry.category === "receive" && entry.amount === 1.00001) {
             if (typeof sorted[entry.address] === "undefined") {
-              sorted[entry.address] = [];
+              sorted[entry.address] = {
+                transactions: [],
+                privateKey: await get_priv_key(
+                  file,
+                  entry.address
+                ),
+              };
             }
-            sorted[entry.address].push({
+            sorted[entry.address].transactions.push({
               txid: entry.txid,
               vout: entry.vout,
               amount: entry.amount,
@@ -123,7 +148,7 @@ const script_dir = __dirname;
       'git commit -m "chore: update denominations json"',
     ].join("\n");
     await fs.writeFileSync("/tmp/foo", SCRIPT);
-    await cproc.spawnSync('chmod',['+x','/tmp/foo']);
+    await cproc.spawnSync("chmod", ["+x", "/tmp/foo"]);
     let ps = await cproc.spawnSync("/tmp/foo");
     console.debug(ps.stdout.toString());
     console.debug(ps.stderr.toString());
