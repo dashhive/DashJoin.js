@@ -1,0 +1,129 @@
+#!/usr/bin/env node
+//# vi: ft=js
+
+const proc = require("child_process");
+const HOME_DIR = process.env.HOME;
+const DENOM_AMOUNT = 1.00001;
+function denomination_count() {
+  return DENOM_AMOUNT;
+}
+let source = "luke";
+let scripts = [
+  {
+    path: "~/bin/dl",
+    wallet: "luke",
+    output: "",
+  },
+  {
+    path: "~/bin/dh",
+    wallet: "han",
+    output: "",
+  },
+  {
+    path: "~/bin/dche",
+    wallet: "chewie",
+    output: "",
+  },
+  {
+    path: "~/bin/dp",
+    wallet: "psend",
+    output: "",
+  },
+  {
+    path: "~/bin/df",
+    wallet: "foobar",
+    output: "",
+  },
+];
+function inspectScripts() {
+  for (const s of scripts) {
+    console.info("[path]:", s.path);
+    console.info("[wallet]:", s.wallet);
+    for (const g of s.groupings) {
+      console.info(g);
+    }
+  }
+}
+async function processScript(script, address) {
+  for (const s of scripts) {
+    if (s.wallet === script.wallet) {
+      continue;
+    }
+    let ps = await proc.spawnSync(s.path, [
+      "sendtoaddress",
+      address[0],
+      denomination_count(),
+    ]);
+    if (typeof ps.stdout.toString !== "undefined") {
+      console.log(ps.stdout.toString().replace(/[\n]+$/, ""));
+    }
+    if (typeof ps.stderr.toString !== "undefined") {
+      if (ps.stderr.toString().length) {
+        console.error(ps.stderr.toString());
+      }
+    }
+  }
+}
+function luke() {
+  for (let i = 0; i < scripts.length; i++) {
+    if (scripts[i].wallet === "luke") {
+      return scripts[i];
+    }
+  }
+}
+async function processScripts() {
+  let src = luke();
+  if (process.argv.includes("--only-luke")) {
+    for (const s of scripts) {
+      if (s.wallet === "luke") {
+        continue;
+      }
+      for (const g of s.groupings[0]) {
+        let ps = await proc.spawnSync(src.path, [
+          "sendtoaddress",
+          g[0],
+          denomination_count(),
+        ]);
+        if (typeof ps.stdout.toString !== "undefined") {
+          console.log(ps.stdout.toString().replace(/[\n]+$/, ""));
+        }
+        if (typeof ps.stderr.toString !== "undefined") {
+          if (ps.stderr.toString().length) {
+            console.error(ps.stderr.toString());
+          }
+        }
+      }
+    }
+    process.exit();
+    return;
+  }
+  for (const s of scripts) {
+    if (s.groupings.length === 1) {
+      await processScript(s, s.groupings[0][0]);
+      continue;
+    }
+    for (const g of s.groupings[0]) {
+      await processScript(s, g);
+    }
+  }
+}
+(async function () {
+  for (let i = 0; i < scripts.length; i++) {
+    scripts[i].path = scripts[i].path.replace(/^~/, HOME_DIR);
+  }
+
+  for (let i = 0; i < scripts.length; i++) {
+    let ps = await proc.spawnSync(scripts[i].path, ["listaddressgroupings"]);
+    scripts[i].groupings = JSON.parse(ps.stdout.toString());
+  }
+  if (process.argv.includes("--inspect")) {
+    inspectScripts();
+  }
+  if (process.argv.includes("--dry-run")) {
+    process.exit();
+  }
+  await processScripts();
+  if (process.argv.includes("--inspect")) {
+    inspectScripts();
+  }
+})();

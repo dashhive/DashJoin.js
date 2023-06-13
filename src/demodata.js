@@ -103,6 +103,7 @@ Lib.logUsedTransaction = async function (txnId) {
 Lib.getUnusedTransaction = async function () {
   let data = await fetchData();
   let txn = await getUnusedTxn();
+  await Lib.logUsedTransaction(txn.txid);
   return {
     txid: txn.txid,
     sourceAddress: Address(data.sourceAddress, NETWORK),
@@ -143,10 +144,10 @@ Lib.makeDSICollateralTx = async function () {
   };
   var tx = new Transaction()
     .from(utxos)
-    //.to(payeeAddress, amount)
-    //.to(changeAddress, unspent - fee)
+    .to(payeeAddress, amount)
+    .to(changeAddress, unspent - fee)
     .sign(privateKey);
-  return hexToBytes(tx.uncheckedSerialize());
+  return tx;
   //return hexToBytes(tx.uncheckedSerialize());
 };
 

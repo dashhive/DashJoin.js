@@ -2,6 +2,9 @@
 "use strict";
 const COIN = require("./coin-join-constants.js").COIN;
 const Network = require("./network.js");
+const NetworkUtil = require("./network-util.js");
+const hexToBytes = NetworkUtil.hexToBytes;
+const assert = require("assert");
 
 let id = {};
 
@@ -75,6 +78,17 @@ if (process.argv.includes("--id")) {
   }, 10000);
 }
 (async function () {
+  if (process.argv.includes("--eat-txn")) {
+    let txn = await DemoData.getUnusedTransaction();
+    await DemoData.logUsedTransaction(txn.txid);
+    let txn2 = await DemoData.getUnusedTransaction();
+    assert.equal(
+      txn.txid === txn2.txid,
+      false,
+      "duplicate transaction found after --eat-txn!"
+    );
+    process.exit();
+  }
   let dsaSent = false;
 
   function stateChanged(obj) {
@@ -95,24 +109,13 @@ if (process.argv.includes("--id")) {
         break;
       case "READY":
         console.log("[+] Ready to start dealing with CoinJoin traffic...");
-        if (process.argv.includes("--repeat-dsa")) {
-          setInterval(async function () {
-            masterNode.client.write(
-              Network.packet.coinjoin.dsa({
-                chosen_network: network,
-                denomination: COIN / 1000 + 1,
-                collateral: await DemoData.makeCollateralTx(),
-              })
-            );
-            dsaSent = true;
-            console.debug("sent dsa");
-          }, 5000);
-        } else if (dsaSent === false) {
+        if (dsaSent === false) {
+          self.denominationsAmount = parseInt(COIN / 1000,10) + 1;
           setTimeout(async function () {
             masterNode.client.write(
               Network.packet.coinjoin.dsa({
                 chosen_network: network,
-                denomination: COIN / 1000 + 1,
+                denomination: self.denominationsAmount,
                 collateral: await DemoData.makeCollateralTx(),
               })
             );
@@ -138,7 +141,8 @@ if (process.argv.includes("--id")) {
             ["txid", "vout", "amount"]
           );
           let collateralTxn = await DemoData.makeDSICollateralTx();
-          let userOutputs = [1000, 1000]; // FIXME
+          collateralTxn = hexToBytes(collateralTxn.uncheckedSerialize());
+          let userOutputs = [self.denominationsAmount];
           masterNode.client.write(
             Network.packet.coinjoin.dsi({
               chosen_network: network,
@@ -156,15 +160,16 @@ if (process.argv.includes("--id")) {
         break;
     }
   }
-  //let data = await DemoData.util.fetchData();
-  //let sourceAddress = data.sourceAddress;
-  //let userInputs = await DemoData.getMultipleUnusedTransactionsFilter(2, [
-  //  "txid",
-  //  "vout",
-  //  "amount",
-  //]);
-  //let collateralTxn = await DemoData.makeDSICollateralTx();
-  //let userOutputs = [1000, 1000]; // FIXME
+  let data = await DemoData.util.fetchData();
+  let sourceAddress = data.sourceAddress;
+  let userInputs = await DemoData.getMultipleUnusedTransactionsFilter(2, [
+    "txid",
+    "vout",
+    "amount",
+  ]);
+  let collateralTxn = await DemoData.makeDSICollateralTx();
+  console.debug(collateralTxn.uncheckedSerialize());
+  let userOutputs = [1000, 1000]; // FIXME
   //console.debug(
   //  Network.packet.coinjoin.dsi({
   //    chosen_network: network,
