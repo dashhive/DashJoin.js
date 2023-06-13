@@ -1,0 +1,4 @@
+#!/bin/bash
+
+~/bin/dash-cli -conf=/home/foobar/.dashmate/local_3/core/dash.conf \
+  $*

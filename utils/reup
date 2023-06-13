@@ -1,29 +1,125 @@
 #!/bin/bash
 
+function chewie(){
+  ~/bin/create-chewie-wallet.sh
+  ~/bin/dche getnewaddress > ~/docs/dche-address-0
+  ~/bin/dche getrawchangeaddress > ~/docs/dche-change-address-0
+  ~/bin/dche walletpassphrase foobar 100000000
+  ~/bin/dche dumpprivkey $(cat ~/docs/dche-address-0) > ~/docs/dche-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+  done
+  ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+}
+function han(){
+  ~/bin/create-han-wallet.sh
+  ~/bin/dh getnewaddress > ~/docs/dh-address-0
+  ~/bin/dh getrawchangeaddress > ~/docs/dh-change-address-0
+  ~/bin/dh walletpassphrase foobar 100000000
+  ~/bin/dh dumpprivkey $(cat ~/docs/dh-address-0) > ~/docs/dh-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
+  done
+  ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
+}
+function luke(){
+  ~/bin/create-luke-wallet.sh
+  ~/bin/dl getnewaddress > ~/docs/dl-address-0
+  ~/bin/dl getrawchangeaddress > ~/docs/dl-change-address-0
+  ~/bin/dl walletpassphrase foobar 100000000
+  ~/bin/dl dumpprivkey $(cat ~/docs/dl-address-0) > ~/docs/dl-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
+  done
+  ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
+}
+CREATE=0
+UNLOCK=0
+TXN=0
+UNUSED=0
+
+if [[ "$1" == "--all" ]]; then
+  CREATE=1
+  UNLOCK=1
+  TXN=1
+  UNUSED=1
+  han
+  chewie
+  luke
+fi
+
 if [[ "$1" == "--create" ]]; then
+  CREATE=1
+fi
+if [[ "$1" == "--unlock" ]]; then
+  UNLOCK=1
+fi
+if [[ "$1" == "--txn" ]]; then
+  TXN=1
+fi
+if [[ "$1" == "--unusued" ]]; then
+  UNUSED=1
+fi
+
+if [[ "$1" == "--chewie" ]]; then
+  chewie
+fi
+
+
+if [[ "$1" == "--han" ]]; then
+  han
+fi
+
+
+if [[ "$1" == "--luke" ]]; then
+  luke
+fi
+
+if [[ "$CREATE" == 1 ]]; then
   ~/bin/create-foobar-wallet.sh
+  ~/bin/create-luke-wallet.sh
   ~/bin/create-psend-wallet.sh
+  ~/bin/create-han-wallet.sh
+  ~/bin/create-chewie-wallet.sh
   ~/bin/dp getnewaddress > ~/docs/dp-address-0
   ~/bin/df getnewaddress > ~/docs/df-address-0
+  ~/bin/dl getnewaddress > ~/docs/dl-address-0
+  ~/bin/dh getnewaddress > ~/docs/dh-address-0
+  ~/bin/dche getnewaddress > ~/docs/dche-address-0
   ~/bin/df getrawchangeaddress > ~/docs/df-change-address-0
   ~/bin/dp getrawchangeaddress > ~/docs/dp-change-address-0
+  ~/bin/dl getrawchangeaddress > ~/docs/dl-change-address-0
+  ~/bin/dh getrawchangeaddress > ~/docs/dh-change-address-0
+  ~/bin/dche getrawchangeaddress > ~/docs/dche-change-address-0
 fi
 
-if [[ "$1" == "--unlock" ]]; then
+if [[ "$UNLOCK" == 1 ]]; then
   ~/bin/df walletpassphrase funbar 100000000
   ~/bin/dp walletpassphrase foobar 100000000
+  ~/bin/dl walletpassphrase foobar 100000000
+  ~/bin/dh walletpassphrase foobar 100000000
+  ~/bin/dche walletpassphrase foobar 100000000
   ~/bin/df dumpprivkey $(cat ~/docs/df-address-0) > ~/docs/df-privkey-0
   ~/bin/dp dumpprivkey $(cat ~/docs/dp-address-0) > ~/docs/dp-privkey-0
+  ~/bin/dl dumpprivkey $(cat ~/docs/dl-address-0) > ~/docs/dl-privkey-0
+  ~/bin/dh dumpprivkey $(cat ~/docs/dh-address-0) > ~/docs/dh-privkey-0
+  ~/bin/dche dumpprivkey $(cat ~/docs/dche-address-0) > ~/docs/dche-privkey-0
 fi
 
-if [[ "$1" == "--txn" ]]; then
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
+if [[ "$TXN" == 1 ]]; then
+  for i in $(seq 1 4); do
+    ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
+    ~/bin/df generatetoaddress 10 $(cat ~/docs/df-address-0)
+    ~/bin/dp generatetoaddress 10 $(cat ~/docs/dp-address-0)
+    ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
+    ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+  done
 fi
 
-if [[ "$1" == "--get-unused-txn" ]]; then
-  ~/bin/dptx.sh 200 > ~/docs/dp-txn.json
-  #~/bin/dftx.sh 200 > ~/docs/df-txn.json
+if [[ "$UNUSED" == 1 ]]; then
+  ~/bin/dptx.sh 500 > ~/docs/dp-txn.json
+  ~/bin/dftx.sh 500 > ~/docs/df-txn.json
+  ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
+  ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
+  ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
 fi
