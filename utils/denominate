@@ -5,7 +5,16 @@ const usage = [
   "Usage: denominate [--custom-source=N] [--dry-run]",
   "",
   "flags: ",
+  "   --use-script=FILE   specify your own scripts file. Should be a json file.",
+  "   --dump-scripts      if specified, will dump the scripts variable then exit.",
+  "                       If used with --use-script=FILE, will dump the scripts after ",
+  "                       FILE has been imported by --use-script",
+  "   --only-source       when combined with --custom-source=FOO, will only transfer ",
+  "                       funds from the wallet named FOO and will use all other wallets ",
+  "                       as destination wallets. Handy if you have one wallet with tons of ",
+  "                       coins and a bunch of other wallets with hardly anything.",
   "   --custom-source=N   use a specific source wallet to pay all other wallets",
+  "   --inspect           if set, will show debug info",
   "   --dry-run           if set, wont actually run commands that spend DASH",
   "   --help|-h           this help screen",
   "",
@@ -24,6 +33,7 @@ const usage = [
   "",
   "The scripts array can be dumped by passing in --dump-scripts",
 ].join("\n");
+const fs = require("fs/promises");
 if (process.argv.includes("--help") || process.argv.includes("h")) {
   console.info(usage);
   process.exit(1);
@@ -39,6 +49,7 @@ for (let arg of process.argv) {
   let matches = arg.match(/^\-\-custom\-source=(.*)$/);
   if (matches) {
     source = matches[1];
+    console.info(`[+] Using "${source}" as source wallet.`);
     break;
   }
 }
@@ -46,32 +57,34 @@ let scripts = [
   {
     path: "~/bin/dl",
     wallet: "luke",
-    output: "",
   },
   {
     path: "~/bin/dh",
     wallet: "han",
-    output: "",
   },
   {
     path: "~/bin/dche",
     wallet: "chewie",
-    output: "",
   },
   {
     path: "~/bin/dp",
     wallet: "psend",
-    output: "",
   },
   {
     path: "~/bin/df",
     wallet: "foobar",
-    output: "",
   },
 ];
+for (const arg of process.argv) {
+  let matches = arg.match(/^\-\-use\-script=(.*)$/);
+  if (matches) {
+    scripts = require(matches[1]);
+    console.info(`[+] Using scripts file: '${matches[1]}'`);
+  }
+}
 if (process.argv.includes("--dump-scripts")) {
   console.log(scripts);
-  process.exit(1);
+  process.exit();
 }
 function inspectScripts() {
   for (const s of scripts) {
@@ -121,7 +134,7 @@ function luke() {
 }
 async function processScripts() {
   let src = luke();
-  if (process.argv.includes("--only-luke")) {
+  if (process.argv.includes("--only-source")) {
     for (const s of scripts) {
       if (s.wallet === source) {
         continue;
