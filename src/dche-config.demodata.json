@@ -1,8 +1,8 @@
 {
-  "usedTxn": "/home/chewie/docs/dp-used-txn.json",
-  "txnList": "/home/chewie/docs/dp-txn.json",
-  "changeAddress": "/home/chewie/docs/dp-change-address-0",
-  "sourceAddress": "/home/chewie/docs/dp-address-0",
-  "wif": "/home/chewie/docs/dp-privkey-0",
-  "payeeAddress": "/home/chewie/docs/df-address-0"
+  "usedTxn": "/home/foobar/docs/dche-used-txn.json",
+  "txnList": "/home/foobar/docs/dche-txn.json",
+  "changeAddress": "/home/foobar/docs/dche-change-address-0",
+  "sourceAddress": "/home/foobar/docs/dche-address-0",
+  "wif": "/home/foobar/docs/dche-privkey-0",
+  "payeeAddress": "/home/foobar/docs/df-address-0"
 }

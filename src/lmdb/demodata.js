@@ -32,6 +32,7 @@ Lib.initialize = async function (uname,config) {
     create: !exists, 
     maxDbs: config.max_dbs,
   });
+  db_cj();
 
 };
 
@@ -51,10 +52,8 @@ function db_append(key,val){
   let ex = DB.ns.get(key);
   DB.ns.put(key,ex + val);
 }
-let Store = {};
-Lib.store = Store;
-Store.create_user = async function(username){
-  db_cj();
+Lib.store = { user: {}};
+Lib.store.create_user = async function(username){
   let list = db_get('users');
   try {
     list = JSON.parse(list);
@@ -68,6 +67,64 @@ Store.create_user = async function(username){
   }
   list.push(username);
   db_put('users',JSON.stringify(list));
+};
+
+Lib.store.user.add_address = function(username,address) {
+  db_cj_ns([username]);
+  let existing = Lib.address.get_all('addresses');
+  if(existing.indexOf(address) === -1){
+    existing.push(address);
+    db_cj_ns([username]);
+    db_put('addresses',JSON.stringify(existing));
+    return true;
+  }
+  return false;
+};
+Lib.address = {};
+Lib.address.get_all = function(username){
+  db_cj_ns([username]);
+  try {
+    let t = db_get('addresses');
+    t = JSON.parse(t);
+    if(!Array.isArray(t)){
+      return [];
+    }
+    return t;
+  }catch(e){
+    return [];
+  }
+};
+
+Lib.transaction = {};
+Lib.transaction.get_all = function(username){
+  db_cj_ns([username]);
+  try {
+    let t = db_get('transactions');
+    return JSON.parse(t);
+  }catch(e){
+    return [];
+  }
+};
+
+Lib.store.user.transaction = function(username,txn){
+  /**
+   * This is assuming you pass in an array or a single
+   * json object that is the result of the `listtransactions` 
+   * dash-cli command
+   */
+  let existing = Lib.transaction.get_all(username);
+  db_cj_ns([username]);
+  /**
+   * FIXME: guarantee that the same transaction doesn't get added
+   */
+  if(Array.isArray(txn)){
+    for(let t of txn){
+      existing.push(t);
+    }
+  }else{
+    existing.push(txn);
+  }
+  db_put('transactions',JSON.stringify(existing));
 };
 
 Lib.util = {};
@@ -95,9 +152,10 @@ Lib.getMultipleUnusedTransactions = async function (count) {
 async function getUnusedTxn() {
   return null;
 }
-Lib.logUsedTransaction = async function (txnId) {
-};
 
+function d(f) {
+  console.debug(f);
+}
 function dd(f) {
   console.debug(f);
   process.exit();
@@ -243,7 +301,11 @@ async function fetchData() {
 
 (async () => {
   await Lib.initialize('psend',require('./config.json'));
-  Lib.store.create_user('psend');
-  dd(db_get('users'));
-  dd('done');
+  //Lib.store.create_user('psend');
+  //d(db_get('users'));
+  let address = 'yjPpZi9mPott4zeHzP1LtgoB9jPRBmB8hs';
+  Lib.store.user.add_address('psend',address);
+  d(Lib.address.get_all('psend'));
+  //d(Lib.transaction.get_all('psend'));
+  //d(Lib.transaction.get_all('psend'));
 })();

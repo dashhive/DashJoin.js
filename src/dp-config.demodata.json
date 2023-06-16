@@ -1,8 +1,8 @@
 {
-  "usedTxn": "/home/psend/docs/dp-used-txn.json",
-  "txnList": "/home/psend/docs/dp-txn.json",
-  "changeAddress": "/home/psend/docs/dp-change-address-0",
-  "sourceAddress": "/home/psend/docs/dp-address-0",
-  "wif": "/home/psend/docs/dp-privkey-0",
-  "payeeAddress": "/home/psend/docs/df-address-0"
+  "usedTxn": "/home/foobar/docs/dp-used-txn.json",
+  "txnList": "/home/foobar/docs/dp-txn.json",
+  "changeAddress": "/home/foobar/docs/dp-change-address-0",
+  "sourceAddress": "/home/foobar/docs/dp-address-0",
+  "wif": "/home/foobar/docs/dp-privkey-0",
+  "payeeAddress": "/home/foobar/docs/df-address-0"
 }

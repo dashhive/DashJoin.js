@@ -33,27 +33,25 @@ Lib.util.fetchData = async function () {
     privateKeySet: data.privkeySet,
   };
 };
-const CoinJoinDenominations = require('./coin-join-denominations.js');
+const CoinJoinDenominations = require("./coin-join-denominations.js");
 /**
  * @param denomination - integer - one of `CoinJoinDenominations.GetStandardDenominations()`
  * @return Array of transactions
  */
-Lib.getDenominatedTransactions = async function(denomination){
-
-};
-Lib.getMultipleUnusedTransactions = async function(count){
+Lib.getDenominatedTransactions = async function (denomination) {};
+Lib.getMultipleUnusedTransactions = async function (count) {
   let txns = [];
-  for(let i=0; i < count;i++){
+  for (let i = 0; i < count; i++) {
     txns.push(await getUnusedTxn());
   }
   return txns;
 };
-Lib.getMultipleUnusedTransactionsFilter = async function(count,properties){
+Lib.getMultipleUnusedTransactionsFilter = async function (count, properties) {
   let txns = await Lib.getMultipleUnusedTransactions(count);
   let finalTxns = [];
-  for(let txn of txns){
+  for (let txn of txns) {
     let obj = {};
-    for(let prop of properties){
+    for (let prop of properties) {
       obj[prop] = txn[prop];
     }
     finalTxns.push(obj);
@@ -97,6 +95,18 @@ Lib.logUsedTransaction = async function (txnId) {
   data.list.push(txnId);
   await fs.writeFileSync(fileName, JSON.stringify(data, null, 2));
 };
+
+function dd(f) {
+  console.debug(f);
+  process.exit();
+}
+
+function sanitizePrivateKey(p){
+  if(p === null){
+    throw new Error('Private key is null');
+  }
+  return String(p).replace(/[^a-zA-Z0-9]+/gi,'');
+}
 /**
  * Returns {
  *  txid,
@@ -110,18 +120,43 @@ Lib.logUsedTransaction = async function (txnId) {
  */
 Lib.getUnusedTransaction = async function () {
   let data = await fetchData();
-  let txn = await getUnusedTxn();
-  await Lib.logUsedTransaction(txn.txid);
+  let found = false;
+  let sourceAddress = null;
+  let privateKey = null;
+
+  for (let address in data.denominations) {
+    for (let row of data.denominations[address].transactions) {
+      if (await isUsed(data.PsendUsedTxnFile, row.txid)) {
+        continue;
+      }
+      found = row;
+      sourceAddress = address;
+      privateKey = PrivateKey(sanitizePrivateKey(data.denominations[address].privateKey));
+      break;
+    }
+    if (found) {
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Couldn't find an unused transaction`);
+  }
+  if (!sourceAddress) {
+    throw new Error(`Couldn't find source address associated with transaction`);
+  }
+  if (!privateKey) {
+    throw new Error(`Private Key not found`);
+  }
+  console.debug({ found });
+  await logUsedTransaction(data.PsendUsedTxnFile,found.txid);
   return {
-    txid: txn.txid,
-    sourceAddress: Address(data.sourceAddress, NETWORK),
-    vout: parseInt(txn.vout, 10),
-    satoshis: parseInt(txn.amount * COIN, 10),
-    privateKey: data.privkeySet,
+    txid: found.txid,
+    sourceAddress: Address(sourceAddress, NETWORK),
+    vout: parseInt(found.vout, 10),
+    satoshis: parseInt(found.amount * COIN, 10),
+    privateKey,
     changeAddress: data.PsendChangeAddress,
     payeeAddress: data.payeeAddress,
-    _origTxin: txn,
-    _data: data,
   };
 };
 Lib.makeDSICollateralTx = async function () {
@@ -158,6 +193,8 @@ Lib.makeDSICollateralTx = async function () {
   return tx;
   //return hexToBytes(tx.uncheckedSerialize());
 };
+
+Lib.getPrivateKeyForAddress = async function (address) {};
 
 Lib.makeCollateralTx = async function () {
   let PsendTx = await Lib.getUnusedTransaction();
