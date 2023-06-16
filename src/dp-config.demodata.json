@@ -1,0 +1,8 @@
+{
+  "usedTxn": "/home/psend/docs/dp-used-txn.json",
+  "txnList": "/home/psend/docs/dp-txn.json",
+  "changeAddress": "/home/psend/docs/dp-change-address-0",
+  "sourceAddress": "/home/psend/docs/dp-address-0",
+  "wif": "/home/psend/docs/dp-privkey-0",
+  "payeeAddress": "/home/psend/docs/df-address-0"
+}

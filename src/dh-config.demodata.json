@@ -1,0 +1,8 @@
+{
+  "usedTxn": "/home/han/docs/dp-used-txn.json",
+  "txnList": "/home/han/docs/dp-txn.json",
+  "changeAddress": "/home/han/docs/dp-change-address-0",
+  "sourceAddress": "/home/han/docs/dp-address-0",
+  "wif": "/home/han/docs/dp-privkey-0",
+  "payeeAddress": "/home/han/docs/df-address-0"
+}

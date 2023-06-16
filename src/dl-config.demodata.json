@@ -1,0 +1,8 @@
+{
+  "usedTxn": "/home/luke/docs/dp-used-txn.json",
+  "txnList": "/home/luke/docs/dp-txn.json",
+  "changeAddress": "/home/luke/docs/dp-change-address-0",
+  "sourceAddress": "/home/luke/docs/dp-address-0",
+  "wif": "/home/luke/docs/dp-privkey-0",
+  "payeeAddress": "/home/luke/docs/df-address-0"
+}
