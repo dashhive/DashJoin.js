@@ -58,7 +58,7 @@ const script_dir = __dirname;
       "#",
       "cd ~/docs/",
       "for u in df dh dl dp dche; do ",
-      '~/bin/"$u"tx.sh 2000 > ~/docs/"$u"-txn-staged.json',
+      '~/bin/"$u"tx.sh 20000 > ~/docs/"$u"-txn-staged.json',
       "done",
       "cd ~/docs/",
       "git add ./*-txn-staged.json",

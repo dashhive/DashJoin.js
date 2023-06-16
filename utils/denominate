@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 //# vi: ft=js
 
+let DENOM_AMOUNT = 1.00001;
 const usage = [
   "Usage: denominate [--custom-source=N] [--dry-run]",
   "",
   "flags: ",
   "   --use-script=FILE   specify your own scripts file. Should be a json file.",
+  `   --amount=N          specify an amount (in DASH). Defaults to ${DENOM_AMOUNT}.`,
   "   --dump-scripts      if specified, will dump the scripts variable then exit.",
   "                       If used with --use-script=FILE, will dump the scripts after ",
   "                       FILE has been imported by --use-script",
@@ -23,15 +25,33 @@ const usage = [
   "",
   "denominate will loop through scripts in the ~/bin directory ",
   "and attempt to send denominations to each address it finds in the ",
-  "listaddressgroupings sub-cmd of dash-cli. The default mode is to ",
-  "do the above, or you can have one wallet sending to all other wallets ",
+  "listaddressgroupings sub-cmd of dash-cli. ",
+  "",
+  "The default mode is to do the above, or you can have one wallet sending to all other wallets ",
   "by using --custom-source=N where N is the user. The user must exist ",
   "in the scripts array.",
   "",
-  "The scripts array is hard-coded, but if you need to, you can extend this",
-  "script to read from a json file or something.",
+  "#-----------------------",
+  "# Sending custom amounts",
+  "#-----------------------",
+  "  It's possible to send a custom amount instead of the default of " + DENOM_AMOUNT + ".",
+  "  Simply, use --amount=N, where N is your amount. For example: ",
+  "    denominate --amount=0.0500",
   "",
-  "The scripts array can be dumped by passing in --dump-scripts",
+  "#-----------------------------",
+  "# Dumping the 'scripts' array ",
+  "#-----------------------------",
+  "  The scripts array can be dumped by passing in --dump-scripts",
+  "  For example: ",
+  "    denominate --dump-scripts --dry-run",
+  "    [",
+  "        { path: '~/bin/dl', wallet: 'luke' },",
+  "        { path: '~/bin/dh', wallet: 'han' },",
+  "        { path: '~/bin/dche', wallet: 'chewie' },",
+  "        { path: '~/bin/dp', wallet: 'psend' },",
+  "        { path: '~/bin/df', wallet: 'foobar' }",
+  "    ]",
+  "",
 ].join("\n");
 const fs = require("fs/promises");
 if (process.argv.includes("--help") || process.argv.includes("h")) {
@@ -40,7 +60,14 @@ if (process.argv.includes("--help") || process.argv.includes("h")) {
 }
 const proc = require("child_process");
 const HOME_DIR = process.env.HOME;
-const DENOM_AMOUNT = 1.00001;
+for (let arg of process.argv) {
+  let matches = arg.match(/^\-\-amount=(.*)$/);
+  if (matches) {
+    DENOM_AMOUNT= matches[1];
+    console.info(`[+] Using "${DENOM_AMOUNT}" as amount.`);
+    break;
+  }
+}
 function denomination_count() {
   return DENOM_AMOUNT;
 }
