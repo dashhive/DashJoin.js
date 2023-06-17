@@ -48,9 +48,6 @@ Lib.__data = {
     max_dbs: 10,
   },
 };
-async function file_exists(f) {
-  return await fs.existsSync(f);
-}
 Lib.__error = null;
 
 Lib.sane_instance = function () {
@@ -83,7 +80,7 @@ Lib.load_instance = async function (instance_name) {
   Lib.__data.instance.db_path = db_path;
   await Lib.mkpath(db_path);
 
-  let exists = await file_exists(db_path.replace(/\/$/, "") + "/data.mdb");
+  let exists = await fs.existsSync(db_path.replace(/\/$/, "") + "/data.mdb");
   DB.open({
     path: db_path,
     db_name: Lib.__data.instance.db_name,
@@ -273,7 +270,11 @@ Lib.create_wallets = async function (count = 10) {
       }
     }
     await Lib.store_addresses(wallet_name, w_addresses);
+    await Lib.unlock_wallet(wallet_name);
   }
+  await Lib.unlock_all_wallets();
+  await Lib.dump_all_privkeys();
+  await Lib.generate_dash_to_all();
 };
 Lib.unlock_wallet = async function (username) {
   return await Lib.run(
@@ -313,7 +314,7 @@ function trim(s) {
   return f;
 }
 
-Lib.dump_privkey = async function (username, address) {
+Lib.dump_private_key = async function (username, address) {
   let ps = await Lib.wallet_exec(username, ["dumpprivkey", address]);
   let err = trim(ps.stderr.toString());
   let out = trim(ps.stdout.toString());
@@ -323,18 +324,16 @@ Lib.dump_privkey = async function (username, address) {
   throw new Error(`dumpprivkey failed: "${err}"`);
 };
 
-Lib.dump_privkeys = async function () {
+Lib.dump_all_privkeys = async function () {
   let keep = [];
   const users = await Lib.user_list();
   for (const user of users) {
-    process.stdout.write(`[ ] dumping "${user}'s private keys"...`);
     const addresses = await Lib.get_addresses(user);
     if (Array.isArray(addresses) === false || addresses.length === 0) {
-      console.log("");
       continue;
     }
     for (const address of addresses) {
-      let privateKey = await Lib.dump_privkey(user, address).catch(function (
+      let privateKey = await Lib.dump_private_key(user, address).catch(function (
         error
       ) {
         console.error(error);
@@ -343,104 +342,51 @@ Lib.dump_privkeys = async function () {
       if (privateKey === null) {
         continue;
       }
-      console.log(`[+] ${privateKey} dumped`);
       keep.push({ user, privateKey, address });
     }
   }
   for(const pair of keep){
     let r = await Lib.meta_set([pair.user,'privatekey'],pair.address,pair.privateKey);
   }
-  for(const pair of keep){
-    let res = await Lib.meta_get([pair.user,'privatekey'],pair.address);
-    console.debug({address: pair.address,pk: res});
-  }
-  //console.info(`The following wallets should probably be cleaned up:`);
-};
-//j  ~/bin/df dumpprivkey $(cat ~/docs/df-address-0) > ~/docs/df-privkey-0
-//j  ~/bin/dp dumpprivkey $(cat ~/docs/dp-address-0) > ~/docs/dp-privkey-0
-//j  ~/bin/dl dumpprivkey $(cat ~/docs/dl-address-0) > ~/docs/dl-privkey-0
-//j  ~/bin/dh dumpprivkey $(cat ~/docs/dh-address-0) > ~/docs/dh-privkey-0
-//j  ~/bin/dche dumpprivkey $(cat ~/docs/dche-address-0) > ~/docs/dche-privkey-0
-Lib.store = { user: {} };
-Lib.store.create_user = async function (username) {
-  let list = db_get("users");
-  try {
-    list = JSON.parse(list);
-  } catch (e) {
-    list = [];
-  }
-  for (let user of list) {
-    if (user === username) {
-      throw new Error("user already exists");
-    }
-  }
-  list.push(username);
-  db_put("users", JSON.stringify(list));
 };
 
-Lib.user = {};
-Lib.user.create_user = Lib.store.create_user;
-
-Lib.transaction = {};
-Lib.transaction.get_all = function (username) {
-  db_cj_ns([username]);
-  try {
-    let t = db_get("transactions");
-    t = JSON.parse(t);
-    if (!Array.isArray(t)) {
-      return [];
-    }
-    return t;
-  } catch (e) {
-    return [];
-  }
-};
-Lib.transaction.remove = function (username, txn) {
-  db_cj_ns([username]);
-  let existing = Lib.transaction.get_all(username);
-  if (existing.length === 0) {
-    return;
-  }
+Lib.generate_dash_to_all = async function(){
   let keep = [];
-  for (let tx of existing) {
-    if (tx.txid === txn.txid) {
+  const users = await Lib.user_list();
+  for (const user of users) {
+    const addresses = await Lib.get_addresses(user);
+    if (Array.isArray(addresses) === false || addresses.length === 0) {
       continue;
     }
-    keep.push(tx);
-  }
-  Lib.transaction.set(username, keep);
-};
-
-Lib.transaction.set = function (username, items) {
-  if (!Array.isArray(items)) {
-    throw new Error(`items must be an array`);
-  }
-  db_cj_ns([username]);
-  db_put("transactions", JSON.stringify(items));
-};
-Lib.transaction.add = Lib.store.user.transaction;
-
-Lib.store.user.transaction = function (username, txn) {
-  /**
-   * This is assuming you pass in an array or a single
-   * json object that is the result of the `listtransactions`
-   * dash-cli command
-   */
-  let existing = Lib.transaction.get_all(username);
-  db_cj_ns([username]);
-  /**
-   * FIXME: guarantee that the same transaction doesn't get added
-   */
-  if (Array.isArray(txn)) {
-    for (let t of txn) {
-      existing.push(t);
+    for (const address of addresses) {
+      let ps = await Lib.wallet_exec(user, ['generatetoaddress','10',address]);
+      let {err,out} = ps_extract(ps);
+      if(err.length){
+        console.error(err);
+      }else{
+        try {
+          let txns = JSON.parse(out);
+          await Lib.meta_store([user,'utxos'],address,txns);
+          d({[user]:address,'utxos':out,txns});
+        }catch(e){
+          dd(e);
+        }
+      }
     }
-  } else {
-    existing.push(txn);
   }
-  db_put("transactions", JSON.stringify(existing));
 };
 
+function ps_extract(ps,newlines=true){
+  let out = ps.stdout.toString();
+  let err = ps.stderr.toString();
+  out = out.replace(/^[\s]+/,'').replace(/[\s]+$/,'');
+  err = err.replace(/^[\s]+/,'').replace(/[\s]+$/,'');
+  if(!newlines){
+    out = out.replace(/[\n]+$/,'');
+    err = err.replace(/[\n]+$/,'');
+  }
+  return {err,out};
+}
 function d(f) {
   console.debug(f);
 }
@@ -449,42 +395,6 @@ function dd(f) {
   process.exit();
 }
 
-const txns = [
-  {
-    address: "yjNhKBVgajCpKorbbcc4u8WXojcd6wkzPt",
-    category: "receive",
-    amount: 3.0,
-    vout: 0,
-    confirmations: 0,
-    instantlock: true,
-    instantlock_internal: true,
-    chainlock: false,
-    trusted: true,
-    txid: "a45cc2d45f09e5408ad367fdab8e53d1fb9f21517dde6c2e4b70c753cef3dbdc",
-    walletconflicts: [],
-    time: 1686896516,
-    timereceived: 1686896516,
-  },
-  {
-    address: "yjPpZi9mPott4zeHzP1LtgoB9jPRBmB8hs",
-    category: "receive",
-    amount: 3.0,
-    vout: 0,
-    confirmations: 0,
-    instantlock: true,
-    instantlock_internal: true,
-    chainlock: false,
-    trusted: true,
-    txid: "e07a0d29a74f8d865f4160b772857c7a4a4b5328bfaa8289f8654cda1ad0d40d",
-    walletconflicts: [],
-    time: 1686896516,
-    timereceived: 1686896516,
-  },
-];
-
-Lib.wallets = async function (args = {}) {
-  db_cj;
-};
 
 /**
  * args: {
@@ -523,7 +433,6 @@ Lib.seedall = async function (args = {}) {
 
 (async () => {
   d(await Lib.load_instance("base"));
-  d(await Lib.unlock_all_wallets());
-  dd(await Lib.dump_privkeys());
+  dd(await Lib.generate_dash_to_all());
   dd(await Lib.create_wallets());
 })();
