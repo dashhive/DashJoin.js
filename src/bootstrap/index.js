@@ -390,8 +390,74 @@ function dd(f) {
   process.exit();
 }
 
+let config = {
+  instance: 'base',
+};
+function usage(){
+  console.log('Usage: dashboot [options] --instance=N');
+  console.log('');
+  console.log('# Options');
+  console.log('-------------------------------------------------------');
+  console.log(' --instance=N       Uses N as the instance. If not passed, defaults to "base"');
+  console.log('');
+  console.log('# What are instances?');
+  console.log('-------------------------------------------------------');
+  console.log(' An instance is just a folder, but it helps in that it ');
+  console.log(' it will help you separate wallets on a name basis.    ');
+  console.log(' Passing in an instance of "foobar" will create the    ');
+  console.log(' following folder:                                     ');
+  console.log('   ~/.dashjoinjs/foobar/db/                            ');
+  console.log('                                                       ');
+  console.log(' Stored in that directory will be the lmdb database    ');
+  console.log(' which has all wallet data for that instance. This     ');
+  console.log(' makes it trivial to use different datasets by using   ');
+  console.log(' different instances.                                  ');
+  console.log('                                                       ');
+  console.log(' Keep in mind that if you end up deleting an instance  ');
+  console.log(' directory, the wallet and all its transaction data    ');
+  console.log(' still exists in your dashmate cluster.                ');
+  console.log(' This is usually not a problem as the point of dashboot');
+  console.log(' is to allow you to easily create lots of wallets and  ');
+  console.log(' addresses/utxos really easily.                        ');
+  console.log('                                                       ');
+  console.log('# Ideal use case                                       ');
+  console.log('-------------------------------------------------------');
+  console.log(' The ideal usecase is to create a completely brand new ');
+  console.log(' dashmate regtest cluster, then run dashboot for a few ');
+  console.log(' minutes. Then, point your development code at the LMDB');
+  console.log(' database which has all the randomly named wallets,    ');
+  console.log(' utxos, and addresses.                                 ');
+  console.log('                                                       ');
+
+}
+
+async function main(){
+  let help = true;
+  for(const argv of process.argv){
+    let inst = argv.match(/^\-\-instance=(.*)$/);
+    if(inst){
+      config.instance = inst[1];
+      help = false;
+      continue;
+    }
+    let match = argv.match(/^\-\-help$/);
+    if(match){
+      usage();
+      process.exit(1);
+      return;
+    }
+  }
+
+  if(help){
+      usage();
+      process.exit(1);
+  }
+  d(await Lib.load_instance(config.instance));
+  d(await Lib.create_wallets());
+}
+
+
+
 (async () => {
-  d(await Lib.load_instance("base"));
-  dd(await Lib.generate_dash_to_all());
-  dd(await Lib.create_wallets());
+  await main();
 })();
