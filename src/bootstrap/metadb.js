@@ -22,10 +22,11 @@ module.exports = function (_DB) {
     Lib.DB.set_namespaces(["coinjoin", ...list]);
   };
   Lib.db_put = function db_put(key, val) {
-    d({key,val});
+    d({db_put: {key,val}});
     Lib.DB.ns.put(key, val);
   };
   Lib.db_get = function db_get(key) {
+    d({'db_get': key});
     return Lib.DB.ns.get(key);
   };
   Lib.db_append = function db_append(key, val) {

@@ -20,7 +20,7 @@
 
 const COIN = require("../coin-join-constants.js").COIN;
 const Network = require("../network.js");
-const MetaDB = require('./metadb.js');
+const MetaDB = require("./metadb.js");
 
 let Lib = {};
 module.exports = Lib;
@@ -56,7 +56,7 @@ Lib.helpers = function () {
       wallet_exec: Lib.wallet_exec,
     },
     validation: {
-      sanitize_address: clean_addresses,
+      sanitize_address,
     },
     users: {
       get_list: Lib.user_list,
@@ -64,6 +64,7 @@ Lib.helpers = function () {
     },
   };
 };
+Lib.ps_extract = ps_extract;
 function ps_extract(ps, newlines = true) {
   let out = ps.stdout.toString();
   let err = ps.stderr.toString();
@@ -120,13 +121,16 @@ function cli_args(list) {
   ];
 }
 
+let db_cj, db_cj_ns, db_put, db_get, db_append;
 
-let db_cj, db_cj_ns,db_put,db_get,db_append;
+function sanitize_address(address){
+    return address.replace(/[^a-zA-Z0-9]+/gi, "").replace(/[\n]+$/,'');
+}
 
-function clean_addresses(list) {
+function sanitize_addresses(list) {
   let flist = [];
   for (const row of list) {
-    flist.push(list.replace(/[^a-zA-Z0-9]+/gi, ""));
+    flist.push(row.replace(/[^a-zA-Z0-9]+/gi, ""));
   }
   return flist;
 }
@@ -153,14 +157,15 @@ Lib.load_instance = async function (instance_name) {
   });
   Lib.MetaDB = MetaDB(Lib.DB);
   db_cj = Lib.MetaDB.db_cj;
-  db_cj_ns =  Lib.MetaDB.db_cj_ns;
-  db_get =  Lib.MetaDB.db_get;
-  db_put =  Lib.MetaDB.db_put;
-  db_append  = Lib.MetaDB.db_append;
+  db_cj_ns = Lib.MetaDB.db_cj_ns;
+  db_get = Lib.MetaDB.db_get;
+  db_put = Lib.MetaDB.db_put;
+  db_append = Lib.MetaDB.db_append;
   Lib.meta_get = Lib.MetaDB.meta_get;
   Lib.meta_store = Lib.MetaDB.meta_store;
   Lib.meta_set = Lib.MetaDB.meta_set;
   db_cj();
+  return Lib;
 };
 
 Lib.sane_instance = function () {
@@ -194,6 +199,33 @@ Lib.user_list = async function () {
   }
 };
 
+Lib.user_addresses = async function (username) {
+  return await Lib.meta_get(username, "addresses");
+};
+Lib.sanitize_address = sanitize_address;
+
+Lib.user_utxos_from_cli = async function (username, addresses) {
+  let utxos = [];
+  for (const address of addresses) {
+    let ps = await Lib.wallet_exec(username, [
+      "getaddressutxos",
+      JSON.stringify({addresses: [Lib.sanitize_address(address)]}),
+    ]);
+    let { err, out } = ps_extract(ps);
+    if (err.length) {
+      console.error(err);
+    } else {
+      try {
+        let txns = JSON.parse(out);
+        utxos.push(txns);
+      } catch (e) {
+        d(e);
+      }
+    }
+  }
+  return utxos;
+};
+
 Lib.user_create = async function (username) {
   db_cj();
   let list = db_get("users");
@@ -220,6 +252,13 @@ Lib.wallet_exec = async function (wallet_name, cli_arguments) {
     cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments])
   );
 };
+Lib.get_change_address_from_cli = async function(username){
+  let buffer = await Lib.wallet_exec(username, ["getrawchangeaddress"]);
+  let {err,out} = ps_extract(buffer,false);
+  if (out.length){
+    return out;
+  }
+};
 Lib.get_change_addresses = async function (username) {
   return await Lib.meta_get([username, "change"], "addresses");
 };
@@ -227,7 +266,17 @@ Lib.store_change_addresses = async function (username, w_addresses) {
   return await Lib.meta_store(
     [username, "change"],
     "addresses",
-    clean_addresses(w_addresses)
+    sanitize_addresses(w_addresses)
+  );
+};
+Lib.get_private_key = async function (username, address) {
+  return await Lib.meta_get([username, "privatekey"],address);
+};
+Lib.store_addresses = async function (username, w_addresses) {
+  return await Lib.meta_store(
+    username,
+    "addresses",
+    sanitize_addresses(w_addresses)
   );
 };
 
@@ -238,7 +287,7 @@ Lib.store_addresses = async function (username, w_addresses) {
   return await Lib.meta_store(
     username,
     "addresses",
-    clean_addresses(w_addresses)
+    sanitize_addresses(w_addresses)
   );
 };
 
@@ -263,11 +312,12 @@ Lib.create_wallets = async function (count = 10) {
     let w_addresses = [];
     for (let actr = 0; actr < 10; actr++) {
       let buffer = await Lib.wallet_exec(wallet_name, ["getnewaddress"]);
-      if (buffer.stdout.toString().length) {
-        w_addresses.push(buffer.stdout.toString());
+      let {err,out} = ps_extract(buffer,false);
+      if (out.length){
+        w_addresses.push(out);
       }
     }
-    await Lib.store_addresses(wallet_name, w_addresses);
+    await Lib.store_addresses(wallet_name, sanitize_addresses(w_addresses));
     await Lib.unlock_wallet(wallet_name);
   }
   await Lib.unlock_all_wallets();
@@ -351,6 +401,17 @@ Lib.dump_all_privkeys = async function () {
     );
   }
 };
+Lib.get_private_key = async function (username, address) {
+  if (Array.isArray(address) === false) {
+    address = [address];
+  }
+  let pk = [];
+  for (const addr of address) {
+    let r = await Lib.meta_get([username, "privatekey"], addr);
+    pk.push(r);
+  }
+  return pk;
+};
 
 Lib.generate_dash_to_all = async function () {
   let keep = [];
@@ -390,74 +451,69 @@ function dd(f) {
   process.exit();
 }
 
-let config = {
-  instance: 'base',
-};
-function usage(){
-  console.log('Usage: dashboot [options] --instance=N');
-  console.log('');
-  console.log('# Options');
-  console.log('-------------------------------------------------------');
-  console.log(' --instance=N       Uses N as the instance. If not passed, defaults to "base"');
-  console.log('');
-  console.log('# What are instances?');
-  console.log('-------------------------------------------------------');
-  console.log(' An instance is just a folder, but it helps in that it ');
-  console.log(' it will help you separate wallets on a name basis.    ');
+function usage() {
+  console.log("Usage: dashboot [options] --instance=N");
+  console.log("");
+  console.log("# Options");
+  console.log("-------------------------------------------------------");
+  console.log(
+    ' --instance=N       Uses N as the instance. If not passed, defaults to "base"'
+  );
+  console.log("");
+  console.log("# What are instances?");
+  console.log("-------------------------------------------------------");
+  console.log(" An instance is just a folder, but it helps in that it ");
+  console.log(" it will help you separate wallets on a name basis.    ");
   console.log(' Passing in an instance of "foobar" will create the    ');
-  console.log(' following folder:                                     ');
-  console.log('   ~/.dashjoinjs/foobar/db/                            ');
-  console.log('                                                       ');
-  console.log(' Stored in that directory will be the lmdb database    ');
-  console.log(' which has all wallet data for that instance. This     ');
-  console.log(' makes it trivial to use different datasets by using   ');
-  console.log(' different instances.                                  ');
-  console.log('                                                       ');
-  console.log(' Keep in mind that if you end up deleting an instance  ');
-  console.log(' directory, the wallet and all its transaction data    ');
-  console.log(' still exists in your dashmate cluster.                ');
-  console.log(' This is usually not a problem as the point of dashboot');
-  console.log(' is to allow you to easily create lots of wallets and  ');
-  console.log(' addresses/utxos really easily.                        ');
-  console.log('                                                       ');
-  console.log('# Ideal use case                                       ');
-  console.log('-------------------------------------------------------');
-  console.log(' The ideal usecase is to create a completely brand new ');
-  console.log(' dashmate regtest cluster, then run dashboot for a few ');
-  console.log(' minutes. Then, point your development code at the LMDB');
-  console.log(' database which has all the randomly named wallets,    ');
-  console.log(' utxos, and addresses.                                 ');
-  console.log('                                                       ');
-
+  console.log(" following folder:                                     ");
+  console.log("   ~/.dashjoinjs/foobar/db/                            ");
+  console.log("                                                       ");
+  console.log(" Stored in that directory will be the lmdb database    ");
+  console.log(" which has all wallet data for that instance. This     ");
+  console.log(" makes it trivial to use different datasets by using   ");
+  console.log(" different instances.                                  ");
+  console.log("                                                       ");
+  console.log(" Keep in mind that if you end up deleting an instance  ");
+  console.log(" directory, the wallet and all its transaction data    ");
+  console.log(" still exists in your dashmate cluster.                ");
+  console.log(" This is usually not a problem as the point of dashboot");
+  console.log(" is to allow you to easily create lots of wallets and  ");
+  console.log(" addresses/utxos really easily.                        ");
+  console.log("                                                       ");
+  console.log("# Ideal use case                                       ");
+  console.log("-------------------------------------------------------");
+  console.log(" The ideal usecase is to create a completely brand new ");
+  console.log(" dashmate regtest cluster, then run dashboot for a few ");
+  console.log(" minutes. Then, point your development code at the LMDB");
+  console.log(" database which has all the randomly named wallets,    ");
+  console.log(" utxos, and addresses.                                 ");
+  console.log("                                                       ");
 }
 
-async function main(){
+Lib.run_cli_program = async function () {
+  let config = {
+    instance: "base",
+  };
   let help = true;
-  for(const argv of process.argv){
+  for (const argv of process.argv) {
     let inst = argv.match(/^\-\-instance=(.*)$/);
-    if(inst){
+    if (inst) {
       config.instance = inst[1];
       help = false;
       continue;
     }
     let match = argv.match(/^\-\-help$/);
-    if(match){
+    if (match) {
       usage();
       process.exit(1);
       return;
     }
   }
 
-  if(help){
-      usage();
-      process.exit(1);
+  if (help) {
+    usage();
+    process.exit(1);
   }
   d(await Lib.load_instance(config.instance));
   d(await Lib.create_wallets());
-}
-
-
-
-(async () => {
-  await main();
-})();
+};

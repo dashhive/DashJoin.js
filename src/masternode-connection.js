@@ -4,7 +4,21 @@ const crypto = require("crypto");
 const { createHash } = crypto;
 const net = require("net");
 const COIN = require("./coin-join-constants.js").COIN;
+let DashCore = require("@dashevo/dashcore-lib");
+let Transaction = DashCore.Transaction;
+let Script = DashCore.Script;
+let PrivateKey = DashCore.PrivateKey;
+let Address = DashCore.Address;
+let { hexToBytes } = require("./network-util.js");
+const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 
+function d(f) {
+  console.debug(f);
+}
+function dd(f) {
+  console.debug(f);
+  process.exit();
+}
 let Lib = {};
 module.exports = Lib;
 
@@ -73,6 +87,8 @@ function MasterNode({
   onStatusChange = null,
   debugFunction = null,
   userAgent = null,
+  coinJoinData,
+  payee,
 }) {
   let self = this;
   /**
@@ -81,6 +97,8 @@ function MasterNode({
   self.buffer = new Uint8Array();
   self.client = null;
   self.debugFunction = debugFunction;
+  self.coinJoinData = coinJoinData;
+  self.payee= payee;
   self.dsq = null;
   self.frames = [];
   self.userAgent = userAgent;
@@ -110,6 +128,35 @@ function MasterNode({
   self.startBlockHeight = startBlockHeight;
   self.status = null;
   self.statusChangedAt = 0;
+  self.makeCollateralTx = async function(){
+    let amount = parseInt(LOW_COLLATERAL * 2, 10);
+    let fee = 50000; // FIXME
+    let payeeAddress = self.payee.utxos[0].address;
+    let sourceAddress = self.coinJoinData.utxos[0].address;
+    let txid = self.coinJoinData.utxos[0].txid;
+    let vout = self.coinJoinData.utxos[0].outputIndex;
+    let satoshis = self.coinJoinData.utxos[0].satoshis;
+    let changeAddress = self.coinJoinData.changeAddress;
+    if(changeAddress === null){
+      throw new Error(`changeAddress cannot be null`);
+    }
+    let privateKey = self.coinJoinData.utxos[0].privateKey;
+    let unspent = satoshis - amount;
+    let utxos = {
+      txId: txid,
+      outputIndex: vout,
+      sequenceNumber: 0xffffffff,
+      scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+      satoshis,
+    };
+    var tx = new Transaction()
+      .from(utxos)
+      .to(payeeAddress, amount)
+      .to(changeAddress, unspent - fee)
+      .sign(privateKey);
+    return hexToBytes(tx.uncheckedSerialize());
+
+  };
 
   /**
    * Member functions
