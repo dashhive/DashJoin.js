@@ -69,6 +69,8 @@ Lib.store.create_user = async function(username){
   db_put('users',JSON.stringify(list));
 };
 
+Lib.user = {};
+Lib.user.create_user = Lib.store.create_user;
 Lib.store.user.add_address = function(username,address) {
   db_cj_ns([username]);
   let existing = Lib.address.get_all('addresses');
@@ -81,6 +83,7 @@ Lib.store.user.add_address = function(username,address) {
   return false;
 };
 Lib.address = {};
+Lib.address.add = Lib.store.user.add_address;
 Lib.address.get_all = function(username){
   db_cj_ns([username]);
   try {
@@ -100,11 +103,39 @@ Lib.transaction.get_all = function(username){
   db_cj_ns([username]);
   try {
     let t = db_get('transactions');
-    return JSON.parse(t);
+    t = JSON.parse(t);
+    if(!Array.isArray(t)){
+      return [];
+    }
+    return t;
   }catch(e){
     return [];
   }
 };
+Lib.transaction.remove = function(username,txn){
+  db_cj_ns([username]);
+  let existing = Lib.transaction.get_all(username);
+  if(existing.length === 0){
+    return;
+  }
+  let keep = [];
+  for(let tx of existing){
+    if(tx.txid === txn.txid){
+      continue;
+    }
+    keep.push(tx);
+  }
+  Lib.transaction.set(username,keep);
+};
+
+Lib.transaction.set = function(username,items){
+  if(!Array.isArray(items)){
+    throw new Error(`items must be an array`);
+  }
+  db_cj_ns([username]);
+  db_put('transactions',JSON.stringify(items));
+}
+Lib.transaction.add = Lib.store.user.transaction;
 
 Lib.store.user.transaction = function(username,txn){
   /**
@@ -127,32 +158,6 @@ Lib.store.user.transaction = function(username,txn){
   db_put('transactions',JSON.stringify(existing));
 };
 
-Lib.util = {};
-Lib.util.fetchData = async function () {
-  
-  return {
-    usedTxnFileName: data.PsendUsedTxnFile,
-    txnList: data.PsendTxnList,
-    changeAddress: data.PsendChangeAddress,
-    sourceAddress: data.sourceAddress,
-    payeeAddress: data.payeeAddress,
-    privateKeySet: data.privkeySet,
-  };
-};
-
-
-Lib.getDenominatedTransactions = async function (denomination) {};
-Lib.getMultipleUnusedTransactions = async function (count) {
-  let txns = [];
-  for (let i = 0; i < count; i++) {
-    txns.push(await getUnusedTxn());
-  }
-  return txns;
-};
-async function getUnusedTxn() {
-  return null;
-}
-
 function d(f) {
   console.debug(f);
 }
@@ -161,143 +166,40 @@ function dd(f) {
   process.exit();
 }
 
-function sanitizePrivateKey(p){
-  if(p === null){
-    throw new Error('Private key is null');
+const txns = [
+  {
+    "address": "yjNhKBVgajCpKorbbcc4u8WXojcd6wkzPt",
+    "category": "receive",
+    "amount": 3.00000000,
+    "vout": 0,
+    "confirmations": 0,
+    "instantlock": true,
+    "instantlock_internal": true,
+    "chainlock": false,
+    "trusted": true,
+    "txid": "a45cc2d45f09e5408ad367fdab8e53d1fb9f21517dde6c2e4b70c753cef3dbdc",
+    "walletconflicts": [
+    ],
+    "time": 1686896516,
+    "timereceived": 1686896516
+  },
+  {
+    "address": "yjPpZi9mPott4zeHzP1LtgoB9jPRBmB8hs",
+    "category": "receive",
+    "amount": 3.00000000,
+    "vout": 0,
+    "confirmations": 0,
+    "instantlock": true,
+    "instantlock_internal": true,
+    "chainlock": false,
+    "trusted": true,
+    "txid": "e07a0d29a74f8d865f4160b772857c7a4a4b5328bfaa8289f8654cda1ad0d40d",
+    "walletconflicts": [
+    ],
+    "time": 1686896516,
+    "timereceived": 1686896516
   }
-  return String(p).replace(/[^a-zA-Z0-9]+/gi,'');
-}
-/**
- * Returns {
- *  txid,
- *  vout,
- *  sourceAddress,
- *  satoshis,
- *  privateKey,
- *  changeAddress,
- *  payeeAddress,
- * }
- */
-Lib.getUnusedTransaction = async function () {
-  return {
-    txid: found.txid,
-    sourceAddress: Address(sourceAddress, NETWORK),
-    vout: parseInt(found.vout, 10),
-    satoshis: parseInt(found.amount * COIN, 10),
-    privateKey,
-    changeAddress: data.PsendChangeAddress,
-    payeeAddress: data.payeeAddress,
-  };
-};
-Lib.makeDSICollateralTx = async function () {
-  let PsendTx = await Lib.getUnusedTransaction();
-
-  if (PsendTx === null) {
-    throw new Error("Couldnt find unused transaction");
-  }
-
-  let amount = parseInt(LOW_COLLATERAL * 2, 10);
-  let fee = 50000; // FIXME
-  let {
-    payeeAddress,
-    sourceAddress,
-    txid,
-    vout,
-    satoshis,
-    changeAddress,
-    privateKey,
-  } = PsendTx;
-  let unspent = satoshis - amount;
-  let utxos = {
-    txId: txid,
-    outputIndex: vout,
-    sequenceNumber: 0xffffffff,
-    scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-    satoshis,
-  };
-  var tx = new Transaction()
-    .from(utxos)
-    .to(payeeAddress, amount)
-    .to(changeAddress, unspent - fee)
-    .sign(privateKey);
-  return tx;
-  //return hexToBytes(tx.uncheckedSerialize());
-};
-
-Lib.makeCollateralTx = async function () {
-  let PsendTx = await Lib.getUnusedTransaction();
-
-  if (PsendTx === null) {
-    throw new Error("Couldnt find unused transaction");
-  }
-
-  let amount = parseInt(LOW_COLLATERAL * 2, 10);
-  let fee = 50000; // FIXME
-  let {
-    payeeAddress,
-    sourceAddress,
-    txid,
-    vout,
-    satoshis,
-    changeAddress,
-    privateKey,
-  } = PsendTx;
-  let unspent = satoshis - amount;
-  let utxos = {
-    txId: txid,
-    outputIndex: vout,
-    sequenceNumber: 0xffffffff,
-    scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-    satoshis,
-  };
-  var tx = new Transaction()
-    .from(utxos)
-    .to(payeeAddress, amount)
-    .to(changeAddress, unspent - fee)
-    .sign(privateKey);
-  return hexToBytes(tx.uncheckedSerialize());
-};
-Lib.LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
-async function fetchData() {
-  let files = {};
-  switch (user) {
-    default:
-    case "dh":
-      files = require("./dh-config.demodata.json");
-      break;
-    case "dche":
-      files = require("./dche-config.demodata.json");
-      break;
-    case "dl":
-      files = require("./dl-config.demodata.json");
-      break;
-    case "dp":
-      files = require("./dp-config.demodata.json");
-      break;
-    case "df":
-      files = require("./df-config.demodata.json");
-      break;
-  }
-  let denominations = require(`./${user}-denominations.json`);
-  let PsendUsedTxnFile = files.usedTxn;
-  let PsendTxnList = require(files.txnList);
-  let PsendChangeAddress = await read_file(files.changeAddress);
-  let sourceAddress = await read_file(files.sourceAddress);
-  let payeeAddress = await read_file(files.payeeAddress);
-  let privkeySet = PrivateKey(
-    PrivateKey.fromWIF(await read_file(files.wif), NETWORK)
-  );
-  return {
-    denominations,
-    PsendUsedTxnFile,
-    PsendTxnList,
-    PsendChangeAddress,
-    sourceAddress,
-    payeeAddress,
-    privkeySet,
-  };
-}
-
+];
 
 (async () => {
   await Lib.initialize('psend',require('./config.json'));
@@ -306,6 +208,10 @@ async function fetchData() {
   let address = 'yjPpZi9mPott4zeHzP1LtgoB9jPRBmB8hs';
   Lib.store.user.add_address('psend',address);
   d(Lib.address.get_all('psend'));
+
+  //Lib.store.user.transaction('psend',txns);
   //d(Lib.transaction.get_all('psend'));
-  //d(Lib.transaction.get_all('psend'));
+  Lib.transaction.remove('psend',txns[0]);
+  Lib.transaction.remove('psend',txns[1]);
+  d(Lib.transaction.get_all('psend'));
 })();
