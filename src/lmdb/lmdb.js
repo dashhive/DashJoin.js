@@ -12,10 +12,12 @@ Lib.open = function (
     db_name,
     create: false,
     maxDbs: 10,
+    mapSize: null,
   }
 ) {
   let DB = Lib._data.lmdb;
   let DBI = Lib._data.dbi;
+  let mapSize = args.mapSize ?? 16 * 1024 * 1024;
 
   // Print the version
   console.log("Current lmdb version is", DB.version);
@@ -29,6 +31,7 @@ Lib.open = function (
     path: args.path,
     // Maximum number of databases
     maxDbs: args.maxDbs,
+    mapSize: mapSize,
   });
   // Open database
   Lib._data.dbi = env.openDbi({
