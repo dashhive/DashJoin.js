@@ -5,6 +5,8 @@ const Network = require("./network.js");
 const NetworkUtil = require("./network-util.js");
 const hexToBytes = NetworkUtil.hexToBytes;
 const assert = require("assert");
+const extractOption = require('./argv.js').extractOption;
+const { extractUserDetails } = require('./bootstrap/user-details.js');
 
 let id = {};
 
@@ -40,72 +42,29 @@ if (process.argv.includes("--id")) {
     console.info(id);
   }, 10000);
 }
-(async function () {
+
+/**
+ * argv should include:
+ * - instance name
+ * - user
+ */
+(async function (instanceName, username) {
   /**
    * Start 4 clients simultaneously
    */
-  const dashboot = require('./bootstrap/index.js');
-  let instanceName = 'base';
-  for(const argv of process.argv){
-    let match = argv.match(/^\-\-instance=(.*)$/);
-    if(match){
-      instanceName = match[1];
-    }
-  }
+  const dashboot = require("./bootstrap/index.js");
   console.info(`[status]: loading "${instanceName}" instance...`);
   dboot = await dashboot.load_instance(instanceName);
 
-  let users = await dboot.user_list();
-  d({users});
   let choices = [];
-  for(const user of users){
-    let addresses = await dboot.user_addresses(user);
-    if(addresses.length === 0){
-      continue;
-    }
-    let utxos = await dboot.user_utxos_from_cli(user,addresses).catch(function(error){
-      console.error({error});
-      return null;
-    });
-    if(!utxos || utxos.length === 0){
-      continue;
-    }
-    let addrMap = {};
-    for(let k=0; k < Object.keys(utxos).length; k++){
-      for(let x=0; x < utxos[k].length; x++){
-        let u = utxos[k][x];
-        addrMap[u.address] = 1;
-      }
-    }
-    for(const addr in addrMap){
-      let buffer = await dboot.wallet_exec(user, ["dumpprivkey",addr]);
-      let {out,err} = dboot.ps_extract(buffer,false);
-      if(err.length){
-        console.error(err);
-      }
-      if(out.length){
-        addrMap[addr] = out;
-      }
-    }
-    let flatUtxos = [];
-    for(let k=0; k < Object.keys(utxos).length;k++){
-      for(let x=0; x < utxos[k].length; x++){
-        let txid = utxos[k][x].txid;
-        utxos[k][x].privateKey = addrMap[utxos[k][x].address];
-        flatUtxos.push(utxos[k][x]);
-      }
-    }
+  let mainuser = await extractUserDetails(username);
+  let randomPayeeName = await dboot.get_random_payee(username);
+  let payee = await extractUserDetails(randomPayeeName);
 
-    choices.push({
-      user,
-      utxos: flatUtxos,
-      changeAddress: await dboot.get_change_address_from_cli(user),
-    });
-    if(choices.length > 5){
-      break;
-    }
-  }
-  
+  /**
+   * Pass choices[N] to a different process.
+   */
+
   let dsaSent = false;
 
   function stateChanged(obj) {
@@ -127,7 +86,7 @@ if (process.argv.includes("--id")) {
       case "READY":
         console.log("[+] Ready to start dealing with CoinJoin traffic...");
         if (dsaSent === false) {
-          self.denominationsAmount = parseInt(COIN / 1000,10) + 1;
+          self.denominationsAmount = parseInt(COIN / 1000, 10) + 1;
           setTimeout(async function () {
             masterNode.client.write(
               Network.packet.coinjoin.dsa({
@@ -180,19 +139,7 @@ if (process.argv.includes("--id")) {
   //dd('exit');
   //FIXME let collateralTxn = await DemoData.makeDSICollateralTx();
   let collateralTxn = {};
-  //console.debug(collateralTxn.uncheckedSerialize());
   let userOutputs = [1000, 1000]; // FIXME
-  //console.debug(
-  //  Network.packet.coinjoin.dsi({
-  //    chosen_network: network,
-  //    userInputs,
-  //    collateralTxn,
-  //    userOutputs,
-  //    sourceAddress,
-  //  })
-  //);
-  //console.debug("sent dsi packet");
-  //process.exit();
 
   let MasterNodeConnection =
     require("./masternode-connection.js").MasterNodeConnection;
@@ -205,13 +152,14 @@ if (process.argv.includes("--id")) {
     onStatusChange: stateChanged,
     debugFunction: console.debug,
     userAgent: config.userAgent ?? null,
-    coinJoinData: choices[0],
-    payee: choices[1],
-    changeAddresses: choices[0].changeAddresses,
+    coinJoinData: mainuser,
+    payee: payee,
+    changeAddresses: mainuser.changeAddresses,
   });
 
   masterNodeConnection.connect();
-})();
+})(extractOption("instance", true), extractOption("username", true));
+
 function d(f) {
   console.debug(f);
 }
@@ -219,4 +167,3 @@ function dd(f) {
   console.debug(f);
   process.exit();
 }
-

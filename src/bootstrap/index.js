@@ -38,6 +38,8 @@ const crypto = require("crypto");
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const fs = require("fs");
 
+const UserDetails = require("./user-details.js");
+
 Lib.helpers = function () {
   return {
     db_cj,
@@ -109,7 +111,7 @@ Lib.random_name = async function () {
 };
 
 Lib.run = async function (cli_arguments) {
-  return await cproc.spawnSync(DASH_CLI, cli_args(cli_arguments));
+  return await cproc.spawnSync(Lib.DASH_CLI, cli_args(cli_arguments));
 };
 
 Lib.__error = null;
@@ -123,8 +125,8 @@ function cli_args(list) {
 
 let db_cj, db_cj_ns, db_put, db_get, db_append;
 
-function sanitize_address(address){
-    return address.replace(/[^a-zA-Z0-9]+/gi, "").replace(/[\n]+$/,'');
+function sanitize_address(address) {
+  return address.replace(/[^a-zA-Z0-9]+/gi, "").replace(/[\n]+$/, "");
 }
 
 function sanitize_addresses(list) {
@@ -209,7 +211,7 @@ Lib.user_utxos_from_cli = async function (username, addresses) {
   for (const address of addresses) {
     let ps = await Lib.wallet_exec(username, [
       "getaddressutxos",
-      JSON.stringify({addresses: [Lib.sanitize_address(address)]}),
+      JSON.stringify({ addresses: [Lib.sanitize_address(address)] }),
     ]);
     let { err, out } = ps_extract(ps);
     if (err.length) {
@@ -224,6 +226,15 @@ Lib.user_utxos_from_cli = async function (username, addresses) {
     }
   }
   return utxos;
+};
+Lib.user_exists = async function (username) {
+  let users = await Lib.user_list();
+  for (const user of users) {
+    if (user === username) {
+      return true;
+    }
+  }
+  return false;
 };
 
 Lib.user_create = async function (username) {
@@ -252,10 +263,10 @@ Lib.wallet_exec = async function (wallet_name, cli_arguments) {
     cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments])
   );
 };
-Lib.get_change_address_from_cli = async function(username){
+Lib.get_change_address_from_cli = async function (username) {
   let buffer = await Lib.wallet_exec(username, ["getrawchangeaddress"]);
-  let {err,out} = ps_extract(buffer,false);
-  if (out.length){
+  let { err, out } = ps_extract(buffer, false);
+  if (out.length) {
     return out;
   }
 };
@@ -270,7 +281,7 @@ Lib.store_change_addresses = async function (username, w_addresses) {
   );
 };
 Lib.get_private_key = async function (username, address) {
-  return await Lib.meta_get([username, "privatekey"],address);
+  return await Lib.meta_get([username, "privatekey"], address);
 };
 Lib.store_addresses = async function (username, w_addresses) {
   return await Lib.meta_store(
@@ -278,6 +289,18 @@ Lib.store_addresses = async function (username, w_addresses) {
     "addresses",
     sanitize_addresses(w_addresses)
   );
+};
+
+/**
+ * Returns a user that is not `forUser`
+ */
+Lib.get_random_payee = async function (forUser) {
+  let users = await Lib.user_list();
+  for (const user of users) {
+    if (user !== forUser) {
+      return user;
+    }
+  }
 };
 
 Lib.get_addresses = async function (username) {
@@ -312,8 +335,8 @@ Lib.create_wallets = async function (count = 10) {
     let w_addresses = [];
     for (let actr = 0; actr < 10; actr++) {
       let buffer = await Lib.wallet_exec(wallet_name, ["getnewaddress"]);
-      let {err,out} = ps_extract(buffer,false);
-      if (out.length){
+      let { err, out } = ps_extract(buffer, false);
+      if (out.length) {
         w_addresses.push(out);
       }
     }
@@ -457,7 +480,8 @@ function usage() {
   console.log("# Options");
   console.log("-------------------------------------------------------");
   console.log(
-    ' --instance=N       Uses N as the instance. If not passed, defaults to "base"'
+    ' --instance=N       Uses N as the instance. If not passed, defaults to "base"',
+    ' --unlock-all       Unlocks all user wallets.                                '
   );
   console.log("");
   console.log("# What are instances?");
@@ -489,31 +513,44 @@ function usage() {
   console.log(" utxos, and addresses.                                 ");
   console.log("                                                       ");
 }
+const { extractOption } = require("../argv.js");
 
 Lib.run_cli_program = async function () {
   let config = {
     instance: "base",
+    unlock: null,
   };
-  let help = true;
-  for (const argv of process.argv) {
-    let inst = argv.match(/^\-\-instance=(.*)$/);
-    if (inst) {
-      config.instance = inst[1];
-      help = false;
-      continue;
-    }
-    let match = argv.match(/^\-\-help$/);
-    if (match) {
-      usage();
-      process.exit(1);
-      return;
-    }
+  let iname = extractOption("instance", true);
+  if (iname) {
+    config.instance = iname;
+  }
+
+  let help = false;
+  if (extractOption("help") || extractOption("h")) {
+    help = true;
+  }
+  if (extractOption("unlock-all")) {
+    config.unlock = "all";
+    console.debug('all');
   }
 
   if (help) {
     usage();
     process.exit(1);
+    return;
   }
-  d(await Lib.load_instance(config.instance));
-  d(await Lib.create_wallets());
+  console.debug('loading instance');
+  await Lib.load_instance(config.instance);
+  d('checking config.unlock');
+  if (config.unlock === "all") {
+    console.info('[status]: Unlocking...');
+    d(await Lib.unlock_all_wallets());
+    console.log('[DONE]');
+    return;
+  }
+  if(config.create_wallets ?? false){
+    dd(await Lib.create_wallets());
+  }
 };
+
+Lib.extractUniqueUsers = require("./user-details.js").extractUniqueUsers;
