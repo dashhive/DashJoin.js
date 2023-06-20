@@ -1,0 +1,1 @@
+tail -f /home/foobar/.dashmate/logs/local_2/core.log

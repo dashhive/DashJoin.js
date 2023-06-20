@@ -1,29 +1,299 @@
 #!/bin/bash
 
-if [[ "$1" == "--create" ]]; then
+function dump_denoms(){
+  pushd $PWD
+  ~/bin/update-manifest
+  popd
+}
+function load-foobar(){
+  for i in $(seq 1 10); do
+    ~/bin/df generatetoaddress 10 $(cat ~/docs/df-address-0)
+  done
+  ~/bin/dftx.sh 500 > ~/docs/df-txn.json
+}
+function load-psend(){
+  for i in $(seq 1 10); do
+    ~/bin/dp generatetoaddress 10 $(cat ~/docs/dp-address-0)
+  done
+  ~/bin/dptx.sh 500 > ~/docs/dp-txn.json
+}
+function load-han(){
+  for i in $(seq 1 10); do
+    ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
+  done
+  ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
+}
+function load-chewie(){
+  for i in $(seq 1 10); do
+    ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+  done
+  ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+}
+function load-luke(){
+  for i in $(seq 1 10); do
+    ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
+  done
+  ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
+}
+function foobar(){
   ~/bin/create-foobar-wallet.sh
-  ~/bin/create-psend-wallet.sh
-  ~/bin/dp getnewaddress > ~/docs/dp-address-0
   ~/bin/df getnewaddress > ~/docs/df-address-0
   ~/bin/df getrawchangeaddress > ~/docs/df-change-address-0
+  ~/bin/df walletpassphrase foobar 100000000
+  ~/bin/df dumpprivkey $(cat ~/docs/df-address-0) > ~/docs/df-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/df generatetoaddress 10 $(cat ~/docs/df-address-0)
+  done
+  ~/bin/dftx.sh 500 > ~/docs/df-txn.json
+}
+function psend(){
+  ~/bin/create-psend-wallet.sh
+  ~/bin/dp getnewaddress > ~/docs/dp-address-0
   ~/bin/dp getrawchangeaddress > ~/docs/dp-change-address-0
+  ~/bin/dp walletpassphrase foobar 100000000
+  ~/bin/dp dumpprivkey $(cat ~/docs/dp-address-0) > ~/docs/dp-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/dp generatetoaddress 10 $(cat ~/docs/dp-address-0)
+  done
+  ~/bin/dptx.sh 500 > ~/docs/dp-txn.json
+}
+function chewie(){
+  ~/bin/create-chewie-wallet.sh
+  ~/bin/dche getnewaddress > ~/docs/dche-address-0
+  ~/bin/dche getrawchangeaddress > ~/docs/dche-change-address-0
+  ~/bin/dche walletpassphrase foobar 100000000
+  ~/bin/dche dumpprivkey $(cat ~/docs/dche-address-0) > ~/docs/dche-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+  done
+  ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+}
+function han(){
+  ~/bin/create-han-wallet.sh
+  ~/bin/dh getnewaddress > ~/docs/dh-address-0
+  ~/bin/dh getrawchangeaddress > ~/docs/dh-change-address-0
+  ~/bin/dh walletpassphrase foobar 100000000
+  ~/bin/dh dumpprivkey $(cat ~/docs/dh-address-0) > ~/docs/dh-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
+  done
+  ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
+}
+function luke(){
+  ~/bin/create-luke-wallet.sh
+  ~/bin/dl getnewaddress > ~/docs/dl-address-0
+  ~/bin/dl getrawchangeaddress > ~/docs/dl-change-address-0
+  ~/bin/dl walletpassphrase foobar 100000000
+  ~/bin/dl dumpprivkey $(cat ~/docs/dl-address-0) > ~/docs/dl-privkey-0
+  for i in $(seq 1 4); do
+    ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
+  done
+  ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
+}
+
+HELP=0
+CREATE=0
+UNLOCK=0
+TXN=0
+UNUSED=0
+DUMP_DENOMS=0
+HAN=0
+CHEWIE=0
+LUKE=0
+FOOBAR=0
+PSEND=0
+LOAD_HAN=0
+LOAD_CHEWIE=0
+LOAD_LUKE=0
+LOAD_FOOBAR=0
+LOAD_PSEND=0
+for arg in $*; do
+  if [[ "$arg" == "--all" ]]; then
+    CREATE=1
+    UNLOCK=1
+    TXN=1
+    UNUSED=1
+    DUMP_DENOMS=1
+    HAN=1
+    CHEWIE=1
+    LUKE=1
+    FOOBAR=1
+    PSEND=1
+    LOAD_HAN=1
+    LOAD_CHEWIE=1
+    LOAD_LUKE=1
+    LOAD_FOOBAR=1
+    LOAD_PSEND=1
+    break;
+  fi
+
+  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+    HELP=1
+  fi
+  if [[ "$arg" == "--create" ]]; then
+    CREATE=1
+  fi
+  if [[ "$arg" == "--dump-denoms" ]]; then
+    DUMP_DENOMS=1
+  fi
+  if [[ "$arg" == "--txn" ]]; then
+    TXN=1
+  fi
+  if [[ "$arg" == "--create" ]]; then
+    CREATE=1
+  fi
+  if [[ "$arg" == "--unlock" ]]; then
+    UNLOCK=1
+  fi
+  if [[ "$arg" == "--han" ]]; then
+    HAN=1
+  fi
+  if [[ "$arg" == "--luke" ]]; then
+    LUKE=1
+  fi
+  if [[ "$arg" == "--chewie" ]]; then
+    CHEWIE=1
+  fi
+  if [[ "$arg" == "--psend" ]]; then
+    PSEND=1
+  fi
+
+  if [[ "$arg" == "--load-han" ]]; then
+    LOAD_HAN=1
+  fi
+
+  if [[ "$arg" == "--load-chewie" ]]; then
+    LOAD_CHEWIE=1
+  fi
+  if [[ "$arg" == "--load-luke" ]]; then
+    LOAD_LUKE=1
+  fi
+  if [[ "$arg" == "--load-psend" ]]; then
+    LOAD_PSEND=1
+  fi
+  if [[ "$arg" == "--load-foobar" ]]; then
+    LOAD_FOOBAR=1
+  fi
+
+done
+
+if [[ "$HELP" == 1 ]]; then
+  echo "Usage: $0 [--all|--dump-denoms|--create|--unlock|--txn|--unused]"
+  echo "  --all           Same as passing the following flags: "
+  echo "                  --dump-denoms --create --unlock --txn --unused "
+  echo "                  --han --chewie --luke --psend --foobar"
+  echo "  --dump-denoms   runs the script at ~/bin/update-manifest"
+  echo "  --txn           generates transactions to all wallets listed"
+  echo "  --create        creates all wallets, private,keys, and coins. Overwriting previous configs."
+  echo "  --unlock        Unlocks all the wallets using walletpassphrase"
+
+  echo "  --han           Create Han's wallet"
+  echo "  --chewie        Create Chewie's wallet"
+  echo "  --luke          Create Luke's wallet"
+  echo "  --psend         Create Psend's wallet"
+  echo "  --foobar        Create Foobar's wallet"
+  echo 
+  echo "  --load-han      Generate 100 blocks to Han's wallet"
+  echo "  --load-chewie   Generate 100 blocks to Chewie's wallet"
+  echo "  --load-luke     Generate 100 blocks to Luke's wallet"
+  echo "  --load-psend    Generate 100 blocks to Psend's wallet"
+  echo "  --load-foobar   Generate 100 blocks to Foobar's wallet"
+  echo 
+  echo "  --help|-h       This help screen"
+  echo 
+  exit 1
 fi
 
-if [[ "$1" == "--unlock" ]]; then
+
+if [[ "$CREATE" == 1 ]]; then
+  ~/bin/create-foobar-wallet.sh
+  ~/bin/create-luke-wallet.sh
+  ~/bin/create-psend-wallet.sh
+  ~/bin/create-han-wallet.sh
+  ~/bin/create-chewie-wallet.sh
+  ~/bin/dp getnewaddress > ~/docs/dp-address-0
+  ~/bin/df getnewaddress > ~/docs/df-address-0
+  ~/bin/dl getnewaddress > ~/docs/dl-address-0
+  ~/bin/dh getnewaddress > ~/docs/dh-address-0
+  ~/bin/dche getnewaddress > ~/docs/dche-address-0
+  ~/bin/df getrawchangeaddress > ~/docs/df-change-address-0
+  ~/bin/dp getrawchangeaddress > ~/docs/dp-change-address-0
+  ~/bin/dl getrawchangeaddress > ~/docs/dl-change-address-0
+  ~/bin/dh getrawchangeaddress > ~/docs/dh-change-address-0
+  ~/bin/dche getrawchangeaddress > ~/docs/dche-change-address-0
+fi
+
+if [[ "$UNLOCK" == 1 ]]; then
   ~/bin/df walletpassphrase funbar 100000000
   ~/bin/dp walletpassphrase foobar 100000000
+  ~/bin/dl walletpassphrase foobar 100000000
+  ~/bin/dh walletpassphrase foobar 100000000
+  ~/bin/dche walletpassphrase foobar 100000000
   ~/bin/df dumpprivkey $(cat ~/docs/df-address-0) > ~/docs/df-privkey-0
   ~/bin/dp dumpprivkey $(cat ~/docs/dp-address-0) > ~/docs/dp-privkey-0
+  ~/bin/dl dumpprivkey $(cat ~/docs/dl-address-0) > ~/docs/dl-privkey-0
+  ~/bin/dh dumpprivkey $(cat ~/docs/dh-address-0) > ~/docs/dh-privkey-0
+  ~/bin/dche dumpprivkey $(cat ~/docs/dche-address-0) > ~/docs/dche-privkey-0
 fi
 
-if [[ "$1" == "--txn" ]]; then
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
-  ~/bin/df generatetoaddress 10 $(cat ~/docs/dp-address-0)
+if [[ "$TXN" == 1 ]]; then
+  for i in $(seq 1 10); do
+    ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
+    ~/bin/df generatetoaddress 10 $(cat ~/docs/df-address-0)
+    ~/bin/dp generatetoaddress 10 $(cat ~/docs/dp-address-0)
+    ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
+    ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+  done
 fi
 
-if [[ "$1" == "--get-unused-txn" ]]; then
-  ~/bin/dptx.sh 200 > ~/docs/dp-txn.json
-  #~/bin/dftx.sh 200 > ~/docs/df-txn.json
+if [[ "$UNUSED" == 1 ]]; then
+  ~/bin/dptx.sh 500 > ~/docs/dp-txn.json
+  ~/bin/dftx.sh 500 > ~/docs/df-txn.json
+  ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
+  ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
+  ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+fi
+
+if [[ "$DUMP_DENOMS" == 1 ]]; then
+  dump_denoms
+fi
+
+if [[ "$HAN" == 1 ]]; then
+  han
+fi
+
+if [[ "$LUKE" == 1 ]]; then
+  luke 
+fi
+
+if [[ "$CHEWIE" == 1 ]]; then
+  chewie
+fi
+
+if [[ "$FOOBAR" == 1 ]]; then
+  foobar
+fi
+
+if [[ "$PSEND" == 1 ]]; then
+  psend
+fi
+
+if [[ "$LOAD_HAN" == 1 ]]; then
+  load-han
+fi
+
+if [[ "$LOAD_CHEWIE" == 1 ]]; then
+  load-chewie
+fi
+
+if [[ "$LOAD_LUKE" == 1 ]]; then
+  load-luke
+fi
+
+if [[ "$LOAD_PSEND" == 1 ]]; then
+  load-psend
+fi
+
+if [[ "$LOAD_FOOBAR" == 1 ]]; then
+  load-foobar
 fi

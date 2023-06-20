@@ -13,56 +13,53 @@ let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
 let PrivateKey = DashCore.PrivateKey;
 let Address = DashCore.Address;
-let { hexToBytes } = require('./network-util.js');
+let { hexToBytes } = require("./network-util.js");
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const fs = require("fs");
-const {
-  read_file,
-  logUsedTransaction,
-  isUsed,
-} = require("./ctransaction.js");
-let user = 'dp';
-Lib.initialize = function(uname){
+const { read_file, logUsedTransaction, isUsed } = require("./ctransaction.js");
+let user = "dp";
+Lib.initialize = function (uname) {
   user = uname;
 };
-
-async function fetchData() {
-  let files = {};
-  switch(user){
-    default:
-    case 'dh': 
-      files = require("./dh-config.demodata.json");
-      break;
-    case 'dche': 
-      files = require("./dche-config.demodata.json");
-      break;
-    case 'dl': 
-      files = require("./dl-config.demodata.json");
-      break;
-    case 'dp': 
-      files = require("./dp-config.demodata.json");
-      break;
-    case 'df':
-      files = require("./df-config.demodata.json");
-      break;
-  }
-  let PsendUsedTxnFile = files.usedTxn;
-  let PsendTxnList = require(files.txnList);
-  let PsendChangeAddress = await read_file(files.changeAddress);
-  let sourceAddress = await read_file(files.sourceAddress);
-  let payeeAddress = await read_file(files.payeeAddress);
-  let privkeySet = PrivateKey(
-    PrivateKey.fromWIF(await read_file(files.wif), NETWORK)
-  );
+Lib.util = {};
+Lib.util.fetchData = async function () {
+  let data = await fetchData();
   return {
-    PsendUsedTxnFile,
-    PsendTxnList,
-    PsendChangeAddress,
-    sourceAddress,
-    payeeAddress,
-    privkeySet,
+    usedTxnFileName: data.PsendUsedTxnFile,
+    txnList: data.PsendTxnList,
+    changeAddress: data.PsendChangeAddress,
+    sourceAddress: data.sourceAddress,
+    payeeAddress: data.payeeAddress,
+    privateKeySet: data.privkeySet,
   };
-}
+};
+const CoinJoinDenominations = require("./coin-join-denominations.js");
+/**
+ * @param denomination - integer - one of `CoinJoinDenominations.GetStandardDenominations()`
+ * @return Array of transactions
+ */
+Lib.getDenominatedTransactions = async function (denomination) {};
+Lib.getMultipleUnusedTransactions = async function (count) {
+  let txns = [];
+  for (let i = 0; i < count; i++) {
+    txns.push(await getUnusedTxn());
+  }
+  return txns;
+};
+Lib.getMultipleUnusedTransactionsFilter = async function (count, properties) {
+  let txns = await Lib.getMultipleUnusedTransactions(count);
+  let finalTxns = [];
+  for (let txn of txns) {
+    let obj = {};
+    for (let prop of properties) {
+      obj[prop] = txn[prop];
+    }
+    finalTxns.push(obj);
+    obj = {};
+  }
+  return finalTxns;
+};
+
 async function getUnusedTxn() {
   let { PsendTxnList, sourceAddress, PsendUsedTxnFile } = await fetchData();
   for (let txn of PsendTxnList) {
@@ -73,7 +70,7 @@ async function getUnusedTxn() {
      * 3) where address matches dp-address-0
      * 4) txid does NOT exist in /home/foobar/docs/dp-used-txn.json
      */
-    if (txn.category === 'receive' || txn.category === 'send') {
+    if (txn.category === "receive" || txn.category === "send") {
       continue;
     }
     if (txn.confirmations === 0) {
@@ -98,6 +95,18 @@ Lib.logUsedTransaction = async function (txnId) {
   data.list.push(txnId);
   await fs.writeFileSync(fileName, JSON.stringify(data, null, 2));
 };
+
+function dd(f) {
+  console.debug(f);
+  process.exit();
+}
+
+function sanitizePrivateKey(p){
+  if(p === null){
+    throw new Error('Private key is null');
+  }
+  return String(p).replace(/[^a-zA-Z0-9]+/gi,'');
+}
 /**
  * Returns {
  *  txid,
@@ -111,19 +120,81 @@ Lib.logUsedTransaction = async function (txnId) {
  */
 Lib.getUnusedTransaction = async function () {
   let data = await fetchData();
-  let txn = await getUnusedTxn();
+  let found = false;
+  let sourceAddress = null;
+  let privateKey = null;
+
+  for (let address in data.denominations) {
+    for (let row of data.denominations[address].transactions) {
+      if (await isUsed(data.PsendUsedTxnFile, row.txid)) {
+        continue;
+      }
+      found = row;
+      sourceAddress = address;
+      privateKey = PrivateKey(sanitizePrivateKey(data.denominations[address].privateKey));
+      break;
+    }
+    if (found) {
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error(`Couldn't find an unused transaction`);
+  }
+  if (!sourceAddress) {
+    throw new Error(`Couldn't find source address associated with transaction`);
+  }
+  if (!privateKey) {
+    throw new Error(`Private Key not found`);
+  }
+  console.debug({ found });
+  await logUsedTransaction(data.PsendUsedTxnFile,found.txid);
   return {
-    txid: txn.txid,
-    sourceAddress: Address(data.sourceAddress, NETWORK),
-    vout: parseInt(txn.vout, 10),
-    satoshis: parseInt(txn.amount * COIN, 10),
-    privateKey: data.privkeySet,
+    txid: found.txid,
+    sourceAddress: Address(sourceAddress, NETWORK),
+    vout: parseInt(found.vout, 10),
+    satoshis: parseInt(found.amount * COIN, 10),
+    privateKey,
     changeAddress: data.PsendChangeAddress,
     payeeAddress: data.payeeAddress,
-    _origTxin: txn,
-    _data: data,
   };
 };
+Lib.makeDSICollateralTx = async function () {
+  let PsendTx = await Lib.getUnusedTransaction();
+
+  if (PsendTx === null) {
+    throw new Error("Couldnt find unused transaction");
+  }
+
+  let amount = parseInt(LOW_COLLATERAL * 2, 10);
+  let fee = 50000; // FIXME
+  let {
+    payeeAddress,
+    sourceAddress,
+    txid,
+    vout,
+    satoshis,
+    changeAddress,
+    privateKey,
+  } = PsendTx;
+  let unspent = satoshis - amount;
+  let utxos = {
+    txId: txid,
+    outputIndex: vout,
+    sequenceNumber: 0xffffffff,
+    scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+    satoshis,
+  };
+  var tx = new Transaction()
+    .from(utxos)
+    .to(payeeAddress, amount)
+    .to(changeAddress, unspent - fee)
+    .sign(privateKey);
+  return tx;
+  //return hexToBytes(tx.uncheckedSerialize());
+};
+
+Lib.getPrivateKeyForAddress = async function (address) {};
 
 Lib.makeCollateralTx = async function () {
   let PsendTx = await Lib.getUnusedTransaction();
@@ -132,32 +203,69 @@ Lib.makeCollateralTx = async function () {
     throw new Error("Couldnt find unused transaction");
   }
 
-  async function makeCollateralTx() {
-    let amount = parseInt(LOW_COLLATERAL * 2, 10);
-    let fee = 50000;
-    let {
-      payeeAddress,
-      sourceAddress,
-      txid,
-      vout,
-      satoshis,
-      changeAddress,
-      privateKey,
-    } = PsendTx;
-    let unspent = satoshis - amount;
-    let utxos = {
-      txId: txid,
-      outputIndex: vout,
-      sequenceNumber: 0xffffffff,
-      scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-      satoshis,
-    };
-    var tx = new Transaction()
-      .from(utxos)
-      .to(payeeAddress, amount)
-      .to(changeAddress, unspent - fee)
-      .sign(privateKey);
-    return hexToBytes(tx.uncheckedSerialize());
-  }
-  return await makeCollateralTx();
+  let amount = parseInt(LOW_COLLATERAL * 2, 10);
+  let fee = 50000; // FIXME
+  let {
+    payeeAddress,
+    sourceAddress,
+    txid,
+    vout,
+    satoshis,
+    changeAddress,
+    privateKey,
+  } = PsendTx;
+  let unspent = satoshis - amount;
+  let utxos = {
+    txId: txid,
+    outputIndex: vout,
+    sequenceNumber: 0xffffffff,
+    scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+    satoshis,
+  };
+  var tx = new Transaction()
+    .from(utxos)
+    .to(payeeAddress, amount)
+    .to(changeAddress, unspent - fee)
+    .sign(privateKey);
+  return hexToBytes(tx.uncheckedSerialize());
 };
+Lib.LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
+async function fetchData() {
+  let files = {};
+  switch (user) {
+    default:
+    case "dh":
+      files = require("./dh-config.demodata.json");
+      break;
+    case "dche":
+      files = require("./dche-config.demodata.json");
+      break;
+    case "dl":
+      files = require("./dl-config.demodata.json");
+      break;
+    case "dp":
+      files = require("./dp-config.demodata.json");
+      break;
+    case "df":
+      files = require("./df-config.demodata.json");
+      break;
+  }
+  let denominations = require(`./${user}-denominations.json`);
+  let PsendUsedTxnFile = files.usedTxn;
+  let PsendTxnList = require(files.txnList);
+  let PsendChangeAddress = await read_file(files.changeAddress);
+  let sourceAddress = await read_file(files.sourceAddress);
+  let payeeAddress = await read_file(files.payeeAddress);
+  let privkeySet = PrivateKey(
+    PrivateKey.fromWIF(await read_file(files.wif), NETWORK)
+  );
+  return {
+    denominations,
+    PsendUsedTxnFile,
+    PsendTxnList,
+    PsendChangeAddress,
+    sourceAddress,
+    payeeAddress,
+    privkeySet,
+  };
+}
