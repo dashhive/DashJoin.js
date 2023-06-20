@@ -7,6 +7,9 @@ const hexToBytes = NetworkUtil.hexToBytes;
 const assert = require("assert");
 const cproc = require("child_process");
 const extractOption = require('./argv.js').extractOption;
+const path = require('path');
+
+const CURDIR = path.resolve(__dirname);
 
 let id = {};
 
@@ -54,6 +57,7 @@ if (process.argv.includes("--id")) {
   /**
    * Pass choices[N] to a different process.
    */
+  let f = [];
   for(const choice of uniqueUsers){
     /**
      * Fork() 5 different processes. 
@@ -63,14 +67,28 @@ if (process.argv.includes("--id")) {
      * profit
      *
      */
-    d(choice.user);
-    continue;
-    cproc.spawn(node(),['./demo.js',`--instance=${instanceName}`,`--username=${choice.user}`]);
+    d({user: choice.user, node: node()});
+    let m = cproc.spawn('node',[`${CURDIR}/demo.js`,`--instance=${instanceName}`,`--username=${choice.user}`]);
+    m.stdout.on('data', (data) => {
+      console.log('[ok]: ',data.toString());
+    });
+    m.stderr.on('data', (data) => {
+      console.error('error',data.toString());
+    });
+    f.push(m);
   }
-dd('thats it');
-
+  while(1){
+    await sleep(500);
+  }
   
 })(extractOption('instance',true));
+async function sleep(ms){
+  return new Promise((resolve,reject) => {
+    setTimeout(() => {
+      resolve();
+    },ms);
+  });
+}
 function d(f) {
   console.debug(f);
 }

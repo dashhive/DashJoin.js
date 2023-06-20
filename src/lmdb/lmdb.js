@@ -6,6 +6,9 @@ Lib._data = {
   dbi: null,
   env: null,
 };
+Lib.print_version = function(){
+  console.log("Current lmdb version is", Lib.__data.lmdb.version);
+};
 Lib.open = function (
   args = {
     path,
@@ -20,7 +23,6 @@ Lib.open = function (
   let mapSize = args.mapSize ?? 16 * 1024 * 1024;
 
   // Print the version
-  console.log("Current lmdb version is", DB.version);
   // Create new LMDB environment
   Lib._data.env = new DB.Env();
   let env = Lib._data.env;

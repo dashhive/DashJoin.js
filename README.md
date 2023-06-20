@@ -9,6 +9,39 @@ A non-custodial server-side SDK that allows users to mix using DASH's CoinJoin f
     - [ ] Send collateral
     - [ ] Send outputs
 
+
+# Architecture
+- `src/launcher.js` 
+  - used for launching multiple instances of the `demo.js` script
+  - each instance of `demo.js` is given a dashboot instance name and username to fetch
+
+## Seeding
+- `bin/dboot` will have all that you'd need to create multiple wallets, addresses, and transactions capable of being used for DashJoin.js development. See the `--help` page.
+
+## Instances
+- An instance is just a folder that holds different wallets and other state that is useful for testing DashJoin.js. See `bin/dboot --help` for more info.
+
+# Using `bin/dboot`
+
+## Create a bunch of wallets
+This command will create an instance called `base` and create a bunch of different wallets with randomly generated unique names. Each wallet with have many addresses and UTXO's attached to it once dboot is done.
+```sh
+./bin/dboot --instance=base --create-wallets
+```
+
+## Generating DASH to a specific wallet
+The following command will generate DASH to the wallet named `ABCD`.
+```sh
+./bin/dboot --instance=base --generate-to=ABCD
+```
+
+## Unlocking all wallets
+To unlock all wallets, run:
+```sh
+./bin/dboot --instance=base --unlock-all
+```
+
+
 # Release Status
 TBD
 

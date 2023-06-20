@@ -12,9 +12,16 @@ function dd(f) {
   process.exit();
 }
 
+
 module.exports = function (_DB) {
-  let Lib = { DB: _DB };
+  let Lib = { DB: _DB, debug: false,};
   let ourDB = _DB;
+  Lib.set_debug = function(on_or_off){
+    Lib.debug = on_or_off;
+  };
+  Lib.get_debug = function(){
+    return Lib.debug;
+  };
   Lib.db_cj = function db_cj() {
     Lib.DB.set_namespaces(["coinjoin"]);
   };
@@ -22,11 +29,15 @@ module.exports = function (_DB) {
     Lib.DB.set_namespaces(["coinjoin", ...list]);
   };
   Lib.db_put = function db_put(key, val) {
-    d({db_put: {key,val}});
+    if(Lib.debug){
+      d({db_put: {key,val}});
+    }
     Lib.DB.ns.put(key, val);
   };
   Lib.db_get = function db_get(key) {
-    d({'db_get': key});
+    if(Lib.debug){
+      d({'db_get': key});
+    }
     return Lib.DB.ns.get(key);
   };
   Lib.db_append = function db_append(key, val) {
@@ -60,7 +71,7 @@ module.exports = function (_DB) {
     if (!Array.isArray(values)) {
       values = [values];
     }
-    db_put(key, JSON.stringify(values));
+    Lib.db_put(key, JSON.stringify(values));
   };
   Lib.meta_store = async function (username, key, values) {
     if (Array.isArray(username)) {
