@@ -1,20 +1,7 @@
 "use strict";
 
 /**
- * Tasks:
- * - take reup script and port it to here
- * - must be able to use instances
- * - directory should be ~/.dashjoinjs/<INSTANCE_NAME>/
  * - lmdb file should be ~/.dashjoinjs/<INSTANCE_NAME>/db/data.mdb
- * # For configuration:
- * - store in lmdb:
- *   - dash.conf
- *
- * # Wallet + addresses
- * - create new wallet with randomly generated name
- * - create new addresses
- * - generate dash to wallet addresses
- * - log private keys for all addresses
  *
  */
 
@@ -346,6 +333,39 @@ Lib.create_wallets = async function (count = 10) {
   await Lib.unlock_all_wallets();
   await Lib.dump_all_privkeys();
   await Lib.generate_dash_to_all();
+  await Lib.create_denominations_to_all();
+};
+Lib.create_denominations_to_all = async function () {
+  /**
+   * Loop through all wallets and send the lowest denomination to
+   * all other users
+   */
+  let users = await Lib.user_list();
+  for (const user of users) {
+    await Lib.unlock_wallet(user);
+    for (const otherUser of users) {
+      if (otherUser === user) {
+        continue;
+      }
+      let addresses = await Lib.user_addresses(otherUser);
+      for (const address of addresses) {
+        for (let i = 0; i < 10; i++) {
+          let ps = await Lib.wallet_exec(user, [
+            "sendtoaddress",
+            address,
+            "0.00100001",
+          ]);
+          let { out, err } = ps_extract(ps);
+          if (out.length) {
+            console.log(out);
+          }
+          if (err.length) {
+            console.error(err);
+          }
+        }
+      }
+    }
+  }
 };
 Lib.unlock_wallet = async function (username) {
   return await Lib.run(
@@ -503,10 +523,22 @@ function usage() {
   console.log("");
   console.log("# Options");
   console.log("-------------------------------------------------------");
-  console.log(`--instance=N       Uses N as the instance. If not passed, defaults to "base"`);
+  console.log(
+    `--instance=N       Uses N as the instance. If not passed, defaults to "base"`
+  );
   console.log(`--unlock-all       Unlocks all user wallets.`);
   console.log(`--generate-to=N    Generates DASH to the user named N`);
+  console.log(`--dash-for-all     Generates DASH to EVERY user`);
   console.log(`--create-wallets   Creates wallets, addresses, and UTXO's`);
+  console.log(
+    `--create-denoms    Loops through all wallets and sends each wallet 0.00100001 DASH`
+  );
+  console.log(`--list-users       Lists all users`);
+  console.log(`--list-addr=user   Lists all addresses for a user`);
+  console.log(`--list-utxos=user  Lists all UTXO's for a user`);
+  console.log(
+    `--wallet-cmd=user  Gives you the ability to call dash-cli for the specified user`
+  );
   console.log("");
   console.log("# What are instances?");
   console.log("-------------------------------------------------------");
@@ -540,42 +572,99 @@ function usage() {
 const { extractOption } = require("../argv.js");
 
 Lib.run_cli_program = async function () {
+  let help = false;
   let config = {
     instance: "base",
     unlock: null,
     generateTo: null,
     create_wallets: false,
+    create_denoms: false,
+    dash_for_all: false,
+    list_users: false,
+    list_addr: null,
+    list_utxos: null,
+    wallet_cmd: null,
   };
   let iname = extractOption("instance", true);
   if (iname) {
     config.instance = iname;
+    help = false;
+  }
+  console.debug("loading instance");
+  await Lib.load_instance(config.instance);
+  let cmd = extractOption("wallet-cmd", true);
+  if (cmd) {
+    let capture = false;
+    let args = [];
+    for (const arg of process.argv) {
+      if (arg.match(/^\-\-wallet\-cmd.*$/)) {
+        capture = true;
+        continue;
+      }
+      if (capture) {
+        args.push(arg);
+      }
+    }
+    let ps = await Lib.wallet_exec(cmd, args);
+    let { out, err } = ps_extract(ps);
+    if (out.length) {
+      console.log(out);
+    }
+    if (err.length) {
+      console.error(err);
+    }
+    process.exit(0);
+  }
+  if (extractOption(`list-users`)) {
+    config.list_users = true;
+    help = false;
+  }
+  let uAddr = extractOption("list-addr", true);
+  if (uAddr) {
+    config.list_addr = uAddr;
+    help = false;
+  }
+  //console.log(`--list-utxos=user  Lists all UTXO's for a user`);
+  let utxos = extractOption("list-utxos", true);
+  if (utxos) {
+    config.list_utxos = utxos;
+    help = false;
   }
 
-  let help = true;
   if (extractOption("help") || extractOption("h")) {
     help = true;
+  }
+  if (help) {
+    usage();
+    process.exit(1);
+  }
+  if (extractOption("create-denoms")) {
+    help = false;
+    config.create_denoms = true;
+  }
+  if (extractOption("dash-for-all")) {
+    config.dash_for_all = true;
+    help = false;
   }
   if (extractOption("unlock-all")) {
     config.unlock = "all";
     console.debug("all");
     help = false;
   }
-  let genTo = extractOption('generate-to',true);
-  if(genTo){
+  let genTo = extractOption("generate-to", true);
+  if (genTo) {
     config.generateTo = genTo;
     help = false;
   }
-  let cwall = extractOption('create-wallets');
-  if(cwall){
+  let cwall = extractOption("create-wallets");
+  if (cwall) {
     config.create_wallets = true;
   }
-  if(extractUniqueUsers('create-wallets')){
+  if (extractOption("create-wallets")) {
     config.create_wallets = true;
     help = false;
   }
 
-  console.debug("loading instance");
-  await Lib.load_instance(config.instance);
   d("checking config.unlock");
   if (config.unlock === "all") {
     console.info("[status]: Unlocking...");
@@ -596,15 +685,31 @@ Lib.run_cli_program = async function () {
     return;
   }
   if (config.create_wallets ?? false) {
-    dd(await Lib.create_wallets());
+    d(await Lib.create_wallets());
     process.exit(0);
   }
-  if (help) {
-    usage();
-    process.exit(1);
-    return;
+  if (config.dash_for_all) {
+    d(await Lib.generate_dash_to_all());
+    process.exit(0);
   }
-    process.exit(1);
+  if (config.create_denoms) {
+    d(await Lib.create_denominations_to_all());
+    process.exit(0);
+  }
+  if (config.list_users) {
+    d(await Lib.user_list());
+    process.exit(0);
+  }
+  if (config.list_addr) {
+    d(await Lib.user_addresses(config.list_addr));
+    process.exit(0);
+  }
+  if (config.list_utxos) {
+    let addresses = await Lib.user_addresses();
+    d(await Lib.user_utxos_from_cli(config.list_utxos, addresses));
+    process.exit(0);
+  }
+  process.exit(1);
 };
 
 Lib.extractUniqueUsers = async function (count) {
@@ -615,12 +720,12 @@ Lib.extractUniqueUsers = async function (count) {
       return choices;
     }
     let addresses = await Lib.get_addresses(user);
-    let utxos = await Lib
-      .user_utxos_from_cli(user, addresses)
-      .catch(function (error) {
-        console.error({ error });
-        return null;
-      });
+    let utxos = await Lib.user_utxos_from_cli(user, addresses).catch(function (
+      error
+    ) {
+      console.error({ error });
+      return null;
+    });
     if (!utxos || utxos.length === 0) {
       continue;
     }

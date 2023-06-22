@@ -86,7 +86,7 @@ if (process.argv.includes("--id")) {
       case "READY":
         console.log("[+] Ready to start dealing with CoinJoin traffic...");
         if (dsaSent === false) {
-          self.denominationsAmount = parseInt(COIN / 1000, 10) + 1;
+          self.denominationsAmount = parseInt(COIN / 1000 + 1, 10);
           setTimeout(async function () {
             masterNode.client.write(
               Network.packet.coinjoin.dsa({
@@ -110,12 +110,8 @@ if (process.argv.includes("--id")) {
           return;
         }
         setTimeout(async function () {
-          let data = await DemoData.util.fetchData();
+
           let sourceAddress = data.sourceAddress;
-          let userInputs = await DemoData.getMultipleUnusedTransactionsFilter(
-            2,
-            ["txid", "vout", "amount"]
-          );
           let collateralTxn = await DemoData.makeDSICollateralTx();
           collateralTxn = hexToBytes(collateralTxn.uncheckedSerialize());
           let userOutputs = [self.denominationsAmount];
