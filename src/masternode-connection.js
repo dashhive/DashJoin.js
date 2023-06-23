@@ -85,6 +85,7 @@ function MasterNode({
   ourIP,
   startBlockHeight,
   onStatusChange = null,
+  onDSSU = null,
   debugFunction = null,
   userAgent = null,
   coinJoinData,
@@ -96,7 +97,11 @@ function MasterNode({
    */
   self.buffer = new Uint8Array();
   self.client = null;
-  self.debugFunction = debugFunction;
+  if(!self.debugFunction){
+    self.debugFunction = () => {};
+  }else{
+    self.debugFunction = debugFunction;
+  }
   self.coinJoinData = coinJoinData;
   self.payee= payee;
   self.dsq = null;
@@ -119,6 +124,12 @@ function MasterNode({
   self.mnauth_challenge = null;
   self.network = network;
   self.onStatusChange = onStatusChange;
+  self.onDSSU = onDSSU;
+  self.dispatchDSSU = function(packet){
+    if(typeof self.onDSSU === 'function'){
+      self.onDSSU(packet,self);
+    }
+  };
   self.ourIP = ourIP;
   self.port = port;
   self.processDebounce = null;
@@ -235,8 +246,9 @@ function MasterNode({
       self.debugFunction({ parsed, payloadSize });
     }
     if (command === "dssu") {
-      let dssu = PacketParser.dssu(self.buffer);
-      self.debugFunction("dssu:", dssu);
+      let parsed = PacketParser.dssu(self.buffer);
+      self.debugFunction("dssu:", parsed);
+      self.dispatchDSSU(parsed);
     }
     if (command === "ping") {
       let nonce = PacketParser.extractPingNonce(self.buffer);
@@ -340,6 +352,12 @@ function MasterNode({
           case "dssu":
             self.debugFunction({ command, payloadSize });
             packet = PacketParser.dssu(self.buffer);
+            self.dispatchDSSU(packet);
+            /**
+             * If STATUS_REJECTED, then the collateral would
+             * have been charged by the masternode
+             * 1) mark the collateral transaction as used
+             */
             self.debugFunction(command, packet);
             break;
           case "ping":
@@ -560,7 +578,7 @@ function MasterNode({
     if (ip) {
       data.localAddress = ip;
     }
-    console.debug({ data });
+    //console.debug({ data });
     self.client.connect(data);
   };
 }

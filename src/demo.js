@@ -5,8 +5,11 @@ const Network = require("./network.js");
 const NetworkUtil = require("./network-util.js");
 const hexToBytes = NetworkUtil.hexToBytes;
 const assert = require("assert");
-const extractOption = require('./argv.js').extractOption;
-const { extractUserDetails } = require('./bootstrap/user-details.js');
+const extractOption = require("./argv.js").extractOption;
+const { extractUserDetails } = require("./bootstrap/user-details.js");
+const dashboot = require("./bootstrap/index.js");
+const MasterNodeConnection =
+  require("./masternode-connection.js").MasterNodeConnection;
 
 let id = {};
 
@@ -33,6 +36,13 @@ let startBlockHeight = config.startBlockHeight;
 
 let DashCore = require("@dashevo/dashcore-lib");
 let dboot = null;
+let mainUser;
+let randomPayeeName;
+let payee;
+let username;
+let instanceName;
+
+let nickName = null;
 
 /**
  * Periodically print id information
@@ -42,37 +52,97 @@ if (process.argv.includes("--id")) {
     console.info(id);
   }, 10000);
 }
+/** FIXME: put in library */
+function getDemoDenomination() {
+  return parseInt(COIN / 1000 + 1, 10);
+}
+async function getUserInputs(_in_username, denominatedAmount, count) {
+  let utxos = await dboot.get_denominated_utxos(
+    _in_username,
+    denominatedAmount
+  );
+  let selected = [];
+  let txids = {};
+  for (let i = 0; i < count; i++) {
+    if (typeof txids[utxos[i].txid] !== "undefined") {
+      continue;
+    }
+
+    let used = await dboot.is_txid_used(_in_username, utxos[i].txid);
+    if (used) {
+      continue;
+    }
+
+    txids[utxos[i].txid] = 1;
+    selected.push(utxos[i]);
+    //await dboot.mark_txid_used(_in_username, utxos[i].txid);
+  }
+  return selected;
+}
+async function createDsiPacket(_in_username, userInputs, userOutputs, mn) {
+  let sourceAddress = userInputs[0].address;
+  let packet = Network.packet.coinjoin.dsi({
+    chosen_network: network,
+    userInputs,
+    collateralTxn: await mn.makeCollateralTx(),
+    userOutputs,
+    sourceAddress,
+  });
+  return packet;
+}
+
+async function onDSSUChanged(parsed,_self){
+  let self = _self;
+  let msgId = parsed.message_id[1];
+  let state = parsed.state[1]
+  let update = parsed.status_update[1];
+  d({msgId,state,update});
+  if(msgId === 'ERR_INVALID_COLLATERAL'){
+    await dboot.mark_txid_used(username,mainUser.utxos[0].txid);
+    debug('marked collateral inputs as used');
+  }
+
+}
 
 /**
  * argv should include:
  * - instance name
  * - user
  */
-(async function (instanceName, username) {
-  /**
-   * Start 4 clients simultaneously
-   */
-  const dashboot = require("./bootstrap/index.js");
-  console.info(`[status]: loading "${instanceName}" instance...`);
+(async function (_in_instanceName, _in_username, _in_nickname) {
+  nickName = _in_nickname;
+  instanceName = _in_instanceName;
+  username = _in_username;
+  //console.info(`[status]: loading "${instanceName}" instance...`);
   dboot = await dashboot.load_instance(instanceName);
+  mainUser = await extractUserDetails(username);
+  randomPayeeName = await dboot.get_random_payee(username);
+  payee = await extractUserDetails(randomPayeeName);
 
-  let choices = [];
-  let mainuser = await extractUserDetails(username);
-  let randomPayeeName = await dboot.get_random_payee(username);
-  let payee = await extractUserDetails(randomPayeeName);
-
-  /**
-   * Pass choices[N] to a different process.
-   */
+  let userInputs = await getUserInputs(_in_username, getDemoDenomination(), 2);
+  let masterNodeConnection = new MasterNodeConnection({
+    ip: masterNodeIP,
+    port: masterNodePort,
+    network,
+    ourIP,
+    startBlockHeight,
+    onStatusChange: stateChanged,
+    onDSSU: onDSSUChanged,
+    debugFunction: null,
+    userAgent: config.userAgent ?? null,
+    coinJoinData: mainUser,
+    payee,
+    changeAddresses: mainUser.changeAddresses,
+  });
 
   let dsaSent = false;
 
-  function stateChanged(obj) {
+  async function stateChanged(obj) {
     let self = obj.self;
     let masterNode = self;
     switch (masterNode.status) {
       default:
-        console.info("unhandled status:", masterNode.status);
+        //console.info("unhandled status:", masterNode.status);
         break;
       case "CLOSED":
         console.warn("[-] Connection closed");
@@ -81,85 +151,75 @@ if (process.argv.includes("--id")) {
       case "EXPECT_VERACK":
       case "EXPECT_HCDP":
       case "RESPOND_VERACK":
-        console.info("[ ... ] Handshake in progress");
+        //console.info("[ ... ] Handshake in progress");
         break;
       case "READY":
-        console.log("[+] Ready to start dealing with CoinJoin traffic...");
+        //console.log("[+] Ready to start dealing with CoinJoin traffic...");
         if (dsaSent === false) {
-          self.denominationsAmount = parseInt(COIN / 1000 + 1, 10);
-          setTimeout(async function () {
-            masterNode.client.write(
-              Network.packet.coinjoin.dsa({
-                chosen_network: network,
-                denomination: self.denominationsAmount,
-                collateral: await self.makeCollateralTx(),
-              })
-            );
-            dsaSent = true;
-            console.debug("sent dsa");
-          }, 2000);
+          self.denominationsAmount = getDemoDenomination();
+          masterNode.client.write(
+            Network.packet.coinjoin.dsa({
+              chosen_network: network,
+              denomination: getDemoDenomination(),
+              collateral: await masterNode.makeCollateralTx(),
+            })
+          );
+          dsaSent = true;
+          //console.debug("sent dsa");
         }
         break;
       case "DSQ_RECEIVED":
-        console.log("[+][COINJOIN] DSQ received. Responding with inputs...");
-        console.debug(self.dsq, "<< dsq");
+        //console.log('dsq received');
+        //console.log("[+][COINJOIN] DSQ received. Responding with inputs...");
+        //console.debug(self.dsq, "<< dsq");
         if (self.dsq.fReady) {
-          console.log("[+][COINJOIN] Ready to send dsi message...");
+          debug("sending dsi");
+          //console.log("[+][COINJOIN] Ready to send dsi message...");
         } else {
-          console.info("[-][COINJOIN] masternode not ready for dsi...");
+          info("[-][COINJOIN] masternode not ready for dsi...");
           return;
         }
-        setTimeout(async function () {
-
-          let sourceAddress = data.sourceAddress;
-          let collateralTxn = await DemoData.makeDSICollateralTx();
-          collateralTxn = hexToBytes(collateralTxn.uncheckedSerialize());
-          let userOutputs = [self.denominationsAmount];
-          masterNode.client.write(
-            Network.packet.coinjoin.dsi({
-              chosen_network: network,
-              userInputs,
-              collateralTxn,
-              userOutputs,
-              sourceAddress,
-            })
-          );
-          console.debug("sent dsi packet");
-        }, 2000);
+        let userInputs = await getUserInputs(
+          _in_username,
+          getDemoDenomination(),
+          2
+        );
+        let userOutputs = [getDemoDenomination(), getDemoDenomination()];
+        let packet = await createDsiPacket(
+          _in_username,
+          userInputs,
+          userOutputs,
+          masterNode
+        );
+        masterNode.client.write(packet);
+        debug("sent dsi packet");
         break;
       case "EXPECT_DSQ":
-        console.info("[+] dsa sent");
+        //console.info("[+] dsa sent");
         break;
     }
   }
-  //dd('exit');
-  //FIXME let collateralTxn = await DemoData.makeDSICollateralTx();
-  let collateralTxn = {};
-  let userOutputs = [1000, 1000]; // FIXME
-
-  let MasterNodeConnection =
-    require("./masternode-connection.js").MasterNodeConnection;
-  let masterNodeConnection = new MasterNodeConnection({
-    ip: masterNodeIP,
-    port: masterNodePort,
-    network,
-    ourIP,
-    startBlockHeight,
-    onStatusChange: stateChanged,
-    debugFunction: console.debug,
-    userAgent: config.userAgent ?? null,
-    coinJoinData: mainuser,
-    payee: payee,
-    changeAddresses: mainuser.changeAddresses,
-  });
 
   masterNodeConnection.connect();
-})(extractOption("instance", true), extractOption("username", true));
+})(
+  extractOption("instance", true),
+  extractOption("username", true),
+  extractOption("nickname", true)
+);
 
-function d(f) {
-  console.debug(f);
+function debug(...args) {
+  console.debug(`${nickName}[DBG]:`, ...args);
 }
-function dd(f) {
-  console.debug(f);
+function info(...args) {
+  console.info(`${nickName}[INFO]:`, ...args);
+}
+function error(...args) {
+  console.error(`[${nickName}[ERROR]:`, ...args);
+}
+function d(...args) {
+  debug(...args);
+}
+function dd(...args) {
+  debug(...args);
   process.exit();
 }

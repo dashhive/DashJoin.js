@@ -4,7 +4,6 @@ var Lib = {};
 module.exports = Lib;
 const dboot = require("./index.js");
 
-
 Lib.extractUserDetails = async function (username) {
   let addresses = await dboot.get_addresses(username);
   let utxos = await dboot
@@ -38,6 +37,10 @@ Lib.extractUserDetails = async function (username) {
     for (let x = 0; x < utxos[k].length; x++) {
       let txid = utxos[k][x].txid;
       utxos[k][x].privateKey = addrMap[utxos[k][x].address];
+      let used = await dboot.is_txid_used(username, utxos[k][x].txid);
+      if (used) {
+        continue;
+      }
       flatUtxos.push(utxos[k][x]);
     }
   }

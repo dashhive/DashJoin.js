@@ -809,10 +809,10 @@ function dsa(
   packet.set([encodedDenom, 0, 0, 0], offset);
 
   offset += SIZES.DENOMINATION;
-  console.debug("collateral size:", args.collateral.length);
+  //console.debug("collateral size:", args.collateral.length);
   packet.set(args.collateral, offset);
 
-  console.debug({ packet });
+  //console.debug({ packet });
 
   return wrap_packet(args.chosen_network, "dsa", packet, packet.length);
 }
@@ -825,10 +825,18 @@ function encodeInputs(inputs) {
     satoshis = 0;
     if (typeof input.amount !== "undefined") {
       satoshis = parseInt(input.amount * COIN, 10);
+    }else{
+      satoshis = parseInt(input.satoshis,10);
+    }
+    let vout = 0;
+    if(typeof input.outputIndex !== 'undefined'){
+      vout = parseInt(input.outputIndex,10);
+    }else{
+      vout = parseInt(input.vout,10);
     }
     utxos.push({
       txId: input.txid,
-      outputIndex: input.vout,
+      outputIndex: vout,
       sequenceNumber: 0xffffffff,
       scriptPubKey: [],
       satoshis,
@@ -862,8 +870,8 @@ function dsi(
     if (typeof input.txid === "undefined") {
       throw new Error(`input.txid must be defined on all userInputs`);
     }
-    if (typeof input.vout === "undefined") {
-      throw new Error(`input.vout must be defined on all userInputs`);
+    if (typeof input.vout === "undefined" && typeof input.outputIndex === 'undefined') {
+      throw new Error(`input.vout or input.outputIndex must be defined on all userInputs`);
     }
     if (!satoshisSet && !amountSet) {
       throw new Error(
@@ -880,16 +888,17 @@ function dsi(
     }
   }
   let userInputTxn = encodeInputs(args.userInputs);
+
   let userOutputTxn = encodeOutputs(args.sourceAddress, args.userOutputs);
-  //console.debug({userInputTxn,inputs: userInputTxn.inputs});
-  //console.debug({userOutputTxn,outputs: userInputTxn.outputs});
 
   // FIXME: very hacky
   let trimmedUserInput = userInputTxn
     .uncheckedSerialize()
     .substr(8)
     .replace(/[0]{10}$/, "");
+
   let userInputPayload = hexToBytes(trimmedUserInput);
+
   // FIXME: very hacky
   let trimmedUserOutput = userOutputTxn
     .uncheckedSerialize()
@@ -906,10 +915,10 @@ function dsi(
    */
   let offset = 0;
   let packet = new Uint8Array(TOTAL_SIZE);
-  console.debug({ packetSize: TOTAL_SIZE, actual: packet.length });
-  console.debug({ userInputPayloadSize: userInputPayload.length });
-  console.debug({ userOutputPayloadSize: userOutputPayload.length });
-  console.debug({ collateralTxnSize: args.collateralTxn.length });
+  //console.debug({ packetSize: TOTAL_SIZE, actual: packet.length });
+  //console.debug({ userInputPayloadSize: userInputPayload.length });
+  //console.debug({ userOutputPayloadSize: userOutputPayload.length });
+  //console.debug({ collateralTxnSize: args.collateralTxn.length });
   /**
    * Set the user inputs
    */
@@ -917,10 +926,10 @@ function dsi(
   assert(
     packet[0],
     args.userInputs.length,
-    "userInputs.length must be the first byte i payload"
+    "userInputs.length must be the first byte in payload"
   );
   offset += userInputPayload.length;
-  console.debug({ userInputPayload, packet });
+  //console.debug({ userInputPayload, packet });
 
   /**
    * Set the collateral txn(s)
@@ -933,7 +942,7 @@ function dsi(
    */
   packet.set(userOutputPayload, offset);
 
-  console.debug({ packet, offset }); // FIXME
+  //console.debug({ packet, offset }); // FIXME
 
   assert.equal(
     packet.length,
@@ -1182,7 +1191,7 @@ Lib.packet.parse.dssu = function (buffer) {
     MESSAGE_ID: 4,
   };
 
-  console.debug("Size of dssu packet:", buffer.length);
+  //console.debug("Size of dssu packet:", buffer.length);
   /**
    * We'll need to point past the message header in
    * order to get to the dssu packet details.
@@ -1190,7 +1199,7 @@ Lib.packet.parse.dssu = function (buffer) {
   let offset = MESSAGE_HEADER_SIZE;
 
   let dssuPacket = extractChunk(buffer, offset, buffer.length);
-  console.debug("packet details (minus header):", dssuPacket);
+  //console.debug("packet details (minus header):", dssuPacket);
 
   /**
    * Grab the session id

@@ -9,8 +9,8 @@ const COIN = require("../coin-join-constants.js").COIN;
 const Network = require("../network.js");
 const MetaDB = require("./metadb.js");
 
-let Lib = {};
-module.exports = Lib;
+let Bootstrap = {};
+module.exports = Bootstrap;
 
 let config = require("../.config.json");
 let NETWORK = config.network;
@@ -27,7 +27,19 @@ const fs = require("fs");
 
 const UserDetails = require("./user-details.js");
 
-Lib.helpers = function () {
+function uniqueByKey(array,key){
+  let map = {};
+  let saved = [];
+  for(const ele of array){
+    if(typeof map[ele[key]] !== 'undefined'){
+      continue;
+    }
+    map[ele[key]] = 1;
+    saved.push(ele);
+  }
+  return saved;
+}
+Bootstrap.helpers = function () {
   return {
     db_cj,
     db_cj_ns,
@@ -35,25 +47,25 @@ Lib.helpers = function () {
     db_get,
     db_append,
     rng: {
-      random_name: Lib.random_name,
+      random_name: Bootstrap.random_name,
     },
     shell: {
       ps_extract: ps_extract,
-      mkpath: Lib.mkpath,
-      run: Lib.run,
+      mkpath: Bootstrap.mkpath,
+      run: Bootstrap.run,
       cli_args,
-      wallet_exec: Lib.wallet_exec,
+      wallet_exec: Bootstrap.wallet_exec,
     },
     validation: {
       sanitize_address,
     },
     users: {
-      get_list: Lib.user_list,
-      user_create: Lib.user_create,
+      get_list: Bootstrap.user_list,
+      user_create: Bootstrap.user_create,
     },
   };
 };
-Lib.ps_extract = ps_extract;
+Bootstrap.ps_extract = ps_extract;
 function ps_extract(ps, newlines = true) {
   let out = ps.stdout.toString();
   let err = ps.stderr.toString();
@@ -65,23 +77,23 @@ function ps_extract(ps, newlines = true) {
   }
   return { err, out };
 }
-Lib.set_dash_cli = function (p) {
-  Lib.DASH_CLI = p;
+Bootstrap.set_dash_cli = function (p) {
+  Bootstrap.DASH_CLI = p;
 };
-Lib.get_dash_cli = function (p) {
-  return Lib.DASH_CLI;
+Bootstrap.get_dash_cli = function (p) {
+  return Bootstrap.DASH_CLI;
 };
-Lib.get_config = function () {
-  Lib.__config = {
+Bootstrap.get_config = function () {
+  Bootstrap.__config = {
     db: {
-      handle: Lib.DB,
+      handle: Bootstrap.DB,
     },
-    helpers: Lib.helpers(),
-    instance: Lib.__data.instance,
+    helpers: Bootstrap.helpers(),
+    instance: Bootstrap.__data.instance,
   };
-  return Lib.__config;
+  return Bootstrap.__config;
 };
-Lib.__data = {
+Bootstrap.__data = {
   instance: {
     name: "base",
     db_path: null,
@@ -89,19 +101,19 @@ Lib.__data = {
     max_dbs: 10,
   },
 };
-Lib.mkpath = async function (path) {
+Bootstrap.mkpath = async function (path) {
   await cproc.spawnSync("mkdir", ["-p", path]);
 };
 
-Lib.random_name = async function () {
+Bootstrap.random_name = async function () {
   return crypto.randomUUID().replace(/\-/gi, "");
 };
 
-Lib.run = async function (cli_arguments) {
-  return await cproc.spawnSync(Lib.DASH_CLI, cli_args(cli_arguments));
+Bootstrap.run = async function (cli_arguments) {
+  return await cproc.spawnSync(Bootstrap.DASH_CLI, cli_args(cli_arguments));
 };
 
-Lib.__error = null;
+Bootstrap.__error = null;
 
 function cli_args(list) {
   return [
@@ -124,57 +136,57 @@ function sanitize_addresses(list) {
   return flist;
 }
 
-Lib.load_instance = async function (instance_name) {
-  Lib.DASH_CLI = [process.env.HOME, "bin", "dash-cli"].join("/");
-  Lib.DB = require("../lmdb/lmdb.js");
-  Lib.__data.instance.name = instance_name;
-  if (!Lib.sane_instance()) {
-    throw new Error(`Couldn't load instance: "${Lib.__error}"`);
+Bootstrap.load_instance = async function (instance_name) {
+  Bootstrap.DASH_CLI = [process.env.HOME, "bin", "dash-cli"].join("/");
+  Bootstrap.DB = require("../lmdb/lmdb.js");
+  Bootstrap.__data.instance.name = instance_name;
+  if (!Bootstrap.sane_instance()) {
+    throw new Error(`Couldn't load instance: "${Bootstrap.__error}"`);
   }
-  let n = Lib.__data.instance.name;
+  let n = Bootstrap.__data.instance.name;
   let db_path = [process.env.HOME, ".dashjoinjs", n, "db"].join("/");
-  Lib.__data.instance.db_path = db_path;
-  await Lib.mkpath(db_path);
+  Bootstrap.__data.instance.db_path = db_path;
+  await Bootstrap.mkpath(db_path);
 
   let exists = await fs.existsSync(db_path.replace(/\/$/, "") + "/data.mdb");
-  Lib.DB.open({
+  Bootstrap.DB.open({
     path: db_path,
-    db_name: Lib.__data.instance.db_name,
+    db_name: Bootstrap.__data.instance.db_name,
     create: !exists,
-    maxDbs: Lib.__data.instance.max_dbs,
+    maxDbs: Bootstrap.__data.instance.max_dbs,
     mapSize: 32 * 1024 * 1024,
   });
-  Lib.MetaDB = MetaDB(Lib.DB);
-  db_cj = Lib.MetaDB.db_cj;
-  db_cj_ns = Lib.MetaDB.db_cj_ns;
-  db_get = Lib.MetaDB.db_get;
-  db_put = Lib.MetaDB.db_put;
-  db_append = Lib.MetaDB.db_append;
-  Lib.meta_get = Lib.MetaDB.meta_get;
-  Lib.meta_store = Lib.MetaDB.meta_store;
-  Lib.meta_set = Lib.MetaDB.meta_set;
+  Bootstrap.MetaDB = MetaDB(Bootstrap.DB);
+  db_cj = Bootstrap.MetaDB.db_cj;
+  db_cj_ns = Bootstrap.MetaDB.db_cj_ns;
+  db_get = Bootstrap.MetaDB.db_get;
+  db_put = Bootstrap.MetaDB.db_put;
+  db_append = Bootstrap.MetaDB.db_append;
+  Bootstrap.meta_get = Bootstrap.MetaDB.meta_get;
+  Bootstrap.meta_store = Bootstrap.MetaDB.meta_store;
+  Bootstrap.meta_set = Bootstrap.MetaDB.meta_set;
   db_cj();
-  return Lib;
+  return Bootstrap;
 };
 
-Lib.sane_instance = function () {
-  if (typeof Lib.__data.instance.name === "undefined") {
-    Lib.__error = "instance structure corrupt";
+Bootstrap.sane_instance = function () {
+  if (typeof Bootstrap.__data.instance.name === "undefined") {
+    Bootstrap.__error = "instance structure corrupt";
     return false;
   }
-  let n = Lib.__data.instance.name;
+  let n = Bootstrap.__data.instance.name;
   if (n === null || String(n).length === 0) {
-    Lib.__error = "empty instance name";
+    Bootstrap.__error = "empty instance name";
     return false;
   }
-  Lib.__data.instance.name = n.replace(/[^a-z0-9_]+/gi, "");
-  if (Lib.__data.instance.name.length === 0) {
-    Lib.__error = "after sanitization: empty instance name";
+  Bootstrap.__data.instance.name = n.replace(/[^a-z0-9_]+/gi, "");
+  if (Bootstrap.__data.instance.name.length === 0) {
+    Bootstrap.__error = "after sanitization: empty instance name";
     return false;
   }
   return true;
 };
-Lib.user_list = async function () {
+Bootstrap.user_list = async function () {
   db_cj();
   let list = db_get("users");
   try {
@@ -188,17 +200,17 @@ Lib.user_list = async function () {
   }
 };
 
-Lib.user_addresses = async function (username) {
-  return await Lib.meta_get(username, "addresses");
+Bootstrap.user_addresses = async function (username) {
+  return await Bootstrap.meta_get(username, "addresses");
 };
-Lib.sanitize_address = sanitize_address;
+Bootstrap.sanitize_address = sanitize_address;
 
-Lib.user_utxos_from_cli = async function (username, addresses) {
+Bootstrap.user_utxos_from_cli = async function (username, addresses) {
   let utxos = [];
   for (const address of addresses) {
-    let ps = await Lib.wallet_exec(username, [
+    let ps = await Bootstrap.wallet_exec(username, [
       "getaddressutxos",
-      JSON.stringify({ addresses: [Lib.sanitize_address(address)] }),
+      JSON.stringify({ addresses: [Bootstrap.sanitize_address(address)] }),
     ]);
     let { err, out } = ps_extract(ps);
     if (err.length) {
@@ -214,8 +226,8 @@ Lib.user_utxos_from_cli = async function (username, addresses) {
   }
   return utxos;
 };
-Lib.user_exists = async function (username) {
-  let users = await Lib.user_list();
+Bootstrap.user_exists = async function (username) {
+  let users = await Bootstrap.user_list();
   for (const user of users) {
     if (user === username) {
       return true;
@@ -224,7 +236,7 @@ Lib.user_exists = async function (username) {
   return false;
 };
 
-Lib.user_create = async function (username) {
+Bootstrap.user_create = async function (username) {
   db_cj();
   let list = db_get("users");
   try {
@@ -244,45 +256,63 @@ Lib.user_create = async function (username) {
   db_put("users", JSON.stringify(list));
 };
 
-Lib.wallet_exec = async function (wallet_name, cli_arguments) {
+Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
   return await cproc.spawnSync(
-    Lib.DASH_CLI,
+    Bootstrap.DASH_CLI,
     cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments])
   );
 };
-Lib.get_change_address_from_cli = async function (username) {
-  let buffer = await Lib.wallet_exec(username, ["getrawchangeaddress"]);
+Bootstrap.get_change_address_from_cli = async function (username) {
+  let buffer = await Bootstrap.wallet_exec(username, ["getrawchangeaddress"]);
   let { err, out } = ps_extract(buffer, false);
   if (out.length) {
     return out;
   }
 };
-Lib.get_change_addresses = async function (username) {
-  return await Lib.meta_get([username, "change"], "addresses");
+Bootstrap.get_change_addresses = async function (username) {
+  return await Bootstrap.meta_get([username, "change"], "addresses");
 };
-Lib.store_change_addresses = async function (username, w_addresses) {
-  return await Lib.meta_store(
+Bootstrap.store_change_addresses = async function (username, w_addresses) {
+  return await Bootstrap.meta_store(
     [username, "change"],
     "addresses",
     sanitize_addresses(w_addresses)
   );
 };
-Lib.get_private_key = async function (username, address) {
-  return await Lib.meta_get([username, "privatekey"], address);
+Bootstrap.get_private_key = async function (username, address) {
+  return await Bootstrap.meta_get([username, "privatekey"], address);
 };
-Lib.store_addresses = async function (username, w_addresses) {
-  return await Lib.meta_store(
+Bootstrap.store_addresses = async function (username, w_addresses) {
+  return await Bootstrap.meta_store(
     username,
     "addresses",
     sanitize_addresses(w_addresses)
   );
 };
 
+Bootstrap.get_denominated_utxos = async function(username,denominatedAmount){
+  let addresses = await Bootstrap.user_addresses(username);
+  let utxos = await Bootstrap.user_utxos_from_cli(username,addresses);
+  let matches = [];
+  for(const batch of utxos){
+    for(const ut of batch){
+      if(ut.satoshis === parseInt(denominatedAmount,10)){
+        let used = await Bootstrap.is_txid_used(username,ut.txid);
+        if(used){
+          continue;
+        }
+        matches.push(ut);
+      }
+    }
+  }
+  return matches;
+};
+
 /**
  * Returns a user that is not `forUser`
  */
-Lib.get_random_payee = async function (forUser) {
-  let users = await Lib.user_list();
+Bootstrap.get_random_payee = async function (forUser) {
+  let users = await Bootstrap.user_list();
   for (const user of users) {
     if (user !== forUser) {
       return user;
@@ -290,25 +320,38 @@ Lib.get_random_payee = async function (forUser) {
   }
 };
 
-Lib.get_addresses = async function (username) {
-  return await Lib.meta_get(username, "addresses");
+Bootstrap.get_addresses = async function (username) {
+  return await Bootstrap.meta_get(username, "addresses");
 };
-Lib.store_addresses = async function (username, w_addresses) {
-  return await Lib.meta_store(
+Bootstrap.store_addresses = async function (username, w_addresses) {
+  return await Bootstrap.meta_store(
     username,
     "addresses",
     sanitize_addresses(w_addresses)
   );
 };
 
-Lib.create_wallets = async function (count = 10) {
+Bootstrap.get_users_with_denominated_utxos = async function(userDenoms){
+  //await Bootstrap.unlock_all_wallets();
+  let users = await Bootstrap.user_list();
+  let usersWithDenoms = [];
+  for(const userName of users){
+    let utxos = await Bootstrap.get_denominated_utxos(userName,userDenoms);
+    if(utxos.length === 0){
+      continue;
+    }
+    usersWithDenoms.push(userName);
+  }
+  return unique(usersWithDenoms);
+};
+Bootstrap.create_wallets = async function (count = 10) {
   for (let ctr = 0; ctr < count; ctr++) {
-    let wallet_name = await Lib.random_name();
-    await Lib.user_create(wallet_name).catch(function (error) {
+    let wallet_name = await Bootstrap.random_name();
+    await Bootstrap.user_create(wallet_name).catch(function (error) {
       console.error(`ERROR: `, error);
     });
     console.info(`[ok]: user "${wallet_name}" created`);
-    await Lib.run([
+    await Bootstrap.run([
       "createwallet",
       wallet_name,
       "false",
@@ -321,36 +364,36 @@ Lib.create_wallets = async function (count = 10) {
 
     let w_addresses = [];
     for (let actr = 0; actr < 10; actr++) {
-      let buffer = await Lib.wallet_exec(wallet_name, ["getnewaddress"]);
+      let buffer = await Bootstrap.wallet_exec(wallet_name, ["getnewaddress"]);
       let { err, out } = ps_extract(buffer, false);
       if (out.length) {
         w_addresses.push(out);
       }
     }
-    await Lib.store_addresses(wallet_name, sanitize_addresses(w_addresses));
-    await Lib.unlock_wallet(wallet_name);
+    await Bootstrap.store_addresses(wallet_name, sanitize_addresses(w_addresses));
+    await Bootstrap.unlock_wallet(wallet_name);
   }
-  await Lib.unlock_all_wallets();
-  await Lib.dump_all_privkeys();
-  await Lib.generate_dash_to_all();
-  await Lib.create_denominations_to_all();
+  await Bootstrap.unlock_all_wallets();
+  await Bootstrap.dump_all_privkeys();
+  await Bootstrap.generate_dash_to_all();
+  await Bootstrap.create_denominations_to_all();
 };
-Lib.create_denominations_to_all = async function () {
+Bootstrap.create_denominations_to_all = async function () {
   /**
    * Loop through all wallets and send the lowest denomination to
    * all other users
    */
-  let users = await Lib.user_list();
+  let users = await Bootstrap.user_list();
   for (const user of users) {
-    await Lib.unlock_wallet(user);
+    await Bootstrap.unlock_wallet(user);
     for (const otherUser of users) {
       if (otherUser === user) {
         continue;
       }
-      let addresses = await Lib.user_addresses(otherUser);
+      let addresses = await Bootstrap.user_addresses(otherUser);
       for (const address of addresses) {
         for (let i = 0; i < 10; i++) {
-          let ps = await Lib.wallet_exec(user, [
+          let ps = await Bootstrap.wallet_exec(user, [
             "sendtoaddress",
             address,
             "0.00100001",
@@ -367,8 +410,8 @@ Lib.create_denominations_to_all = async function () {
     }
   }
 };
-Lib.unlock_wallet = async function (username) {
-  return await Lib.run(
+Bootstrap.unlock_wallet = async function (username) {
+  return await Bootstrap.run(
     cli_args([
       `-rpcwallet=${username}`,
       "walletpassphrase",
@@ -378,25 +421,41 @@ Lib.unlock_wallet = async function (username) {
   );
 };
 
-Lib.unlock_all_wallets = async function () {
+Bootstrap.unlock_all_wallets = async function (options = {}) {
   let errors = [];
   let keep = [];
-  const users = await Lib.user_list();
+  let silent = true;
+  if(typeof options.verbose !== 'undefined' && options.verbose === true){
+    silent = false;
+  }
+  const users = await Bootstrap.user_list();
   for (const user of users) {
-    process.stdout.write(`[ ] unlocking "${user}"...`);
-    let ps = await Lib.unlock_wallet(user);
+    if(!silent){
+      process.stdout.write(`[ ] unlocking "${user}"...`);
+    }
+    let ps = await Bootstrap.unlock_wallet(user);
     let err = ps.stderr.toString();
     err = err.replace(/[\s]+$/i, "");
     if (err.length) {
-      console.log("[x] ERROR");
+      if(!silent){
+        console.log("[x] ERROR");
+      }
       errors.push(user);
     } else {
-      console.log(`[+] unlocked`);
+      if(!silent){
+        console.log(`[+] unlocked`);
+      }
       keep.push(user);
     }
   }
-  console.info(`The following wallets should probably be cleaned up:`);
-  console.info(JSON.stringify(errors, null, 2));
+  if(!silent){
+    console.info(`The following wallets should probably be cleaned up:`);
+    console.info(JSON.stringify(errors, null, 2));
+  }
+  return {
+    bad_wallets: errors,
+    good_wallets: keep,
+  };
 };
 
 function trim(s) {
@@ -405,8 +464,8 @@ function trim(s) {
   return f;
 }
 
-Lib.dump_private_key = async function (username, address) {
-  let ps = await Lib.wallet_exec(username, ["dumpprivkey", address]);
+Bootstrap.dump_private_key = async function (username, address) {
+  let ps = await Bootstrap.wallet_exec(username, ["dumpprivkey", address]);
   let err = trim(ps.stderr.toString());
   let out = trim(ps.stdout.toString());
   if (out.length) {
@@ -415,16 +474,16 @@ Lib.dump_private_key = async function (username, address) {
   throw new Error(`dumpprivkey failed: "${err}"`);
 };
 
-Lib.dump_all_privkeys = async function () {
+Bootstrap.dump_all_privkeys = async function () {
   let keep = [];
-  const users = await Lib.user_list();
+  const users = await Bootstrap.user_list();
   for (const user of users) {
-    const addresses = await Lib.get_addresses(user);
+    const addresses = await Bootstrap.get_addresses(user);
     if (Array.isArray(addresses) === false || addresses.length === 0) {
       continue;
     }
     for (const address of addresses) {
-      let privateKey = await Lib.dump_private_key(user, address).catch(
+      let privateKey = await Bootstrap.dump_private_key(user, address).catch(
         function (error) {
           console.error(error);
           return null;
@@ -437,35 +496,35 @@ Lib.dump_all_privkeys = async function () {
     }
   }
   for (const pair of keep) {
-    let r = await Lib.meta_set(
+    let r = await Bootstrap.meta_set(
       [pair.user, "privatekey"],
       pair.address,
       pair.privateKey
     );
   }
 };
-Lib.get_private_key = async function (username, address) {
+Bootstrap.get_private_key = async function (username, address) {
   if (Array.isArray(address) === false) {
     address = [address];
   }
   let pk = [];
   for (const addr of address) {
-    let r = await Lib.meta_get([username, "privatekey"], addr);
+    let r = await Bootstrap.meta_get([username, "privatekey"], addr);
     pk.push(r);
   }
   return pk;
 };
 
-Lib.generate_dash_to_all = async function () {
+Bootstrap.generate_dash_to_all = async function () {
   let keep = [];
-  const users = await Lib.user_list();
+  const users = await Bootstrap.user_list();
   for (const user of users) {
-    const addresses = await Lib.get_addresses(user);
+    const addresses = await Bootstrap.get_addresses(user);
     if (Array.isArray(addresses) === false || addresses.length === 0) {
       continue;
     }
     for (const address of addresses) {
-      let ps = await Lib.wallet_exec(user, [
+      let ps = await Bootstrap.wallet_exec(user, [
         "generatetoaddress",
         "10",
         address,
@@ -476,7 +535,7 @@ Lib.generate_dash_to_all = async function () {
       } else {
         try {
           let txns = JSON.parse(out);
-          await Lib.meta_store([user, "utxos"], address, txns);
+          await Bootstrap.meta_store([user, "utxos"], address, txns);
           d({ [user]: address, utxos: out, txns });
         } catch (e) {
           dd(e);
@@ -486,23 +545,23 @@ Lib.generate_dash_to_all = async function () {
   }
 };
 
-Lib.generate_dash_to = async function (username) {
+Bootstrap.generate_dash_to = async function (username) {
   let keep = [];
   let user = username;
-  const addresses = await Lib.get_addresses(user);
+  const addresses = await Bootstrap.get_addresses(user);
   if (Array.isArray(addresses) === false || addresses.length === 0) {
     // TODO: instead, just create a bunch of addresses for the user
     throw new Error(`user: ${username} doesn't have any addresses`);
   }
   for (const address of addresses) {
-    let ps = await Lib.wallet_exec(user, ["generatetoaddress", "10", address]);
+    let ps = await Bootstrap.wallet_exec(user, ["generatetoaddress", "10", address]);
     let { err, out } = ps_extract(ps);
     if (err.length) {
       console.error(err);
     } else {
       try {
         let txns = JSON.parse(out);
-        await Lib.meta_store([user, "utxos"], address, txns);
+        await Bootstrap.meta_store([user, "utxos"], address, txns);
         d({ [user]: address, utxos: out, txns });
       } catch (e) {
         dd(e);
@@ -530,10 +589,13 @@ function usage() {
   console.log(`--generate-to=N    Generates DASH to the user named N`);
   console.log(`--dash-for-all     Generates DASH to EVERY user`);
   console.log(`--create-wallets   Creates wallets, addresses, and UTXO's`);
+  console.log(`--denom-amt=N      Search through user's UTXO's for denominated amounts matching N`);
+  console.log(`                   denom-amt also requires that you pass in --username=U`);
   console.log(
     `--create-denoms    Loops through all wallets and sends each wallet 0.00100001 DASH`
   );
   console.log(`--list-users       Lists all users`);
+  console.log(`--user-denoms=AMT  Lists all users with the desired denominated amount`);
   console.log(`--list-addr=user   Lists all addresses for a user`);
   console.log(`--list-utxos=user  Lists all UTXO's for a user`);
   console.log(
@@ -571,7 +633,7 @@ function usage() {
 }
 const { extractOption } = require("../argv.js");
 
-Lib.run_cli_program = async function () {
+Bootstrap.run_cli_program = async function () {
   let help = false;
   let config = {
     instance: "base",
@@ -590,8 +652,20 @@ Lib.run_cli_program = async function () {
     config.instance = iname;
     help = false;
   }
-  console.debug("loading instance");
-  await Lib.load_instance(config.instance);
+  await Bootstrap.load_instance(config.instance);
+  let denom = extractOption('denom-amt',true);
+  if(denom){
+    let username = extractOption('username',true);
+    if(!username){
+      console.error(`Error: --username must be passed with --denominated-amout`);
+      process.exit(1);
+    }
+    dd(await Bootstrap.get_denominated_utxos(username,denom));
+  }
+  let userDenoms = extractOption('user-denom',true);
+  if(userDenoms){
+    dd(await Bootstrap.get_users_with_denominated_utxos(userDenoms));
+  }
   let cmd = extractOption("wallet-cmd", true);
   if (cmd) {
     let capture = false;
@@ -605,7 +679,7 @@ Lib.run_cli_program = async function () {
         args.push(arg);
       }
     }
-    let ps = await Lib.wallet_exec(cmd, args);
+    let ps = await Bootstrap.wallet_exec(cmd, args);
     let { out, err } = ps_extract(ps);
     if (out.length) {
       console.log(out);
@@ -665,10 +739,9 @@ Lib.run_cli_program = async function () {
     help = false;
   }
 
-  d("checking config.unlock");
   if (config.unlock === "all") {
     console.info("[status]: Unlocking...");
-    d(await Lib.unlock_all_wallets());
+    d(await Bootstrap.unlock_all_wallets());
     console.log("[DONE]");
     process.exit(0);
     return;
@@ -679,48 +752,97 @@ Lib.run_cli_program = async function () {
       config.generateTo,
       "..."
     );
-    d(await Lib.generate_dash_to(config.generateTo));
+    d(await Bootstrap.generate_dash_to(config.generateTo));
     console.log("[DONE]");
     process.exit(0);
     return;
   }
   if (config.create_wallets ?? false) {
-    d(await Lib.create_wallets());
+    d(await Bootstrap.create_wallets());
     process.exit(0);
   }
   if (config.dash_for_all) {
-    d(await Lib.generate_dash_to_all());
+    d(await Bootstrap.generate_dash_to_all());
     process.exit(0);
   }
   if (config.create_denoms) {
-    d(await Lib.create_denominations_to_all());
+    d(await Bootstrap.create_denominations_to_all());
     process.exit(0);
   }
   if (config.list_users) {
-    d(await Lib.user_list());
+    d(await Bootstrap.user_list());
     process.exit(0);
   }
   if (config.list_addr) {
-    d(await Lib.user_addresses(config.list_addr));
+    d(await Bootstrap.user_addresses(config.list_addr));
     process.exit(0);
   }
   if (config.list_utxos) {
-    let addresses = await Lib.user_addresses();
-    d(await Lib.user_utxos_from_cli(config.list_utxos, addresses));
+    let addresses = await Bootstrap.user_addresses();
+    d(await Bootstrap.user_utxos_from_cli(config.list_utxos, addresses));
     process.exit(0);
   }
   process.exit(1);
 };
+function unique(arr){
+  let map = {};
+  let uni = [];
+  for(const a of arr){
+    if(typeof map[a] !== 'undefined'){
+      continue;
+    }
+    map[a] = 1;
+    uni.push(a);
+  }
+  return uni;
+}
+Bootstrap.is_txid_used = async function(username,txid){
+  let existing = await Bootstrap.get_used_txids(username);
+  return existing.indexOf(txid) !== -1;
+}
+Bootstrap.mark_txid_used = async function (username,txid) {
+  let existing = await Bootstrap.get_used_txids(username);
+  existing.push(txid);
+  existing = unique(existing);
+  return await Bootstrap.meta_store(
+    username,"usedtxids",
+    existing
+  );
+};
+Bootstrap.get_used_txids = async function (username) {
+  return await Bootstrap.meta_get(username, "usedtxids");
+};
+Bootstrap.store_change_addresses = async function (username, w_addresses) {
+  return await Bootstrap.meta_store(
+    [username, "change"],
+    "addresses",
+    sanitize_addresses(w_addresses)
+  );
+};
 
-Lib.extractUniqueUsers = async function (count) {
-  let users = await Lib.user_list();
+
+Bootstrap.extract_unique_users = async function (count,options={}) {
+  await Bootstrap.unlock_all_wallets();
+  let users = await Bootstrap.user_list();
   let choices = [];
+  let filterByDenoms = null;
+  if(typeof options.filterByDenoms !== 'undefined'){
+    filterByDenoms = parseInt(options.filterByDenoms,10);
+  }
+  if(typeof options.except_users !== 'undefined'){
+    users = users.filter(function(username){
+      return options.except_users.indexOf(username) !== -1;
+    });
+  }
+
+    let flatUtxos = [];
   for (const user of users) {
+    flatUtxos = [];
     if (count === choices.length - 1) {
       return choices;
     }
-    let addresses = await Lib.get_addresses(user);
-    let utxos = await Lib.user_utxos_from_cli(user, addresses).catch(function (
+    let addresses = await Bootstrap.get_addresses(user);
+    let utxos = await Bootstrap.user_utxos_from_cli(user, addresses).catch(function (
       error
     ) {
       console.error({ error });
@@ -737,8 +859,8 @@ Lib.extractUniqueUsers = async function (count) {
       }
     }
     for (const addr in addrMap) {
-      let buffer = await Lib.wallet_exec(user, ["dumpprivkey", addr]);
-      let { out, err } = Lib.ps_extract(buffer, false);
+      let buffer = await Bootstrap.wallet_exec(user, ["dumpprivkey", addr]);
+      let { out, err } = Bootstrap.ps_extract(buffer, false);
       if (err.length) {
         console.error(err);
       }
@@ -746,31 +868,56 @@ Lib.extractUniqueUsers = async function (count) {
         addrMap[addr] = out;
       }
     }
-    let flatUtxos = [];
-    for (let k = 0; k < Object.keys(utxos).length; k++) {
-      for (let x = 0; x < utxos[k].length; x++) {
-        let txid = utxos[k][x].txid;
-        utxos[k][x].privateKey = addrMap[utxos[k][x].address];
-        flatUtxos.push(utxos[k][x]);
+    if(filterByDenoms === null){
+      for (let k = 0; k < Object.keys(utxos).length; k++) {
+        for (let x = 0; x < utxos[k].length; x++) {
+          let txid = utxos[k][x].txid;
+          utxos[k][x].privateKey = addrMap[utxos[k][x].address];
+          if(filterByDenoms !== null){
+            if(utxos[k][x].satoshis !== parseInt(filterByDenoms,10)){
+              continue;
+            }
+          }
+          let used = await Bootstrap.is_txid_used(user,utxos[k][x].txid);
+          if(!used){
+            flatUtxos.push(utxos[k][x]);
+          }
+        }
       }
+    }else{
+      let utxos = await Bootstrap.get_denominated_utxos(user,filterByDenoms);
+      flatUtxos = [...flatUtxos,...utxos];
+      flatUtxos = uniqueByKey(flatUtxos,'txid');
+      let finalUtxos = [];
+      for(const u of flatUtxos){
+        let used = await Bootstrap.is_txid_used(user,u.txid);
+        if(!used){
+          finalUtxos.push(u);
+        }
+      }
+      flatUtxos = finalUtxos;
     }
-    let rando = await Lib.getRandomPayee(user);
+    if(flatUtxos.length === 0){
+      d({'skipping':user});
+      continue;
+    }
+    let rando = await Bootstrap.getRandomPayee(user);
     choices.push({
       user: user,
       utxos: flatUtxos,
-      changeAddress: await Lib.get_change_address_from_cli(user),
+      changeAddress: await Bootstrap.get_change_address_from_cli(user),
       randomPayee: rando,
     });
   }
-  //dd({choices});
+  dd({choices});
   return choices;
 };
-Lib.getRandomPayee = async function (username) {
-  let users = await Lib.user_list();
+Bootstrap.getRandomPayee = async function (username) {
+  let users = await Bootstrap.user_list();
   for (const user of users) {
     if (user != username && Math.random() * 100 > 50) {
       return user;
     }
   }
-  return await Lib.getRandomPayee(username);
+  return await Bootstrap.getRandomPayee(username);
 };
