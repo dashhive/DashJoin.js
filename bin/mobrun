@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+'use strict';
+// # vi: filetype=js
+
+const launcher = require('../src/launcher.js');
+(async function(){
+  await launcher.run_cli_program();
+})();
