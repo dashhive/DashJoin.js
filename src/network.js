@@ -16,7 +16,7 @@ let Transaction = DashCore.Transaction;
 //let Script = DashCore.Script;
 let assert = require('assert');
 
-let Lib = {};
+let Lib = { packet: { parse: {} } };
 module.exports = Lib;
 
 const PROTOCOL_VERSION = 70227;
@@ -871,12 +871,12 @@ function dsi(
 			);
 		}
 	}
-	if (!(args.collateralTxn instanceof Uint8Array)) {
-		throw new Error('collateralTxn must be Uint8Array');
+	if (!(args.collateralTxn instanceof Transaction)) {
+		throw new Error('collateralTxn must be Transaction');
 	}
 	let userInputTxn = encodeInputs(args.userInputs);
 
-	let userOutputTxn = args.userOutputs;
+	let userOutputTxn = encodeOutputs(args.sourceAddress, args.userOutputs);
 
 	// FIXME: very hacky
 	let trimmedUserInput = userInputTxn
@@ -885,7 +885,7 @@ function dsi(
 		.replace(/[0]{10}$/, '');
 	//dd(trimmedUserInput);
 
-	//dd(args.collateralTxn);
+	let collateralTxn = hexToBytes(args.collateralTxn.uncheckedSerialize());
 
 	// FIXME: very hacky
 	let trimmedUserOutput = userOutputTxn
@@ -898,9 +898,7 @@ function dsi(
 	let userOutputPayload = hexToBytes(trimmedUserOutput);
 
 	let TOTAL_SIZE =
-    userInputPayload.length +
-    args.collateralTxn.length +
-    userOutputPayload.length;
+    userInputPayload.length + collateralTxn.length + userOutputPayload.length;
 
 	/**
    * Packet payload
@@ -926,8 +924,8 @@ function dsi(
 	/**
    * Set the collateral txn(s)
    */
-	packet.set(args.collateralTxn, offset);
-	offset += args.collateralTxn.length;
+	packet.set(collateralTxn, offset);
+	offset += collateralTxn.length;
 
 	/**
    * Set the outputs
