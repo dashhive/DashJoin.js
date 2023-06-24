@@ -95,7 +95,9 @@ module.exports = {
        * Pass choices[N] to a different process.
        */
 			let f = [];
+			let ctr = 0;
 			for (const choice of uniqueUsers) {
+				let senddsi = ++ctr < 3 ? 'true' : 'false';
 				/**
          * Spawn CONCURRENT_USERS different processes.
          * Hand them each their own user
@@ -108,6 +110,8 @@ module.exports = {
 					`--instance=${instanceName}`,
 					`--username=${choice.user}`,
 					`--nickname=${nickname(choice.user)}`,
+					'--count=1',
+					`--senddsi=${senddsi}`,
 				]);
 				m.stdout.on('data', (data) => {
 					console.log('[ok]: ', data.toString());

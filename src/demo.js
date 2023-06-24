@@ -163,11 +163,21 @@ async function createDSIPacket(
 	//dd(collateralTxn.uncheckedSerialize());
 
 	let userOutputs = await getUserOutputs(username, denominationAmount, count);
+	let userOutputAddresses = await dboot.filter_shuffle_address_count(
+		username,
+		client_session.get_used_addresses(),
+		count
+	);
+	//dd({ userOutputAddresses, current: client_session });
+	if (userOutputAddresses.length !== count) {
+		throw new Error(`Couldnt find ${count} unique unused addresses`);
+	}
 	return Network.packet.coinjoin.dsi({
 		chosen_network: masterNode.network,
 		userInputs: chosenInputTxns,
 		collateralTxn,
 		userOutputs,
+		userOutputAddresses,
 		sourceAddress: client_session.used_addresses[0], // FIXME
 	});
 }
@@ -204,6 +214,7 @@ async function makeDSICollateralTx(masterNode, username) {
 	if (changeAddress === null) {
 		throw new Error('changeAddress cannot be null');
 	}
+	client_session.add_addresses([changeAddress]);
 	let privateKey = await dboot.get_private_key(username, sourceAddress);
 	let unspent = satoshis - amount;
 	let utxos = {
@@ -213,13 +224,13 @@ async function makeDSICollateralTx(masterNode, username) {
 		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
 		satoshis,
 	};
+	client_session.add_txids([txid]);
 	let tx = new Transaction()
 		.from(utxos)
 		.to(payeeAddress, amount)
 		.to(changeAddress, unspent - fee)
 		.sign(privateKey);
 	return tx;
-	return hexToBytes(tx.uncheckedSerialize());
 }
 async function onCollateralTxCreated(tx, self) {
 	await dboot.mark_txid_used(tx.user, tx.txid);
@@ -230,7 +241,13 @@ async function onCollateralTxCreated(tx, self) {
  * - instance name
  * - user
  */
-(async function (_in_instanceName, _in_username, _in_nickname, _in_count) {
+(async function (
+	_in_instanceName,
+	_in_username,
+	_in_nickname,
+	_in_count,
+	_in_send_dsi
+) {
 	if (_in_count) {
 		INPUTS = parseInt(_in_count, 10);
 	}
@@ -265,13 +282,13 @@ async function onCollateralTxCreated(tx, self) {
 	});
 
 	let dsaSent = false;
-	let dsi = await createDSIPacket(
-		masterNodeConnection,
-		_in_username,
-		getDemoDenomination(),
-		INPUTS
-	);
-	dd({ dsi });
+	//let dsi = await createDSIPacket(
+	//	masterNodeConnection,
+	//	_in_username,
+	//	getDemoDenomination(),
+	//	INPUTS
+	//);
+	//dd({ dsi });
 
 	async function stateChanged(obj) {
 		let self = obj.self;
@@ -316,6 +333,10 @@ async function onCollateralTxCreated(tx, self) {
 					info('[-][COINJOIN] masternode not ready for dsi...');
 					return;
 				}
+				if (String(_in_send_dsi) === 'false') {
+					info('not sending dsi as per cli switch');
+					return;
+				}
 				let packet = await createDSIPacket(
 					masterNode,
 					_in_username,
@@ -337,7 +358,8 @@ async function onCollateralTxCreated(tx, self) {
 	extractOption('instance', true),
 	extractOption('username', true),
 	extractOption('nickname', true),
-	extractOption('count', true)
+	extractOption('count', true),
+	extractOption('senddsi', true)
 );
 
 function debug(...args) {

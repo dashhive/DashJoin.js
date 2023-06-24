@@ -832,10 +832,12 @@ function encodeInputs(inputs) {
 	return new Transaction().from(utxos);
 }
 
-function encodeOutputs(sourceAddress, amounts) {
+function encodeOutputs(userOutputAddresses, amounts) {
 	var tx = new Transaction();
+	let i = 0;
 	for (let amt of amounts) {
-		tx.to(sourceAddress, amt);
+		console.debug({ userOutputAddresses, i });
+		tx.to(userOutputAddresses[i++], amt);
 	}
 	return tx;
 }
@@ -846,6 +848,7 @@ function dsi(
 		userInputs,
 		collateralTxn,
 		userOutputs,
+		userOutputAddresses,
 		sourceAddress,
 	}
 ) {
@@ -876,7 +879,7 @@ function dsi(
 	}
 	let userInputTxn = encodeInputs(args.userInputs);
 
-	let userOutputTxn = encodeOutputs(args.sourceAddress, args.userOutputs);
+	let userOutputTxn = encodeOutputs(args.userOutputAddresses, args.userOutputs);
 
 	// FIXME: very hacky
 	let trimmedUserInput = userInputTxn
@@ -1233,22 +1236,21 @@ function dd(...args) {
 	console.debug(...args);
 	process.exit();
 }
-Lib.packet = {
-	coinjoin: {
-		dsa,
-		dsc,
-		dsf,
-		dsi,
-		dsq,
-		dssu,
-		dstx,
-	},
+Lib.packet.coinjoin = {
+	dsa,
+	dsc,
+	dsf,
+	dsi,
+	dsq,
+	dssu,
+	dstx,
+};
+Lib.packet = Object.assign(Lib.packet, {
 	getaddr,
 	senddsq,
 	sendaddr,
 	sendaddrv2,
-	parse: {},
 	pong,
 	verack,
 	version,
-};
+});
