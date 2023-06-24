@@ -1,6 +1,38 @@
 # DashJoin.js
 A non-custodial server-side SDK that allows users to mix using DASH's CoinJoin feature.
 
+# Current challenges:
+- When sending `dsi` messages, we get: 
+```
+2023-06-23T06:14:01Z received: dsi (271 bytes) peer=598
+2023-06-23T06:14:01Z DSVIN -- txCollateral CTransaction(hash=15fba6d799, ver=3, type=0, vin.size=1, vout.size=2, nLockTime=0, vExtraPayload.size=0)
+    CTxIn(COutPoint(74c105f14d20e21f9561f169aa1ea33cb6aef77533a813507ab3ccd8d8afe42b, 0), scriptSig=)
+    CTxOut(nValue=0.00020000, scriptPubKey=76a9143e84bba18681f7fbb3f4bec4)
+    CTxOut(nValue=0.00030001, scriptPubKey=76a914088d9cc12f9f89ad0de85a44)
+2023-06-23T06:14:01Z CCoinJoin::IsCollateralValid -- CTransaction(hash=15fba6d799, ver=3, type=0, vin.size=1, vout.size=2, nLockTime=0, vExtraPayload.size=0)
+    CTxIn(COutPoint(74c105f14d20e21f9561f169aa1ea33cb6aef77533a813507ab3ccd8d8afe42b, 0), scriptSig=)
+    CTxOut(nValue=0.00020000, scriptPubKey=76a9143e84bba18681f7fbb3f4bec4)
+    CTxOut(nValue=0.00030001, scriptPubKey=76a914088d9cc12f9f89ad0de85a44)
+2023-06-23T06:14:01Z AcceptToMemoryPoolWithTime: 15fba6d799660930d593f712ebf134fd32146cb990de303598a509ec056b0d91 mandatory-script-verify-flag-failed (Operation not valid with the current stack size) ()
+2023-06-23T06:14:01Z CCoinJoin::IsCollateralValid -- didn't pass AcceptToMemoryPool()
+2023-06-23T06:14:01Z CCoinJoinServer::AddEntry -- ERROR: collateral not valid!
+2023-06-23T06:14:01Z sending dssu (16 bytes) peer=598
+2023-06-23T06:14:01Z received: dsi (271 bytes) peer=599
+2023-06-23T06:14:01Z DSVIN -- txCollateral CTransaction(hash=78db06661c, ver=3, type=0, vin.size=1, vout.size=2, nLockTime=0, vExtraPayload.size=0)
+    CTxIn(COutPoint(781feadaaacd6d81b067a96230855d20499e228ea541d04eeec6bdff3f52a578, 0), scriptSig=)
+    CTxOut(nValue=0.00020000, scriptPubKey=76a9143e84bba18681f7fbb3f4bec4)
+    CTxOut(nValue=0.00030001, scriptPubKey=76a91413e72bb2fb4988193dad3233)
+2023-06-23T06:14:01Z CCoinJoin::IsCollateralValid -- CTransaction(hash=78db06661c, ver=3, type=0, vin.size=1, vout.size=2, nLockTime=0, vExtraPayload.size=0)
+    CTxIn(COutPoint(781feadaaacd6d81b067a96230855d20499e228ea541d04eeec6bdff3f52a578, 0), scriptSig=)
+    CTxOut(nValue=0.00020000, scriptPubKey=76a9143e84bba18681f7fbb3f4bec4)
+    CTxOut(nValue=0.00030001, scriptPubKey=76a91413e72bb2fb4988193dad3233)
+2023-06-23T06:14:01Z AcceptToMemoryPoolWithTime: 78db06661c77a82cbcbef81a5f98ba2e8058d725baf75c85771fc7c361252bce mandatory-script-verify-flag-failed (Operation not valid with the current stack size) ()
+2023-06-23T06:14:01Z CCoinJoin::IsCollateralValid -- didn't pass AcceptToMemoryPool()
+2023-06-23T06:14:01Z CCoinJoinServer::AddEntry -- ERROR: collateral not valid!
+2023-06-23T06:14:01Z sending dssu (16 bytes) peer=599
+2023-06-23T06:14:01Z received: dsi (271 bytes) peer=596
+```
+
 # IN PROGRESS:
   - [ ] Parse `dsi` messages
     - TODO

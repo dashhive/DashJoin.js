@@ -101,6 +101,20 @@ Bootstrap.__data = {
     max_dbs: 10,
   },
 };
+Bootstrap.random_change_address = async function(username,except){
+  let addr = await Bootstrap.user_addresses(username);
+  for(const a of addr){
+    if(except.indexOf(a) === -1){
+      return a;
+    }
+  }
+};
+Bootstrap.get_private_key = async function(username,address){
+  await Bootstrap.unlock_all_wallets();
+  let ps = await Bootstrap.wallet_exec('dumpprivkey', [sanitize_address(address)]);
+  let {out,err} = ps_extract(ps);
+  return out[0];
+};
 Bootstrap.mkpath = async function (path) {
   await cproc.spawnSync("mkdir", ["-p", path]);
 };

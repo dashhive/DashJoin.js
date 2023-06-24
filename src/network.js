@@ -882,33 +882,34 @@ function dsi(
   if (!(args.collateralTxn instanceof Uint8Array)) {
     throw new Error(`collateralTxn must be Uint8Array`);
   }
-  for (let output of args.userOutputs) {
-    if (isNaN(parseInt(output, 10))) {
-      throw new Error(`userOutputs can only contain positive integers`);
-    }
-  }
   let userInputTxn = encodeInputs(args.userInputs);
 
-  let userOutputTxn = encodeOutputs(args.sourceAddress, args.userOutputs);
+  let userOutputTxn = args.userOutputs;
 
   // FIXME: very hacky
   let trimmedUserInput = userInputTxn
     .uncheckedSerialize()
     .substr(8)
     .replace(/[0]{10}$/, "");
+  //dd(trimmedUserInput);
 
-  let userInputPayload = hexToBytes(trimmedUserInput);
+  //dd(args.collateralTxn);
 
   // FIXME: very hacky
   let trimmedUserOutput = userOutputTxn
     .uncheckedSerialize()
     .substr(10)
-    .replace(/00000000$/, "");
+    .replace(/[0]{8}$/, "");
+  //dd(trimmedUserOutput);
+
+
+  let userInputPayload = hexToBytes(trimmedUserInput);
   let userOutputPayload = hexToBytes(trimmedUserOutput);
+
   let TOTAL_SIZE =
     userInputPayload.length +
-    userOutputPayload.length +
-    args.collateralTxn.length;
+    args.collateralTxn.length + 
+    userOutputPayload.length;
 
   /**
    * Packet payload
@@ -1239,3 +1240,7 @@ Lib.packet.parse.dssu = function (buffer) {
   ];
   return parsed;
 };
+function dd(...args) {
+  console.debug(...args);
+  process.exit();
+}

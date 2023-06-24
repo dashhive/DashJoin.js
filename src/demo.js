@@ -56,11 +56,8 @@ if (process.argv.includes("--id")) {
 function getDemoDenomination() {
   return parseInt(COIN / 1000 + 1, 10);
 }
-async function getUserInputs(_in_username, denominatedAmount, count) {
-  let utxos = await dboot.get_denominated_utxos(
-    _in_username,
-    denominatedAmount
-  );
+async function getUserInputs(username, denominatedAmount, count) {
+  let utxos = await dboot.get_denominated_utxos(username, denominatedAmount);
   let selected = [];
   let txids = {};
   for (let i = 0; i < count; i++) {
@@ -68,40 +65,57 @@ async function getUserInputs(_in_username, denominatedAmount, count) {
       continue;
     }
 
-    let used = await dboot.is_txid_used(_in_username, utxos[i].txid);
-    if (used) {
+    txids[utxos[i].txid] = 1;
+    selected.push(utxos[i]);
+    await dboot.mark_txid_used(username, utxos[i].txid);
+  }
+  return selected;
+}
+async function getUserOutputs(username, denominatedAmount, count) {
+  let utxos = await dboot.get_denominated_utxos(username, denominatedAmount);
+  let selected = [];
+  let txids = {};
+  for (let i = 0; i < count; i++) {
+    if (typeof txids[utxos[i].txid] !== "undefined") {
       continue;
     }
 
     txids[utxos[i].txid] = 1;
     selected.push(utxos[i]);
-    //await dboot.mark_txid_used(_in_username, utxos[i].txid);
+    await dboot.mark_txid_used(username, utxos[i].txid);
   }
   return selected;
 }
-async function createDsiPacket(_in_username, userInputs, userOutputs, mn) {
+async function onDSSUChanged(parsed, _self) {
+  let msgId = parsed.message_id[1];
+  let state = parsed.state[1];
+  let update = parsed.status_update[1];
+  d({ msgId, state, update });
+  if (msgId === "ERR_INVALID_COLLATERAL") {
+    await dboot.mark_txid_used(username, mainUser.utxos[0].txid);
+    debug("marked collateral inputs as used");
+  }
+}
+async function createDSIPacket(
+  masterNode,
+  username,
+  denominationAmount,
+  count
+) {
+  let userInputs = await getUserInputs(username, denominationAmount, count);
+  let userOutputs = await getUserOutputs(username, denominationAmount, count);
   let sourceAddress = userInputs[0].address;
   let packet = Network.packet.coinjoin.dsi({
-    chosen_network: network,
+    chosen_network: masterNode.network,
     userInputs,
-    collateralTxn: await mn.makeCollateralTx(),
+    collateralTxn: await masterNode.makeCollateralTx(),
     userOutputs,
     sourceAddress,
   });
   return packet;
 }
-
-async function onDSSUChanged(parsed,_self){
-  let self = _self;
-  let msgId = parsed.message_id[1];
-  let state = parsed.state[1]
-  let update = parsed.status_update[1];
-  d({msgId,state,update});
-  if(msgId === 'ERR_INVALID_COLLATERAL'){
-    await dboot.mark_txid_used(username,mainUser.utxos[0].txid);
-    debug('marked collateral inputs as used');
-  }
-
+async function onCollateralTxCreated(tx, self) {
+  let tx = 0;
 }
 
 /**
@@ -110,6 +124,8 @@ async function onDSSUChanged(parsed,_self){
  * - user
  */
 (async function (_in_instanceName, _in_username, _in_nickname) {
+  const INPUTS = 2;
+
   nickName = _in_nickname;
   instanceName = _in_instanceName;
   username = _in_username;
@@ -119,13 +135,13 @@ async function onDSSUChanged(parsed,_self){
   randomPayeeName = await dboot.get_random_payee(username);
   payee = await extractUserDetails(randomPayeeName);
 
-  let userInputs = await getUserInputs(_in_username, getDemoDenomination(), 2);
   let masterNodeConnection = new MasterNodeConnection({
     ip: masterNodeIP,
     port: masterNodePort,
     network,
     ourIP,
     startBlockHeight,
+    onCollateralTxCreated: onCollateralTxCreated,
     onStatusChange: stateChanged,
     onDSSU: onDSSUChanged,
     debugFunction: null,
@@ -179,18 +195,6 @@ async function onDSSUChanged(parsed,_self){
           info("[-][COINJOIN] masternode not ready for dsi...");
           return;
         }
-        let userInputs = await getUserInputs(
-          _in_username,
-          getDemoDenomination(),
-          2
-        );
-        let userOutputs = [getDemoDenomination(), getDemoDenomination()];
-        let packet = await createDsiPacket(
-          _in_username,
-          userInputs,
-          userOutputs,
-          masterNode
-        );
         masterNode.client.write(packet);
         debug("sent dsi packet");
         break;
