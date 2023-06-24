@@ -9,6 +9,7 @@ const assert = require('assert');
 let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
+const fs = require('fs');
 //let PrivateKey = DashCore.PrivateKey;
 const extractOption = require('./argv.js').extractOption;
 const { extractUserDetails } = require('./bootstrap/user-details.js');
@@ -33,6 +34,22 @@ if (process.argv.includes('--mn1')) {
 if (process.argv.includes('--mn2')) {
 	config = require('./.mn2-config.json');
 	id.mn = 2;
+}
+function debug(...args) {
+	console.debug(`${nickName}[DBG]:`, ...args);
+}
+function info(...args) {
+	console.info(`${nickName}[INFO]:`, ...args);
+}
+function error(...args) {
+	console.error(`[${nickName}[ERROR]:`, ...args);
+}
+function d(...args) {
+	debug(...args);
+}
+function dd(...args) {
+	debug(...args);
+	process.exit();
 }
 
 let masterNodeIP = config.masterNodeIP;
@@ -158,6 +175,26 @@ async function createDSIPacket(
 	client_session.add_txids(extract(chosenInputTxns, 'txid'));
 	client_session.add_addresses(extract(chosenInputTxns, 'address'));
 	client_session.mixing_inputs = chosenInputTxns;
+	for (let i = 0; i < client_session.mixing_inputs.length; i++) {
+		let privateKey = await dboot.get_private_key(
+			client_session.username,
+			client_session.mixing_inputs[i].address
+		);
+		privateKey = await dboot.normalize_pk(privateKey);
+		client_session.mixing_inputs[i].private_key = privateKey;
+	}
+	await fs.writeFileSync(
+		`./dsf-mixing-inputs-${client_session.username}.json`,
+		JSON.stringify(
+			{
+				mixing_inputs: client_session.mixing_inputs,
+				txids: client_session.get_used_txids(),
+				username,
+			},
+			null,
+			2
+		)
+	);
 
 	/**
    * Step 2: create collateral transaction
@@ -238,37 +275,56 @@ async function makeDSICollateralTx(masterNode, username) {
 async function onCollateralTxCreated(tx, self) {
 	await dboot.mark_txid_used(tx.user, tx.txid);
 }
+async function getPrivateKeyFromRawTx(rawTx) {
+	for (const input of client_session.mixing_inputs) {
+		if (input.txid === rawTx) {
+			return input.private_key;
+		}
+	}
+}
+function toSerializedFormat(uint8Dsf) {
+	if (!(uint8Dsf instanceof Uint8Array)) {
+		throw new Error('parameter must be an instance of Uint8Array');
+	}
+	return dboot.helpers().conversion.arbuf_to_hexstr(uint8Dsf);
+}
 
-async function onDSFMessage(parsed, self) {
-	const fs = require('fs');
-	debug('onDSFMessage hit');
-	debug(self.dsfOrig);
-	await fs.writeFileSync(`./dsf-${client_session.username}.json`, self.dsfOrig);
+async function signWhatWeCan(uint8Dsf, self) {
+	const SESSION_ID_SIZE = 4; /// 32 bits
 	/**
-   * .substr(48 + 8) seeks past the MESSAGE_HEADER_SIZE and the first
-   * 32bits that make up the session ID.
-   * The rest of the string now consists of a valid serialized
-   * DASH Transaction which can be imported directly into
-   * a Transaction object.
+   * As a 'hex' string (because of .toString('hex')), each byte is represented
+   * by 2 characters. This means we need to double the seek length.
    */
-	let tx = new Transaction(self.dsfOrig.toString('hex').substr(48 + 8));
+	const seek = (Network.constants.MESSAGE_HEADER_SIZE + SESSION_ID_SIZE) * 2;
+	let tx = new Transaction(toSerializedFormat(uint8Dsf).substr(seek));
+	dd({ tx });
+	for (let i = 0; i < tx.inputs.length; i++) {
+		let rawTx = toSerializedFormat(tx.inputs[i].prevTxId);
+		let privateKey = await getPrivateKeyFromRawTx(rawTx);
+		//debug(tx.uncheckedSerialize());
+		if (privateKey !== null) {
+			tx.sign(privateKey);
+			//dd({ privateKey });
+		}
+		//dd({ rawTx, privateKey, prevTxId: tx.inputs[i].prevTxId });
+	}
+	dd(tx);
+	//dd(tx.uncheckedSerialize());
+	dd('uh-oh');
 	/**
    * TODO: Sign the transactions that we can sign
    * TODO: send the result as a dss message
    */
-	//await dboot.store_dsf(parsed);
-	/**
-   * Respond with dss
-   */
-	//let privateKey = await dboot.get_private_key(
-	//	let userInputs = new Transaction();
-	/// let dss = await Network.packet.coinjoin.dss({
-	/// 	chosen_network: self.network,
-	/// 	userInputs,
-	/// 	dsfPacket: parsed,
-	/// });
-	/// for (const input of parsed.transaction.inputs) {
-	/// }
+}
+
+async function onDSFMessage(parsed, self) {
+	//if (extractOption('savedsf')) {
+	const fs = require('fs');
+	debug('onDSFMessage hit');
+	debug(self.dsfOrig);
+	await fs.writeFileSync(`./dsf-${client_session.username}.dat`, self.dsfOrig);
+	//}
+	await signWhatWeCan(self.dsfOrig, self);
 }
 /**
  * argv should include:
@@ -302,6 +358,10 @@ async function onDSFMessage(parsed, self) {
 	mainUser = await extractUserDetails(username);
 	randomPayeeName = await dboot.get_random_payee(username);
 	payee = await extractUserDetails(randomPayeeName);
+
+	//let signed = await signWhatWeCan(
+	//	await fs.readFileSync(`./dsf-${client_session.username}.dat`)
+	//);
 
 	let masterNodeConnection = new MasterNodeConnection({
 		ip: masterNodeIP,
@@ -401,20 +461,3 @@ async function onDSFMessage(parsed, self) {
 	extractOption('count', true),
 	extractOption('senddsi', true)
 );
-
-function debug(...args) {
-	console.debug(`${nickName}[DBG]:`, ...args);
-}
-function info(...args) {
-	console.info(`${nickName}[INFO]:`, ...args);
-}
-function error(...args) {
-	console.error(`[${nickName}[ERROR]:`, ...args);
-}
-function d(...args) {
-	debug(...args);
-}
-function dd(...args) {
-	debug(...args);
-	process.exit();
-}

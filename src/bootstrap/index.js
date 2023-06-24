@@ -27,6 +27,32 @@ const fs = require('fs');
 
 const UserDetails = require('./user-details.js');
 
+Bootstrap.decode_raw_transaction = async function (username, rawTx) {
+	let ps = await Bootstrap.wallet_exec(username, [
+		'decoderawtransaction',
+		sanitize_txid(rawTx),
+	]);
+	let { out, err } = ps_extract(ps);
+	if (err.length) {
+		throw new Error(err);
+	}
+	if (out.length) {
+		return out;
+	}
+};
+Bootstrap.raw_transaction = async function (username, txid) {
+	let ps = await Bootstrap.wallet_exec(username, [
+		'getrawtransaction',
+		sanitize_txid(txid),
+	]);
+	let { out, err } = ps_extract(ps);
+	if (err.length) {
+		throw new Error(err);
+	}
+	if (out.length) {
+		return out;
+	}
+};
 Bootstrap.store_dsf = async function (data) {
 	if (data instanceof Uint8Array) {
 		data = data.toString();
@@ -67,14 +93,24 @@ Bootstrap.helpers = function () {
 		},
 		validation: {
 			sanitize_address,
+			sanitize_txid,
 		},
 		users: {
 			get_list: Bootstrap.user_list,
 			user_create: Bootstrap.user_create,
 		},
+		conversion: {
+			arbuf_to_hexstr,
+		},
 	};
 };
 Bootstrap.ps_extract = ps_extract;
+function arbuf_to_hexstr(buffer) {
+	// buffer is an ArrayBuffer
+	return [...new Uint8Array(buffer)]
+		.map((x) => x.toString(16).padStart(2, '0'))
+		.join('');
+}
 function ps_extract(ps, newlines = true) {
 	let out = ps.stdout.toString();
 	let err = ps.stderr.toString();
@@ -195,11 +231,12 @@ Bootstrap.random_change_address = async function (username, except) {
 };
 Bootstrap.get_private_key = async function (username, address) {
 	await Bootstrap.unlock_all_wallets();
-	let ps = await Bootstrap.wallet_exec('dumpprivkey', [
+	let ps = await Bootstrap.wallet_exec(username, [
+		'dumpprivkey',
 		sanitize_address(address),
 	]);
 	let { out, err } = ps_extract(ps);
-	return out[0];
+	return out[0][0][0];
 };
 Bootstrap.mkpath = async function (path) {
 	await cproc.spawnSync('mkdir', ['-p', path]);
@@ -224,6 +261,9 @@ function cli_args(list) {
 
 let db_cj, db_cj_ns, db_put, db_get, db_append;
 
+function sanitize_txid(txid) {
+	return txid.replace(/[^a-f0-9]+/gi, '').replace(/[\n]+$/, '');
+}
 function sanitize_address(address) {
 	return address.replace(/[^a-zA-Z0-9]+/gi, '').replace(/[\n]+$/, '');
 }
@@ -378,6 +418,14 @@ Bootstrap.store_change_addresses = async function (username, w_addresses) {
 		'addresses',
 		sanitize_addresses(w_addresses)
 	);
+};
+Bootstrap.normalize_pk = async function (privateKey) {
+	if (Array.isArray(privateKey)) {
+		if (Array.isArray(privateKey[0])) {
+			return privateKey[0][0];
+		}
+	}
+	return privateKey;
 };
 Bootstrap.get_private_key = async function (username, address) {
 	return await Bootstrap.meta_get([username, 'privatekey'], address);
