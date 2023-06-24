@@ -87,6 +87,7 @@ function MasterNode({
 	onCollateralTxCreated = null,
 	onStatusChange = null,
 	onDSSU = null,
+	onDSF = null,
 	debugFunction = null,
 	userAgent = null,
 	coinJoinData,
@@ -125,7 +126,15 @@ function MasterNode({
 	self.ip = ip;
 	self.mnauth_challenge = null;
 	self.network = network;
+	self.dsf = null;
+	self.dsfOrig = null;
 	self.onStatusChange = onStatusChange;
+	self.onDSF = onDSF;
+	self.dispatchDSF = function (packet) {
+		if (typeof self.onDSF === 'function') {
+			self.onDSF(packet, self);
+		}
+	};
 	self.onDSSU = onDSSU;
 	self.dispatchDSSU = function (packet) {
 		if (typeof self.onDSSU === 'function') {
@@ -265,6 +274,11 @@ function MasterNode({
 			payloadSize += parsed.hashes.length * 32;
 			self.debugFunction({ parsed, payloadSize });
 		}
+		if (command === 'dsf') {
+			let parsed = PacketParser.dsf(self.buffer);
+			self.debugFunction('dsf:', parsed);
+			self.dispatchDSF(parsed);
+		}
 		if (command === 'dssu') {
 			let parsed = PacketParser.dssu(self.buffer);
 			self.debugFunction('dssu:', parsed);
@@ -372,6 +386,13 @@ function MasterNode({
 					self.debugFunction(command, packet);
 					self.dsq = packet;
 					self.setStatus('DSQ_RECEIVED');
+					break;
+				case 'dsf':
+					self.debugFunction({ command, payloadSize });
+					packet = PacketParser.dsf(self.buffer);
+					self.dsf = packet;
+					self.dsfOrig = self.buffer;
+					self.dispatchDSF(packet);
 					break;
 				case 'dssu':
 					self.debugFunction({ command, payloadSize });

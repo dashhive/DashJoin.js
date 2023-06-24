@@ -1232,6 +1232,138 @@ Lib.packet.parse.dssu = function (buffer) {
 	];
 	return parsed;
 };
+Lib.packet.parse.dsf = function (buffer) {
+	if (!(buffer instanceof Uint8Array)) {
+		throw new Error('Must be an instance of Uint8Array');
+	}
+	let commandName = Lib.packet.parse.commandName(buffer);
+	if (commandName !== 'dsf') {
+		throw new Error('Not a dsf packet');
+	}
+	let parsed = {
+		sessionID: 0,
+		transaction: {
+			version: 0,
+			inputCount: 0,
+			inputs: [],
+			outputCount: 0,
+			outputs: [],
+		},
+	};
+	const TXID_HASH_SIZE = 32;
+	const VOUT_SIZE = 4;
+	const SIGSCRIPT_SIZE = 1;
+	const SEQUENCE_NUMBER_SIZE = 4;
+	/**
+   * TRANSACTION_SIZE:
+   * 1) A TxID Hash (32 bytes)
+   * 2) vout (4 bytes)
+   * 3) sigscript bytes (1 byte)
+   * 4) sequence number (4 bytes)
+   */
+	const TRANSACTION_SIZE =
+    TXID_HASH_SIZE + VOUT_SIZE + SIGSCRIPT_SIZE + SEQUENCE_NUMBER_SIZE;
+	let SIZES = {
+		SESSIONID: 4,
+		VERSION: 4,
+		INPUT_COUNT: 1,
+		INPUTS: 0,
+		OUTPUT_COUNT: 1,
+		OUTPUTS: 0,
+		LOCKTIME: 4,
+	};
+
+	//console.debug('Size of dsf packet:', buffer.length);
+	/**
+   * We'll need to point past the message header in
+   * order to get to the dsq packet details.
+   */
+	let offset = MESSAGE_HEADER_SIZE;
+
+	let dsfPacket = extractChunk(buffer, offset, buffer.length);
+	//console.debug('packet details (minus header):', dsfPacket);
+
+	/**
+   * Grab the SESSION ID
+   */
+	parsed.sessionID = extractUint32(buffer, offset);
+	offset += SIZES.SESSIONID;
+
+	/**
+   * Grab the VERSION
+   */
+	parsed.transaction.version = extractChunk(
+		buffer,
+		offset,
+		offset + SIZES.VERSION
+	);
+	offset += SIZES.VERSION;
+
+	/**
+   * Grab the INPUT COUNT
+   */
+	// FIXME: parse compactSize int
+	parsed.transaction.inputCount = parseInt(
+		extractChunk(buffer, offset, offset + SIZES.INPUT_COUNT),
+		10
+	);
+
+	let inputs = parseInt(parsed.transaction.inputCount, 10);
+	if (isNaN(inputs)) {
+		throw new Error('tx input count is not a valid integer');
+	}
+	offset += SIZES.INPUT_COUNT;
+	for (let i = 0; i < inputs; i++) {
+		let transaction = {};
+		transaction.txid = extractChunk(buffer, offset, offset + TXID_HASH_SIZE);
+		offset += TXID_HASH_SIZE;
+		transaction.vout = extractChunk(buffer, offset, offset + VOUT_SIZE);
+		offset += VOUT_SIZE;
+		transaction.sigscript_bytes = extractChunk(
+			buffer,
+			offset,
+			offset + SIGSCRIPT_SIZE
+		);
+		offset += SIGSCRIPT_SIZE;
+		transaction.sequence = extractChunk(
+			buffer,
+			offset,
+			offset + SEQUENCE_NUMBER_SIZE
+		);
+		offset += SEQUENCE_NUMBER_SIZE;
+		d(transaction);
+		parsed.transaction.inputs.push(transaction);
+	}
+
+	parsed.transaction.outputCount = parseInt(
+		extractChunk(buffer, offset, offset + SIZES.OUTPUT_COUNT),
+		10
+	);
+	if (isNaN(parsed.transaction.outputCount)) {
+		throw new Error('couldn\'t parse output count');
+	}
+	offset += SIZES.OUTPUT_COUNT;
+	for (let i = 0; i < parsed.transaction.outputCount; i++) {
+		let output = {};
+		output.duffs = extractUint64(buffer, offset);
+		offset += 8;
+		output.pubkey_script_bytes = extractChunk(buffer, offset, offset + 1);
+		output.pubkey_script_bytes = parseInt(output.pubkey_script_bytes, 10);
+		offset += 1;
+		output.pubkey_script = extractChunk(
+			buffer,
+			offset,
+			offset + output.pubkey_script_bytes
+		);
+		offset += output.pubkey_script_bytes;
+		parsed.transaction.outputs.push(output);
+	}
+
+	return parsed;
+};
+function d(...args) {
+	console.debug(...args);
+}
 function dd(...args) {
 	console.debug(...args);
 	process.exit();
@@ -1254,3 +1386,27 @@ Lib.packet = Object.assign(Lib.packet, {
 	verack,
 	version,
 });
+function dumpAsHex(arr) {
+	let ctr = 0;
+	for (const ch of arr) {
+		process.stdout.write('0x' + ch.toString(16) + ',');
+		if (++ctr % 8 === 0) {
+			process.stdout.write('\n');
+		}
+	}
+}
+if (process.argv.includes('--run-dsf-test')) {
+	(async function () {
+		const buffer = require('./example-dsf.js').example;
+		let dsf = Lib.packet.parse.dsf(buffer);
+		dd(
+			JSON.stringify(
+				dsf,
+				(key, value) =>
+					typeof value === 'bigint' ? value.toString() + 'n' : value,
+				2
+			)
+		);
+		process.exit(0);
+	})();
+}

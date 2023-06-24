@@ -27,6 +27,15 @@ const fs = require('fs');
 
 const UserDetails = require('./user-details.js');
 
+Bootstrap.store_dsf = async function (data) {
+	if (data instanceof Uint8Array) {
+		data = data.toString();
+	}
+	return await Bootstrap.meta_store(['example', 'payloads'], 'dsf', data);
+};
+Bootstrap.dsf_list = async function () {
+	return await Bootstrap.meta_get(['example', 'payloads'], 'dsf');
+};
 function uniqueByKey(array, key) {
 	let map = {};
 	let saved = [];
@@ -727,6 +736,12 @@ function usage() {
 	console.log(
 		'--wallet-cmd=user  Gives you the ability to call dash-cli for the specified user'
 	);
+	console.log(
+		'--dump-dsf         Dumps the db contents for DSF example payloads that have been logged'
+	);
+	console.log(
+		'--dsf-to=FILE      Dumps the db contents for DSF example payloads to the specified file'
+	);
 	console.log('');
 	console.log('# What are instances?');
 	console.log('-------------------------------------------------------');
@@ -772,7 +787,16 @@ Bootstrap.run_cli_program = async function () {
 		list_addr: null,
 		list_utxos: null,
 		wallet_cmd: null,
+		dump_dsf: false,
+		dsf_to_file: null,
+		//console.log(`--dump-dsf         Dumps the db contents for DSF example payloads that have been logged`);
+		//console.log(`--dsf-to=FILE      Dumps the db contents for DSF example payloads to the specified file`);
 	};
+	let dump_dsf = extractOption('dump-dsf');
+	if (dump_dsf) {
+		config.dump_dsf = true;
+		help = false;
+	}
 	let iname = extractOption('instance', true);
 	if (iname) {
 		config.instance = iname;
@@ -831,6 +855,16 @@ Bootstrap.run_cli_program = async function () {
 	if (utxos) {
 		config.list_utxos = utxos;
 		help = false;
+	}
+	if (config.dump_dsf) {
+		dd(await Bootstrap.dsf_list());
+	}
+	if (config.dsf_to_file) {
+		await fs.writeFileSync(
+			config.dsf_to_file,
+			(await Bootstrap.dsf_list()).toString()
+		);
+		dd('did it work?');
 	}
 
 	if (extractOption('help') || extractOption('h')) {

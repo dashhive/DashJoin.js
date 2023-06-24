@@ -236,6 +236,11 @@ async function onCollateralTxCreated(tx, self) {
 	await dboot.mark_txid_used(tx.user, tx.txid);
 }
 
+async function onDSFMessage(parsed, self) {
+	debug('onDSFMessage hit');
+	debug(self.dsfOrig);
+	await dboot.store_dsf(parsed);
+}
 /**
  * argv should include:
  * - instance name
@@ -253,6 +258,10 @@ async function onCollateralTxCreated(tx, self) {
 	}
 	if (isNaN(INPUTS)) {
 		throw new Error('--count must be a positive integer');
+	}
+	if (INPUTS >= 253) {
+		throw new Error('--count currently only supports a max of 252');
+		process.exit(1);
 	}
 
 	nickName = _in_nickname;
@@ -273,6 +282,7 @@ async function onCollateralTxCreated(tx, self) {
 		onCollateralTxCreated: onCollateralTxCreated,
 		onStatusChange: stateChanged,
 		onDSSU: onDSSUChanged,
+		onDSF: onDSFMessage,
 		debugFunction: null,
 		userAgent: config.userAgent ?? null,
 		coinJoinData: mainUser,
