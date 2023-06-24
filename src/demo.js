@@ -3,6 +3,7 @@
 const COIN = require('./coin-join-constants.js').COIN;
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const Network = require('./network.js');
+const toSerializedFormat = Network.util.toSerializedFormat;
 //const NetworkUtil = require("./network-util.js");
 //const hexToBytes = NetworkUtil.hexToBytes;
 const assert = require('assert');
@@ -101,6 +102,7 @@ async function getUserInputs(username, denominatedAmount, count) {
 	return selected;
 }
 let client_session = {
+	address_info: {},
 	username: null,
 	used_txids: [],
 	col_txids: [],
@@ -182,6 +184,8 @@ async function createDSIPacket(
 		);
 		privateKey = await dboot.normalize_pk(privateKey);
 		client_session.mixing_inputs[i].private_key = privateKey;
+		client_session.address_info[client_session.mixing_inputs[i].address] =
+      privateKey;
 	}
 	await fs.writeFileSync(
 		`./dsf-mixing-inputs-${client_session.username}.json`,
@@ -282,39 +286,55 @@ async function getPrivateKeyFromRawTx(rawTx) {
 		}
 	}
 }
-function toSerializedFormat(uint8Dsf) {
-	if (!(uint8Dsf instanceof Uint8Array)) {
-		throw new Error('parameter must be an instance of Uint8Array');
-	}
-	return dboot.helpers().conversion.arbuf_to_hexstr(uint8Dsf);
-}
 
+/**
+ * TODO: the dsf packet is essentially a few transactions
+ * with just the signatures missing. if we can create a fake
+ * transaction using DashCore.Transaction then extract the
+ * signature, we should be able to send that right back to the masternode
+ */
 async function signWhatWeCan(uint8Dsf, self) {
-	const SESSION_ID_SIZE = 4; /// 32 bits
-	/**
-   * As a 'hex' string (because of .toString('hex')), each byte is represented
-   * by 2 characters. This means we need to double the seek length.
-   */
-	const seek = (Network.constants.MESSAGE_HEADER_SIZE + SESSION_ID_SIZE) * 2;
-	let tx = new Transaction(toSerializedFormat(uint8Dsf).substr(seek));
-	dd({ tx });
-	for (let i = 0; i < tx.inputs.length; i++) {
-		let rawTx = toSerializedFormat(tx.inputs[i].prevTxId);
-		let privateKey = await getPrivateKeyFromRawTx(rawTx);
-		//debug(tx.uncheckedSerialize());
-		if (privateKey !== null) {
-			tx.sign(privateKey);
-			//dd({ privateKey });
+	let amount = getDemoDenomination();
+	let parsed = Network.packet.parse.dsf(uint8Dsf);
+	let utxos = [];
+	let sourceAddress = [];
+	for (const input of parsed.transaction.inputs) {
+		await dboot.unlock_all_wallets();
+		d({ input: input.txid });
+		let tmpSourceAddress = await dboot
+			.get_address_from_txid(client_session.username, input.txid)
+			.catch(function (issue) {
+				return null;
+			});
+		if (tmpSourceAddress) {
+			sourceAddress.push(tmpSourceAddress);
+			utxos.push({
+				txId: input.txid,
+				outputIndex: input.vout,
+				sequenceNumber: 0xffffffff,
+				scriptPubKey: Script.buildPublicKeyHashOut(tmpSourceAddress),
+				satoshis: amount,
+			});
+			let tx = new Transaction()
+				.from(utxos[0])
+				.to(tmpSourceAddress, amount)
+				.sign(client_session.address_info[tmpSourceAddress]);
+			dd(tx);
+		} else {
+			utxos.push({
+				txId: input.txid,
+				outputIndex: input.vout,
+				sequenceNumber: 0xffffffff,
+				scriptPubKey: null,
+				satoshis: amount,
+			});
 		}
-		//dd({ rawTx, privateKey, prevTxId: tx.inputs[i].prevTxId });
 	}
-	dd(tx);
-	//dd(tx.uncheckedSerialize());
-	dd('uh-oh');
-	/**
-   * TODO: Sign the transactions that we can sign
-   * TODO: send the result as a dss message
-   */
+	dd({ sourceAddress });
+	let tx = new Transaction().from(utxos).to(sourceAddress[0], amount);
+	//.sign(client_session.address_info[sourceAddress[0]]);
+	dd({ tx });
+	return tx;
 }
 
 async function onDSFMessage(parsed, self) {

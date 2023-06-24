@@ -27,6 +27,29 @@ const fs = require('fs');
 
 const UserDetails = require('./user-details.js');
 
+Bootstrap.get_address_from_txid = async function (username, txid) {
+	let addresses = await Bootstrap.user_addresses(username);
+	let output = [];
+	for (const address of addresses) {
+		let ps = await Bootstrap.wallet_exec(username, [
+			'getaddresstxids',
+			`"${sanitize_address(address)}"`,
+		]);
+		let { out, err } = ps_extract(ps);
+		if (err.length) {
+			throw new Error(err);
+		}
+		out = out.split('\n').map(function (c) {
+			return String(c)
+				.replace(/^\s*["]{1}/, '')
+				.replace(/[",]{1,2}.*$/, '');
+		});
+		if (out.indexOf(txid) !== -1) {
+			return address;
+		}
+	}
+	throw new Error('none found');
+};
 Bootstrap.decode_raw_transaction = async function (username, rawTx) {
 	let ps = await Bootstrap.wallet_exec(username, [
 		'decoderawtransaction',
@@ -763,6 +786,8 @@ function usage() {
 		'--instance=N       Uses N as the instance. If not passed, defaults to "base"'
 	);
 	console.log('--unlock-all       Unlocks all user wallets.');
+	console.log('--addrfromtxid=TX  [EXPERIMENTAL]           ');
+	console.log('             i---> Requires --username=U    ');
 	console.log('--generate-to=N    Generates DASH to the user named N');
 	console.log('--dash-for-all     Generates DASH to EVERY user');
 	console.log('--create-wallets   Creates wallets, addresses, and UTXO\'s');
@@ -851,6 +876,15 @@ Bootstrap.run_cli_program = async function () {
 		help = false;
 	}
 	await Bootstrap.load_instance(config.instance);
+	let txid = null;
+	if ((txid = extractOption('addrfromtxid', true))) {
+		dd(
+			await Bootstrap.get_address_from_txid(
+				extractOption('username', true),
+				txid
+			)
+		);
+	}
 	let denom = extractOption('denom-amt', true);
 	if (denom) {
 		let username = extractOption('username', true);

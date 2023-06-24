@@ -271,6 +271,19 @@ let allZeroes = NetUtil.allZeroes;
 let hexToBytes = NetUtil.hexToBytes;
 let str2uint8 = NetUtil.str2uint8;
 
+function arbuf_to_hexstr(buffer) {
+	// buffer is an ArrayBuffer
+	return [...new Uint8Array(buffer)]
+		.map((x) => x.toString(16).padStart(2, '0'))
+		.join('');
+}
+function toSerializedFormat(uint8Dsf) {
+	if (!(uint8Dsf instanceof Uint8Array)) {
+		throw new Error('parameter must be an instance of Uint8Array');
+	}
+	return arbuf_to_hexstr(uint8Dsf);
+}
+
 function extractInt64(data, at) {
 	let a = new Uint8Array([
 		data[at],
@@ -1377,9 +1390,11 @@ Lib.packet.parse.dsf = function (buffer) {
 	offset += SIZES.INPUT_COUNT;
 	for (let i = 0; i < inputs; i++) {
 		let transaction = {};
-		transaction.txid = extractChunk(buffer, offset, offset + TXID_HASH_SIZE);
+		transaction.txid = toSerializedFormat(
+			extractChunk(buffer, offset, offset + TXID_HASH_SIZE)
+		);
 		offset += TXID_HASH_SIZE;
-		transaction.vout = extractChunk(buffer, offset, offset + VOUT_SIZE);
+		transaction.vout = parseInt(extractUint32(buffer, offset), 10);
 		offset += VOUT_SIZE;
 		transaction.sigscript_bytes = extractChunk(
 			buffer,
@@ -1387,11 +1402,7 @@ Lib.packet.parse.dsf = function (buffer) {
 			offset + SIGSCRIPT_SIZE
 		);
 		offset += SIGSCRIPT_SIZE;
-		transaction.sequence = extractChunk(
-			buffer,
-			offset,
-			offset + SEQUENCE_NUMBER_SIZE
-		);
+		transaction.sequence = parseInt(extractUint32(buffer, offset), 10);
 		offset += SEQUENCE_NUMBER_SIZE;
 		parsed.transaction.inputs.push(transaction);
 	}
@@ -1408,8 +1419,10 @@ Lib.packet.parse.dsf = function (buffer) {
 		let output = {};
 		output.duffs = extractUint64(buffer, offset);
 		offset += 8;
-		output.pubkey_script_bytes = extractChunk(buffer, offset, offset + 1);
-		output.pubkey_script_bytes = parseInt(output.pubkey_script_bytes, 10);
+		output.pubkey_script_bytes = parseInt(
+			extractChunk(buffer, offset, offset + 1),
+			10
+		);
 		offset += 1;
 		output.pubkey_script = extractChunk(
 			buffer,
@@ -1472,3 +1485,5 @@ if (process.argv.includes('--run-dsf-test')) {
 		process.exit(0);
 	})();
 }
+Lib.util.toSerializedFormat = toSerializedFormat;
+Lib.util.dumpAsHex = dumpAsHex;
