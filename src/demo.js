@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 "use strict";
 const COIN = require("./coin-join-constants.js").COIN;
+const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const Network = require("./network.js");
-const NetworkUtil = require("./network-util.js");
-const hexToBytes = NetworkUtil.hexToBytes;
+//const NetworkUtil = require("./network-util.js");
+//const hexToBytes = NetworkUtil.hexToBytes;
 const assert = require("assert");
 const extractOption = require("./argv.js").extractOption;
 const { extractUserDetails } = require("./bootstrap/user-details.js");
 const dashboot = require("./bootstrap/index.js");
 const MasterNodeConnection =
   require("./masternode-connection.js").MasterNodeConnection;
+let INPUTS = 2;
+let dboot = null;
 
 let id = {};
 
@@ -34,8 +37,6 @@ let network = config.network;
 let ourIP = config.ourIP;
 let startBlockHeight = config.startBlockHeight;
 
-let DashCore = require("@dashevo/dashcore-lib");
-let dboot = null;
 let mainUser;
 let randomPayeeName;
 let payee;
@@ -62,16 +63,19 @@ async function getUserInputs(username, denominatedAmount, count) {
   let txids = {};
   let maxReps = 150000;
   let iteration = 0;
+  let i = 0;
   while (selected.length < count) {
     if (++iteration > maxReps) {
       throw new Error(`Couldnt find unused user input after ${maxReps} tries`);
     }
     if (typeof txids[utxos[i].txid] !== "undefined") {
+      ++i;
       continue;
     }
     txids[utxos[i].txid] = 1;
     selected.push(utxos[i]);
     await dboot.mark_txid_used(username, utxos[i].txid);
+    ++i;
   }
   return selected;
 }
@@ -82,9 +86,16 @@ let client_session = {
   get_used_txids: function () {
     return [...client_session.used_txids, ...client_session.col_txids];
   },
+  add_txids: function (a) {
+    client_session.used_txids = [...client_session.used_txids, ...a];
+  },
+  add_addresses: function (a) {
+    client_session.used_addresses = [...client_session.used_addresses, ...a];
+  },
 };
-async function getUserOutputs(username, denominatedAmount, count) {}
-async function onDSSUChanged(parsed, _self) {
+//async function getUserOutputs(username, denominatedAmount, count) {}
+async function onDSSUChanged(parsed) {
+  //, _self) {
   let msgId = parsed.message_id[1];
   let state = parsed.state[1];
   let update = parsed.status_update[1];
@@ -95,16 +106,46 @@ async function onDSSUChanged(parsed, _self) {
     debug("marked collateral inputs as used");
   }
 }
+function extract(array, key) {
+  let selected = [];
+  for (const ele of array) {
+    selected.push(ele[key]);
+  }
+  return selected;
+}
 async function createDSIPacket(
   masterNode,
   username,
   denominationAmount,
   count
 ) {
+  /**
+   * Step 1: create inputs
+   */
+  let chosenInputTxns = await dboot.filter_denominated_transaction(
+    username,
+    denominationAmount,
+    count,
+    client_session.get_used_txids()
+  );
+  assert.equal(
+    chosenInputTxns.length,
+    count,
+    "couldnt find enough denominated transactions"
+  );
+  client_session.add_txids(extract(chosenInputTxns, "txid"));
+  client_session.add_addresses(extract(chosenInputTxns, "address"));
+  //dd(client_session);
+  //dd(chosenInputTxns);
+
+  /**
+   * Step 2: create collateral transaction
+   */
   let amount = parseInt(LOW_COLLATERAL * 2, 10);
   assert.equal(amount > 0, true, "amount has to be non-zero positive");
-  let fee = 50000; // FIXME
-  let payeeAddress = await dboot.random_payee_address(username);
+  let payee = await dboot.random_payee_address(username);
+  assert.notEqual(payee.user, username, "payee cannot be the same as user");
+  let payeeAddress = payee.address;
   assert.notEqual(payeeAddress.length, 0, "payeeAddress cannot be empty");
   let sourceAddress = await dboot.filter_address(
     username,
@@ -112,16 +153,60 @@ async function createDSIPacket(
   );
   assert.notEqual(sourceAddress, null, "sourceAddress cannot be null");
   assert.notEqual(sourceAddress.length, 0, "sourceAddress cannot be empty");
-  let chosenInputTxns = await dboot.filter_denominated_transaction(
-    username,
-    getDemoDenomination(),
-    INPUTS,
-    client_session.get_used_txids()
-  );
   //let txid =
   //let vout =
   //let satoshis =
   //let changeAddress =
+  //if (changeAddress === null) {
+  //  throw new Error("changeAddress cannot be null");
+  //}
+  //let privateKey = self.coinJoinData.utxos[0].privateKey;
+  //let unspent = satoshis - amount;
+  //let utxos = {
+  //  txId: txid,
+  //  outputIndex: vout,
+  //  sequenceNumber: 0xffffffff,
+  //  scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+  //  satoshis,
+  //};
+  //let tx = new Transaction()
+  //  .from(utxos)
+  //  .to(payeeAddress, amount)
+  //  .to(changeAddress, unspent - fee)
+  //  .sign(privateKey);
+  //self.collateralTx = {
+  //  tx,
+  //  utxos,
+  //  payeeAddress,
+  //  amount,
+  //  changeAddress,
+  //  privateKey,
+  //  txid,
+  //  vout,
+  //  satoshis,
+  //  sourceAddress,
+  //  user: self.coinJoinData.user,
+  //};
+  //let userInputs = await getUserInputs(username, denominationAmount, count);
+  //let userOutputs = await getUserOutputs(username, denominationAmount, count);
+  //let packet = Network.packet.coinjoin.dsi({
+  //  chosen_network: masterNode.network,
+  //  userInputs,
+  //  collateralTxn: await masterNode.makeCollateralTx(),
+  //  userOutputs,
+  //  sourceAddress,
+  //});
+  //return packet;
+}
+async function makeDSICollateralTx(masterNode, username) {
+  let amount = parseInt(LOW_COLLATERAL * 2, 10);
+  let fee = 50000; // FIXME
+  let payeeAddress = self.payee.utxos[0].address;
+  let sourceAddress = self.coinJoinData.utxos[0].address;
+  let txid = self.coinJoinData.utxos[0].txid;
+  let vout = self.coinJoinData.utxos[0].outputIndex;
+  let satoshis = self.coinJoinData.utxos[0].satoshis;
+  let changeAddress = self.coinJoinData.changeAddress;
   if (changeAddress === null) {
     throw new Error("changeAddress cannot be null");
   }
@@ -152,17 +237,8 @@ async function createDSIPacket(
     sourceAddress,
     user: self.coinJoinData.user,
   };
-  let userInputs = await getUserInputs(username, denominationAmount, count);
-  let userOutputs = await getUserOutputs(username, denominationAmount, count);
-  let sourceAddress = userInputs[0].address;
-  let packet = Network.packet.coinjoin.dsi({
-    chosen_network: masterNode.network,
-    userInputs,
-    collateralTxn: await masterNode.makeCollateralTx(),
-    userOutputs,
-    sourceAddress,
-  });
-  return packet;
+  self.dispatchCollateralTxCreated(tx);
+  return hexToBytes(tx.uncheckedSerialize());
 }
 async function onCollateralTxCreated(tx, self) {
   await dboot.mark_txid_used(tx.user, tx.txid);
@@ -173,8 +249,13 @@ async function onCollateralTxCreated(tx, self) {
  * - instance name
  * - user
  */
-(async function (_in_instanceName, _in_username, _in_nickname) {
-  const INPUTS = 2;
+(async function (_in_instanceName, _in_username, _in_nickname, _in_count) {
+  if (_in_count) {
+    INPUTS = parseInt(_in_count, 10);
+  }
+  if (isNaN(INPUTS)) {
+    throw new Error(`--count must be a positive integer`);
+  }
 
   nickName = _in_nickname;
   instanceName = _in_instanceName;
@@ -203,6 +284,13 @@ async function onCollateralTxCreated(tx, self) {
   });
 
   let dsaSent = false;
+  let dsi = await createDSIPacket(
+    masterNodeConnection,
+    _in_username,
+    getDemoDenomination(),
+    INPUTS
+  );
+  dd({ dsi });
 
   async function stateChanged(obj) {
     let self = obj.self;
@@ -259,7 +347,8 @@ async function onCollateralTxCreated(tx, self) {
 })(
   extractOption("instance", true),
   extractOption("username", true),
-  extractOption("nickname", true)
+  extractOption("nickname", true),
+  extractOption("count", true)
 );
 
 function debug(...args) {
