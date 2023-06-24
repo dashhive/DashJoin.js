@@ -946,6 +946,68 @@ function dsi(
 	return wrap_packet(args.chosen_network, 'dsi', packet, TOTAL_SIZE);
 }
 
+function dss(
+	args = {
+		chosen_network, // 'testnet'
+		userInputs,
+		dsfPacket,
+	}
+) {
+	let userInputTxn = encodeInputs(args.userInputs);
+
+	// FIXME: very hacky
+	let trimmedUserInput = userInputTxn
+		.uncheckedSerialize()
+		.substr(8)
+		.replace(/[0]{10}$/, '');
+
+	let userInputPayload = hexToBytes(trimmedUserInput);
+
+	let TOTAL_SIZE =
+    userInputPayload.length + collateralTxn.length + userOutputPayload.length;
+
+	/**
+   * Packet payload
+   */
+	let offset = 0;
+	let packet = new Uint8Array(TOTAL_SIZE);
+	//console.debug({ packetSize: TOTAL_SIZE, actual: packet.length });
+	//console.debug({ userInputPayloadSize: userInputPayload.length });
+	//console.debug({ userOutputPayloadSize: userOutputPayload.length });
+	//console.debug({ collateralTxnSize: args.collateralTxn.length });
+	/**
+   * Set the user inputs
+   */
+	packet.set(userInputPayload);
+	assert(
+		packet[0],
+		args.userInputs.length,
+		'userInputs.length must be the first byte in payload'
+	);
+	offset += userInputPayload.length;
+	//console.debug({ userInputPayload, packet });
+
+	/**
+   * Set the collateral txn(s)
+   */
+	packet.set(collateralTxn, offset);
+	offset += collateralTxn.length;
+
+	/**
+   * Set the outputs
+   */
+	packet.set(userOutputPayload, offset);
+
+	//console.debug({ packet, offset }); // FIXME
+
+	assert.equal(
+		packet.length,
+		TOTAL_SIZE,
+		'packet length doesnt match TOTAL_SIZE'
+	);
+
+	return wrap_packet(args.chosen_network, 'dsi', packet, TOTAL_SIZE);
+}
 function dsq() {}
 function dssu() {}
 function dstx() {}
@@ -1331,7 +1393,6 @@ Lib.packet.parse.dsf = function (buffer) {
 			offset + SEQUENCE_NUMBER_SIZE
 		);
 		offset += SEQUENCE_NUMBER_SIZE;
-		d(transaction);
 		parsed.transaction.inputs.push(transaction);
 	}
 
@@ -1375,6 +1436,7 @@ Lib.packet.coinjoin = {
 	dsi,
 	dsq,
 	dssu,
+	dss,
 	dstx,
 };
 Lib.packet = Object.assign(Lib.packet, {

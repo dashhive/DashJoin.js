@@ -84,9 +84,11 @@ async function getUserInputs(username, denominatedAmount, count) {
 	return selected;
 }
 let client_session = {
+	username: null,
 	used_txids: [],
 	col_txids: [],
 	used_addresses: [],
+	mixing_inputs: [],
 	get_used_txids: function () {
 		return [...client_session.used_txids, ...client_session.col_txids];
 	},
@@ -155,6 +157,7 @@ async function createDSIPacket(
 	}
 	client_session.add_txids(extract(chosenInputTxns, 'txid'));
 	client_session.add_addresses(extract(chosenInputTxns, 'address'));
+	client_session.mixing_inputs = chosenInputTxns;
 
 	/**
    * Step 2: create collateral transaction
@@ -237,9 +240,35 @@ async function onCollateralTxCreated(tx, self) {
 }
 
 async function onDSFMessage(parsed, self) {
+	const fs = require('fs');
 	debug('onDSFMessage hit');
 	debug(self.dsfOrig);
-	await dboot.store_dsf(parsed);
+	await fs.writeFileSync(`./dsf-${client_session.username}.json`, self.dsfOrig);
+	/**
+   * .substr(48 + 8) seeks past the MESSAGE_HEADER_SIZE and the first
+   * 32bits that make up the session ID.
+   * The rest of the string now consists of a valid serialized
+   * DASH Transaction which can be imported directly into
+   * a Transaction object.
+   */
+	let tx = new Transaction(self.dsfOrig.toString('hex').substr(48 + 8));
+	/**
+   * TODO: Sign the transactions that we can sign
+   * TODO: send the result as a dss message
+   */
+	//await dboot.store_dsf(parsed);
+	/**
+   * Respond with dss
+   */
+	//let privateKey = await dboot.get_private_key(
+	//	let userInputs = new Transaction();
+	/// let dss = await Network.packet.coinjoin.dss({
+	/// 	chosen_network: self.network,
+	/// 	userInputs,
+	/// 	dsfPacket: parsed,
+	/// });
+	/// for (const input of parsed.transaction.inputs) {
+	/// }
 }
 /**
  * argv should include:
@@ -267,6 +296,7 @@ async function onDSFMessage(parsed, self) {
 	nickName = _in_nickname;
 	instanceName = _in_instanceName;
 	username = _in_username;
+	client_session.username = _in_username;
 	//console.info(`[status]: loading "${instanceName}" instance...`);
 	dboot = await dashboot.load_instance(instanceName);
 	mainUser = await extractUserDetails(username);
