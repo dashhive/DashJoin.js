@@ -178,6 +178,7 @@ function MasterNode({
 			vout,
 			satoshis,
 			sourceAddress,
+			user: self.coinJoinData.user,
 		};
 		self.dispatchCollateralTxCreated(tx);
 		return hexToBytes(tx.uncheckedSerialize());
