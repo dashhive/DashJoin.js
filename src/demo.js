@@ -303,56 +303,6 @@ async function getPrivateKeyFromRawTx(rawTx) {
 	}
 }
 
-/**
- * TODO: the dsf packet is essentially a few transactions
- * with just the signatures missing. if we can create a fake
- * transaction using DashCore.Transaction then extract the
- * signature, we should be able to send that right back to the masternode
- */
-async function signWhatWeCan(uint8Dsf, self) {
-	let amount = getDemoDenomination();
-	let parsed = Network.packet.parse.dsf(uint8Dsf);
-	let utxos = [];
-	let sourceAddress = [];
-	for (const input of parsed.transaction.inputs) {
-		await dboot.unlock_all_wallets();
-		d({ input: input.txid });
-		let tmpSourceAddress = await dboot
-			.get_address_from_txid(client_session.username, input.txid)
-			.catch(function (issue) {
-				return null;
-			});
-		if (tmpSourceAddress) {
-			sourceAddress.push(tmpSourceAddress);
-			utxos.push({
-				txId: input.txid,
-				outputIndex: input.vout,
-				sequenceNumber: 0xffffffff,
-				scriptPubKey: Script.buildPublicKeyHashOut(tmpSourceAddress),
-				satoshis: amount,
-			});
-			let tx = new Transaction()
-				.from(utxos[0])
-				.to(tmpSourceAddress, amount)
-				.sign(client_session.address_info[tmpSourceAddress]);
-			dd(tx);
-		} else {
-			utxos.push({
-				txId: input.txid,
-				outputIndex: input.vout,
-				sequenceNumber: 0xffffffff,
-				scriptPubKey: null,
-				satoshis: amount,
-			});
-		}
-	}
-	dd({ sourceAddress });
-	let tx = new Transaction().from(utxos).to(sourceAddress[0], amount);
-	//.sign(client_session.address_info[sourceAddress[0]]);
-	dd({ tx });
-	return tx;
-}
-
 async function onDSFMessage(parsed, self) {
 	if (!extractOption('nosavedsf')) {
 		const fs = require('fs');
@@ -363,7 +313,35 @@ async function onDSFMessage(parsed, self) {
 			self.dsfOrig
 		);
 	}
-	await signWhatWeCan(self.dsfOrig, self);
+	let amount = getDemoDenomination();
+	let sigScripts = [];
+	for (const submission of client_session.submitted) {
+		let sig = await dboot.extract_sigscript(
+			parsed,
+			client_session.username,
+			submission.address,
+			amount
+		);
+		sigScripts.push({
+			sig,
+			submission,
+			amount,
+		});
+		self.client.write(
+			Network.packet.coinjoin.dss({
+				chosen_network: self.network,
+				userInputs: {
+					submissions: client_session.submitted,
+					client_session,
+					sigScripts,
+				},
+				dsfPacket: {
+					parsed,
+					buffer: self.dsfOrig,
+				},
+			})
+		);
+	}
 }
 /**
  * argv should include:

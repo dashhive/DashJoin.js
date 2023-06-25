@@ -107,11 +107,15 @@ Bootstrap.increment_key = async function (username, key_name) {
 	await db_put(key_name, String(ctr));
 	return ctr;
 };
-Bootstrap.extract_sigscript = async function (parsed, username) {
+Bootstrap.extract_sigscript = async function (
+	parsed,
+	username,
+	sourceAddress,
+	denominatedAmount
+) {
 	if (extractOption('verbose')) {
 		dump_parsed(parsed);
 	}
-	let sourceAddress = 'yS21kYR1kcgmLi9sUPArp6whJKBoXa42fb';
 
 	const inputs = xt(parsed, 'transaction.inputs');
 	let utxos = {
@@ -119,7 +123,7 @@ Bootstrap.extract_sigscript = async function (parsed, username) {
 		outputIndex: inputs[0].vout,
 		sequenceNumber: 0xffffffff,
 		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-		satoshis: 100001,
+		satoshis: denominatedAmount,
 	};
 	let privateKey = await Bootstrap.get_private_key(
 		username,
@@ -131,7 +135,6 @@ Bootstrap.extract_sigscript = async function (parsed, username) {
 	if (privateKey === null) {
 		throw new Error('no private key could be found');
 	}
-	privateKey = flatten(privateKey);
 	/**
    *
 PublicKeyHashInput {
@@ -153,9 +156,7 @@ PublicKeyHashInput {
 	let sigScript = tx.inputs[0]._scriptBuffer;
 	let encodedScript = sigScript.toString('hex');
 	let len = encodedScript.length / 2;
-	let payload = new Uint8Array([len, ...hexToBytes(encodedScript)]);
-	d(sigScript.toString('hex'));
-	dd(payload);
+	return new Uint8Array([len, ...hexToBytes(encodedScript)]);
 };
 
 Bootstrap._dsftest1 = async function (buffer, username) {
@@ -401,15 +402,6 @@ Bootstrap.random_change_address = async function (username, except) {
 		}
 	}
 };
-//Bootstrap.get_private_key = async function (username, address) {
-//	await Bootstrap.unlock_all_wallets();
-//	let ps = await Bootstrap.wallet_exec(username, [
-//		'dumpprivkey',
-//		sanitize_address(address),
-//	]);
-//	let { out, err } = ps_extract(ps);
-//	return out[0][0][0];
-//};
 Bootstrap.mkpath = async function (path) {
 	await cproc.spawnSync('mkdir', ['-p', path]);
 };
@@ -857,18 +849,6 @@ Bootstrap.dump_all_privkeys = async function () {
 		);
 	}
 };
-//Bootstrap.get_private_key = async function (username, address) {
-//	if (Array.isArray(address) === false) {
-//		address = [address];
-//	}
-//	let pk = [];
-//	for (const addr of address) {
-//		let r = await Bootstrap.meta_get([username, 'privatekey'], addr);
-//		pk.push(r);
-//	}
-//	return pk;
-//};
-
 Bootstrap.generate_dash_to_all = async function () {
 	let keep = [];
 	const users = await Bootstrap.user_list();

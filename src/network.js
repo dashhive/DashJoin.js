@@ -966,60 +966,65 @@ function dss(
 		dsfPacket,
 	}
 ) {
-	let userInputTxn = encodeInputs(args.userInputs);
-
-	// FIXME: very hacky
-	let trimmedUserInput = userInputTxn
-		.uncheckedSerialize()
-		.substr(8)
-		.replace(/[0]{10}$/, '');
-
-	let userInputPayload = hexToBytes(trimmedUserInput);
-
-	let TOTAL_SIZE =
-    userInputPayload.length + collateralTxn.length + userOutputPayload.length;
+	/**
+   * Callsite looks like this:
+   *
+				userInputs: {
+					submissions: client_session.submitted,
+					client_session,
+					sigScripts,
+				},
+				dsfPacket: {
+					parsed,
+					buffer: self.dsfOrig,
+				},
+  * 
+  * In other words, there is A LOT of contextual data.
+  * You shouldn't need anything more. Pretty much everything
+  * is in userInputs
+  *
+  */
+	console.debug(args);
+	let TOTAL_SIZE = 2048; // FIXME TODO
 
 	/**
    * Packet payload
    */
 	let offset = 0;
+	/**
+		dss
+
+The dss message replies to a dsf message sent by the masternode managing the session. The dsf message provides the unsigned transaction inputs for all members of the pool. Each node verifies that the final transaction matches what is expected. They then sign any transaction inputs belonging to them and then relay them to the masternode via this dss message.
+
+Once the masternode receives and validates all dss messages, it issues a dsc message. If a node does not respond to a dsf message with signed transaction inputs, it may forfeit the collateral it provided. This is to minimize malicious behavior.
+
+The following annotated hexdump shows a dss message. (The message header has been omitted.) Note that these will be the same transaction inputs that were supplied (unsiged) in the dsi message.
+
+User inputs
+| 03 ......................................... Number of inputs: 3
+|
+| Transaction input #1
+| |
+| | 36bdc3796c5630225f2c86c946e2221a
+| | 9958378f5d08da380895c2656730b5c0 ......... Outpoint TXID
+| | 02000000 ................................. Outpoint index number: 2
+| |
+| | 6b ....................................... Bytes in sig. script: 107
+| | 483045022100b3a861dca83463aabf5e4a14a286
+| | 1b9c2e51e0dedd8a13552e118bf74eb4a68d0220
+| | 4a91c416768d27e6bdcfa45d28129841dbcc728b
+| | f0bbec9701cfc4e743d23adf812102cc4876c9da
+| | 84417dec37924e0479205ce02529bb0ba88631d3
+| | ccc9cfcdf00173 ........................... Secp256k1 signature
+| |
+| | ffffffff ................................. Sequence number: UINT32_MAX
+
+ *
+ **/
+
 	let packet = new Uint8Array(TOTAL_SIZE);
-	//console.debug({ packetSize: TOTAL_SIZE, actual: packet.length });
-	//console.debug({ userInputPayloadSize: userInputPayload.length });
-	//console.debug({ userOutputPayloadSize: userOutputPayload.length });
-	//console.debug({ collateralTxnSize: args.collateralTxn.length });
-	/**
-   * Set the user inputs
-   */
-	packet.set(userInputPayload);
-	assert(
-		packet[0],
-		args.userInputs.length,
-		'userInputs.length must be the first byte in payload'
-	);
-	offset += userInputPayload.length;
-	//console.debug({ userInputPayload, packet });
 
-	/**
-   * Set the collateral txn(s)
-   */
-	packet.set(collateralTxn, offset);
-	offset += collateralTxn.length;
-
-	/**
-   * Set the outputs
-   */
-	packet.set(userOutputPayload, offset);
-
-	//console.debug({ packet, offset }); // FIXME
-
-	assert.equal(
-		packet.length,
-		TOTAL_SIZE,
-		'packet length doesnt match TOTAL_SIZE'
-	);
-
-	return wrap_packet(args.chosen_network, 'dsi', packet, TOTAL_SIZE);
+	return wrap_packet(args.chosen_network, 'dss', packet, TOTAL_SIZE);
 }
 function dsq() {}
 function dssu() {}
