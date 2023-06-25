@@ -1336,8 +1336,8 @@ Lib.packet.parse.dsf = function (buffer) {
    * 3) sigscript bytes (1 byte)
    * 4) sequence number (4 bytes)
    */
-	const TRANSACTION_SIZE =
-    TXID_HASH_SIZE + VOUT_SIZE + SIGSCRIPT_SIZE + SEQUENCE_NUMBER_SIZE;
+	//const TRANSACTION_SIZE =
+	//  TXID_HASH_SIZE + VOUT_SIZE + SIGSCRIPT_SIZE + SEQUENCE_NUMBER_SIZE;
 	let SIZES = {
 		SESSIONID: 4,
 		VERSION: 4,
@@ -1355,9 +1355,6 @@ Lib.packet.parse.dsf = function (buffer) {
    */
 	let offset = MESSAGE_HEADER_SIZE;
 
-	let dsfPacket = extractChunk(buffer, offset, buffer.length);
-	//console.debug('packet details (minus header):', dsfPacket);
-
 	/**
    * Grab the SESSION ID
    */
@@ -1367,10 +1364,9 @@ Lib.packet.parse.dsf = function (buffer) {
 	/**
    * Grab the VERSION
    */
-	parsed.transaction.version = extractChunk(
-		buffer,
-		offset,
-		offset + SIZES.VERSION
+	parsed.transaction.version = parseInt(
+		extractChunk(buffer, offset, offset + SIZES.VERSION),
+		10
 	);
 	offset += SIZES.VERSION;
 
@@ -1396,10 +1392,9 @@ Lib.packet.parse.dsf = function (buffer) {
 		offset += TXID_HASH_SIZE;
 		transaction.vout = parseInt(extractUint32(buffer, offset), 10);
 		offset += VOUT_SIZE;
-		transaction.sigscript_bytes = extractChunk(
-			buffer,
-			offset,
-			offset + SIGSCRIPT_SIZE
+		transaction.sigscript_bytes = parseInt(
+			extractChunk(buffer, offset, offset + SIGSCRIPT_SIZE),
+			10
 		);
 		offset += SIGSCRIPT_SIZE;
 		transaction.sequence = parseInt(extractUint32(buffer, offset), 10);
@@ -1461,10 +1456,10 @@ Lib.packet = Object.assign(Lib.packet, {
 	verack,
 	version,
 });
-function dumpAsHex(arr) {
+function dumpAsHex(arr, prefix = null) {
 	let ctr = 0;
 	for (const ch of arr) {
-		process.stdout.write('0x' + ch.toString(16) + ',');
+		process.stdout.write([prefix ?? '', ch.toString(16), ','].join(''));
 		if (++ctr % 8 === 0) {
 			process.stdout.write('\n');
 		}
