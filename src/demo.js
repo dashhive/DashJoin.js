@@ -177,27 +177,35 @@ async function createDSIPacket(
 	client_session.add_txids(extract(chosenInputTxns, 'txid'));
 	client_session.add_addresses(extract(chosenInputTxns, 'address'));
 	client_session.mixing_inputs = chosenInputTxns;
+	client_session.submitted = [];
 	for (let i = 0; i < client_session.mixing_inputs.length; i++) {
-		let privateKey = await dboot.get_private_key(
-			client_session.username,
-			client_session.mixing_inputs[i].address
-		);
-		privateKey = await dboot.normalize_pk(privateKey);
+		let privateKey = await dboot
+			.get_private_key(
+				client_session.username,
+				client_session.mixing_inputs[i].address
+			)
+			.catch(function (error) {
+				console.error(error);
+				return null;
+			});
+		if (privateKey === null) {
+			throw new Error('private key could not be loaded');
+		}
 		client_session.mixing_inputs[i].private_key = privateKey;
 		client_session.address_info[client_session.mixing_inputs[i].address] =
       privateKey;
+		client_session.submitted.push({
+			username,
+			address: client_session.mixing_inputs[i].address,
+			privateKey,
+			index: i,
+			txn: chosenInputTxns[i],
+		});
 	}
+	let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 	await fs.writeFileSync(
-		`./dsf-mixing-inputs-${client_session.username}.json`,
-		JSON.stringify(
-			{
-				mixing_inputs: client_session.mixing_inputs,
-				txids: client_session.get_used_txids(),
-				username,
-			},
-			null,
-			2
-		)
+		`./dsf-mixing-inputs-${client_session.username}-${lmdb_counter}.json`,
+		JSON.stringify(client_session, null, 2)
 	);
 
 	/**
@@ -259,7 +267,15 @@ async function makeDSICollateralTx(masterNode, username) {
 		throw new Error('changeAddress cannot be null');
 	}
 	client_session.add_addresses([changeAddress]);
-	let privateKey = await dboot.get_private_key(username, sourceAddress);
+	let privateKey = await dboot
+		.get_private_key(username, sourceAddress)
+		.catch(function (error) {
+			console.error('Error: get_private_key:', error);
+			return null;
+		});
+	if (privateKey === null) {
+		throw new Error('private key is empty');
+	}
 	let unspent = satoshis - amount;
 	let utxos = {
 		txId: txid,
@@ -338,12 +354,15 @@ async function signWhatWeCan(uint8Dsf, self) {
 }
 
 async function onDSFMessage(parsed, self) {
-	//if (extractOption('savedsf')) {
-	const fs = require('fs');
-	debug('onDSFMessage hit');
-	debug(self.dsfOrig);
-	await fs.writeFileSync(`./dsf-${client_session.username}.dat`, self.dsfOrig);
-	//}
+	if (!extractOption('nosavedsf')) {
+		const fs = require('fs');
+		debug('onDSFMessage hit');
+		debug(self.dsfOrig);
+		await fs.writeFileSync(
+			`./dsf-${client_session.username}.dat`,
+			self.dsfOrig
+		);
+	}
 	await signWhatWeCan(self.dsfOrig, self);
 }
 /**
