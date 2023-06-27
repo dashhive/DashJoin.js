@@ -7,8 +7,6 @@
 
 const xt = require('@mentoc/xtract').xt;
 const Network = require('../network.js');
-const NetworkUtil = require('../network-util.js');
-const hexToBytes = NetworkUtil.hexToBytes;
 const MetaDB = require('./metadb.js');
 
 let Bootstrap = {};
@@ -16,17 +14,12 @@ module.exports = Bootstrap;
 
 let cproc = require('child_process');
 
-//const COIN = require('../coin-join-constants.js').COIN;
-let DashCore = require('@dashevo/dashcore-lib');
-let Transaction = DashCore.Transaction;
-let Script = DashCore.Script;
-//let PrivateKey = DashCore.PrivateKey;
-//let Address = DashCore.Address;
 const crypto = require('crypto');
-//const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const fs = require('fs');
 
-//const UserDetails = require('./user-details.js');
+/**
+ * TODO: move to import via utils lib
+ */
 function bigint_safe_json_stringify(buffer, stringify_space = 2) {
 	return JSON.stringify(
 		buffer,
@@ -59,40 +52,6 @@ function flatten(arr) {
 	}
 	return arr;
 }
-function dump_parsed(parsed) {
-	console.log('sessionID', xt(parsed, 'sessionID'));
-	console.log('transaction: { ');
-	console.log('version: ', xt(parsed, 'transaction.version'), ',');
-	console.log('inputCount: ', xt(parsed, 'transaction.inputCount'), ',');
-	process.stdout.write('inputs: [');
-	const inputs = xt(parsed, 'transaction.inputs');
-	for (let i = 0; i < inputs.length; i++) {
-		process.stdout.write(bigint_safe_json_stringify(inputs[i], 2));
-		if (i + 1 !== inputs.length) {
-			console.log(',');
-		}
-	}
-	console.log('],');
-	console.log('outputCount: ', xt(parsed, 'transaction.outputCount'), ',');
-	process.stdout.write('outputs: [');
-	const outputs = xt(parsed, 'transaction.outputs');
-	for (let i = 0; i < outputs.length; i++) {
-		process.stdout.write('{');
-		console.log('duffs: ', xt(outputs, `${i}.duffs`), ',');
-		console.log(
-			'pubkey_script_bytes: ',
-			xt(outputs, `${i}.pubkey_script_bytes`),
-			','
-		);
-		console.log('pubkey_script: [');
-		Network.util.dumpAsHex(xt(outputs, `${i}.pubkey_script`));
-		process.stdout.write(']}');
-		if (i + 1 !== outputs.length) {
-			console.log(',');
-		}
-	}
-	console.log('],');
-}
 Bootstrap.increment_key = async function (username, key_name) {
 	db_cj_ns([username, 'counters']);
 	let ctr = await db_get(key_name);
@@ -106,117 +65,6 @@ Bootstrap.increment_key = async function (username, key_name) {
 	++ctr;
 	await db_put(key_name, String(ctr));
 	return ctr;
-};
-Bootstrap.extract_sigscript = async function (
-	parsed,
-	username,
-	sourceAddress,
-	denominatedAmount
-) {
-	if (extractOption('verbose')) {
-		dump_parsed(parsed);
-	}
-
-	const inputs = xt(parsed, 'transaction.inputs');
-	let utxos = {
-		txId: inputs[0].txid,
-		outputIndex: inputs[0].vout,
-		sequenceNumber: 0xffffffff,
-		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-		satoshis: denominatedAmount,
-	};
-	let privateKey = await Bootstrap.get_private_key(
-		username,
-		sourceAddress
-	).catch(function (error) {
-		console.error('Error: get_private_key failed with:', error);
-		return null;
-	});
-	if (privateKey === null) {
-		throw new Error('no private key could be found');
-	}
-	/**
-   *
-PublicKeyHashInput {
-  output: Output {
-    _satoshisBN: BN { negative: 0, words: [Array], length: 1, red: null },
-    _satoshis: 100001,
-    _scriptBuffer: <Buffer 76 a9 14 3e 84 bb a1 86 81 f7 fb b3 f4 be c4 ca e6 44 d1 b0 80 bc 44 88 ac>,
-    _script: Script { chunks: [Array], _isOutput: true }
-  },
-  prevTxId: <Buffer a4 00 9c d7 be 36 c0 b4 1e 70 46 72 3e 51 60 4a 1a 5d 7e 7e 2a eb 90 24 fb ea fc d0 7b 44 e7 53>,
-  outputIndex: 0,
-  sequenceNumber: 4294967295,
-  _script: Script { chunks: [ [Object], [Object] ], _isInput: true },
-  _scriptBuffer: <Buffer 47 30 44 02 20 7f 83 84 3b b7 36 c2 3f 78 b4 46 d6 8c 96 93 f1 ea be b4 9d 52 46 dc 44 95 0c bd 89 b1 f3 2e bb 02 20 4a 21 e3 e7 6c 70 32 3f 7b 2b 46 ... 56 more bytes>
-}
-*/
-
-	let tx = new Transaction().from(utxos).sign(privateKey);
-	let sigScript = tx.inputs[0]._scriptBuffer;
-	let encodedScript = sigScript.toString('hex');
-	let len = encodedScript.length / 2;
-	return new Uint8Array([len, ...hexToBytes(encodedScript)]);
-};
-
-Bootstrap._dsftest1 = async function (buffer, username) {
-	//let utxos = await Bootstrap.get_denominated_utxos(
-	//  "7250bb2a2e294f728081f50ee2bdd3a1",
-	//  100001
-	//);
-	//dd(utxos);
-	/**
-   * Network.packet.parse.dsf is not async
-   */
-	let parsed = Network.packet.parse.dsf(buffer);
-	if (extractOption('verbose')) {
-		dump_parsed(parsed);
-	}
-	let sourceAddress = 'yS21kYR1kcgmLi9sUPArp6whJKBoXa42fb';
-
-	const inputs = xt(parsed, 'transaction.inputs');
-	let utxos = {
-		txId: inputs[0].txid,
-		outputIndex: inputs[0].vout,
-		sequenceNumber: 0xffffffff,
-		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-		satoshis: 100001,
-	};
-	let privateKey = await Bootstrap.get_private_key(
-		username,
-		sourceAddress
-	).catch(function (error) {
-		console.error('Error: get_private_key failed with:', error);
-		return null;
-	});
-	if (privateKey === null) {
-		throw new Error('no private key could be found');
-	}
-	privateKey = flatten(privateKey);
-	/**
-   *
-PublicKeyHashInput {
-  output: Output {
-    _satoshisBN: BN { negative: 0, words: [Array], length: 1, red: null },
-    _satoshis: 100001,
-    _scriptBuffer: <Buffer 76 a9 14 3e 84 bb a1 86 81 f7 fb b3 f4 be c4 ca e6 44 d1 b0 80 bc 44 88 ac>,
-    _script: Script { chunks: [Array], _isOutput: true }
-  },
-  prevTxId: <Buffer a4 00 9c d7 be 36 c0 b4 1e 70 46 72 3e 51 60 4a 1a 5d 7e 7e 2a eb 90 24 fb ea fc d0 7b 44 e7 53>,
-  outputIndex: 0,
-  sequenceNumber: 4294967295,
-  _script: Script { chunks: [ [Object], [Object] ], _isInput: true },
-  _scriptBuffer: <Buffer 47 30 44 02 20 7f 83 84 3b b7 36 c2 3f 78 b4 46 d6 8c 96 93 f1 ea be b4 9d 52 46 dc 44 95 0c bd 89 b1 f3 2e bb 02 20 4a 21 e3 e7 6c 70 32 3f 7b 2b 46 ... 56 more bytes>
-}
-*/
-
-	let tx = new Transaction().from(utxos).sign(privateKey);
-	let sigScript = tx.inputs[0]._scriptBuffer;
-	let encodedScript = sigScript.toString('hex');
-	let len = encodedScript.length / 2;
-	let payload = new Uint8Array([len, ...hexToBytes(encodedScript)]);
-	d(sigScript.toString('hex'));
-	dd(payload);
 };
 Bootstrap.get_address_from_txid = async function (username, txid) {
 	await Bootstrap.unlock_all_wallets();

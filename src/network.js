@@ -962,67 +962,57 @@ function dsi(
 function dss(
 	args = {
 		chosen_network, // 'testnet'
-		userInputs,
-		dsfPacket,
+		inputs,
 	}
 ) {
 	/**
-   * Callsite looks like this:
-   *
-				userInputs: {
-					submissions: client_session.submitted,
-					client_session,
-					sigScripts,
-				},
-				dsfPacket: {
-					parsed,
-					buffer: self.dsfOrig,
-				},
-  * 
-  * In other words, there is A LOT of contextual data.
-  * You shouldn't need anything more. Pretty much everything
-  * is in userInputs
-  *
-  */
-	console.debug(args);
-	let TOTAL_SIZE = 2048; // FIXME TODO
+   * User inputs
+   * -----------
+   * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
+   */
+	const inputs = args.inputs;
+	assert.equal(
+		inputs.length < 253,
+		true,
+		'Can only support up to 252 inputs currently'
+	);
+	const USER_INPUT_SIZE = inputs.length;
+	/**
+   * The input count byte
+   */
+	let TOTAL_SIZE = 1; // TODO: support compactSize
+	const TXID_LENGTH = 32;
+	const OUTPUT_INDEX_LENGTH = 4;
+	const SEQUENCE_NUMBER_LENGTH = 4;
+	for (const input of inputs) {
+		TOTAL_SIZE +=
+      TXID_LENGTH +
+      OUTPUT_INDEX_LENGTH +
+      hexToBytes(input.script).length +
+      SEQUENCE_NUMBER_LENGTH;
+	}
 
 	/**
    * Packet payload
    */
 	let offset = 0;
-	/**
-		dss
-
-The dss message replies to a dsf message sent by the masternode managing the session. The dsf message provides the unsigned transaction inputs for all members of the pool. Each node verifies that the final transaction matches what is expected. They then sign any transaction inputs belonging to them and then relay them to the masternode via this dss message.
-
-Once the masternode receives and validates all dss messages, it issues a dsc message. If a node does not respond to a dsf message with signed transaction inputs, it may forfeit the collateral it provided. This is to minimize malicious behavior.
-
-The following annotated hexdump shows a dss message. (The message header has been omitted.) Note that these will be the same transaction inputs that were supplied (unsiged) in the dsi message.
-
-User inputs
-| 03 ......................................... Number of inputs: 3
-|
-| Transaction input #1
-| |
-| | 36bdc3796c5630225f2c86c946e2221a
-| | 9958378f5d08da380895c2656730b5c0 ......... Outpoint TXID
-| | 02000000 ................................. Outpoint index number: 2
-| |
-| | 6b ....................................... Bytes in sig. script: 107
-| | 483045022100b3a861dca83463aabf5e4a14a286
-| | 1b9c2e51e0dedd8a13552e118bf74eb4a68d0220
-| | 4a91c416768d27e6bdcfa45d28129841dbcc728b
-| | f0bbec9701cfc4e743d23adf812102cc4876c9da
-| | 84417dec37924e0479205ce02529bb0ba88631d3
-| | ccc9cfcdf00173 ........................... Secp256k1 signature
-| |
-| | ffffffff ................................. Sequence number: UINT32_MAX
-
- *
- **/
-
 	let packet = new Uint8Array(TOTAL_SIZE);
+	packet.set([USER_INPUT_SIZE], 0);
+	offset += 1; // TODO: compactSize
+
+	/**
+   * Add each input
+   */
+	for (const input of inputs) {
+		packet.set(hexToBytes(input.txid), offset);
+		offset += 32;
+		packet.set(hexToBytes(input.outputIndex), offset);
+		offset += 4;
+		packet.set(hexToBytes(input.script), offset);
+		offset += hexToBytes(input.script).length;
+		packet.set(hexToBytes(0xffffffff), offset);
+		offset += 4;
+	}
 
 	return wrap_packet(args.chosen_network, 'dss', packet, TOTAL_SIZE);
 }

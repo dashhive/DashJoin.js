@@ -123,6 +123,9 @@ function MasterNode({
 		ping: false,
 		mnauth: false,
 	};
+	self.id = function () {
+		return `masternode(${self.ip}@${self.network})`;
+	};
 	self.ip = ip;
 	self.mnauth_challenge = null;
 	self.network = network;
