@@ -1,617 +1,469 @@
-/**
- * A port of DASH core's CCoinJoinClientSession
- */
-
-const HardDrive = require("hd.js"); // TODO: .GetDataDir())) {
-const MasterNodeSync = require("master-node-sync.js");
-const WalletImpl = require("wallet.js");
-const NetMsgType = require("net-msg.js").NetMsgType;
-const Vector = require("./vector.js");
-const COutPoint = require("./outpoint.js");
-const CoinJoin = require("./coin-join.js");
-const {
-  COINJOIN_DENOM_OUTPUTS_THRESHOLD,
-  MSG_POOL_MIN,
-  MSG_POOL_MAX,
-} = require("./coin-join-constants.js");
-
-module.exports = CCoinJoinClientSession;
-
-function CCoinJoinClientSession(args = {}) {
-  let self = this;
-	self.core_name= "CCoinJoinClientSession";
-  //class CCoinJoinClientSession : public CCoinJoinBaseSession
-  // Keep track of the used Masternodes
-  //orig: const std::unique_ptr<CMasternodeSync>& m_mn_sync;
-  self.m_mn_sync = new MasterNodeSync();
-
-  self.NetMsgType = NetMsgType;
-  // orig: std::vector<COutPoint> vecOutPointLocked;
-  self.vecOutPointLocked = new Vector(COutPoint);
-  //orig: bilingual_str strLastMessage;
-  self.strLastMessage = "";
-  //orig: bilingual_str strAutoDenomResult;
-  self.strAutoDenomResult = "";
-
-  //orig: CDeterministicMNCPtr mixingMasternode;
-  self.mixingMasternode = {}; // TODO: FIXME:
-  //orig: CMutableTransaction txMyCollateral; // client side collateral
-  self.txMyCollateral = 0; // TODO: FIXME
-  //orig: CPendingDsaRequest pendingDsaRequest;
-  self.pendingDsaRequest = {}; //TODO: FIXME
-
-  //orig: CKeyHolderStorage keyHolderStorage; // storage for keys used in PrepareDenominate
-  self.keyHolderStorage = [];
-
-  //orig: CWallet& mixingWallet;
-  self.mixingWallet = new WalletImpl();
-
-  /// Create denominations
-  //orig: bool CreateDenominated(CAmount nBalanceToDenominate);
-  //orig: bool CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals);
-  self.CreateDenominated = function (
-    nBalanceToDenominate,
-    tallyItem = null,
-    fCreateMixingCollaterals = null
-  ) {
-    // Create denominations by looping through inputs grouped by addresses
-    //bool CCoinJoinClientSession::CreateDenominated(CAmount nBalanceToDenominate)
-    //{
-
-    // NOTE: We do not allow txes larger than 100 kB, so we have to limit number of inputs here.
-    // We still want to consume a lot of inputs to avoid creating only smaller denoms though.
-    // Knowing that each CTxIn is at least 148 B big, 400 inputs should take 400 x ~148 B = ~60 kB.
-    // This still leaves more than enough room for another data of typical CreateDenominated tx.
-    //orig: std::vector<CompactTallyItem> vecTally = mixingWallet.SelectCoinsGroupedByAddresses(true, true, true, 400);
-    let vecTally = new Vector();
-    vecTally.contents = self.mixingWallet.SelectCoinsGroupedByAddresses(
-      true, // bool fSkipDenominated,
-      true, // bool fAnonymizable,
-      true, // bool fSkipUnconfirmed,
-      400 // int nMaxOupointsPerAddress
-    ); // FIXME: add to wallet.js
-    if (vecTally.contents.length === 0) {
-      self.LogPrint(
-        "CCoinJoinClientSession::CreateDenominated -- SelectCoinsGroupedByAddresses can't find any inputs!"
-      );
-      return false;
-    }
-
-    // Start from the largest balances first to speed things up by creating txes with larger/largest denoms included
-    //orig: std::sort(vecTally.begin(), vecTally.end(), [](const CompactTallyItem& a, const CompactTallyItem& b) {
-    //return a.nAmount > b.nAmount;
-    //});
-    vecTally = self.sort(vecTally, function (a, b) {
-      return a.nAmount > b.nAmount;
-    });
-
-    fCreateMixingCollaterals = !self.mixingWallet.HasCollateralInputs(); // FIXME: add to wallet.js
-
-    for (const item of vecTally.contents) {
-      if (
-        !self.CreateDenominatedExt(
-          nBalanceToDenominate,
-          item,
-          fCreateMixingCollaterals
-        )
-      ) {
-        continue;
-      }
-      return true;
-    }
-
-    self.LogPrint("CCoinJoinClientSession::CreateDenominated -- failed!");
-    return false;
-  };
-
-  // Create denominations
-  //orig: bool CCoinJoinClientSession::CreateDenominated(CAmount nBalanceToDenominate, const CompactTallyItem& tallyItem, bool fCreateMixingCollaterals)
-  self.CreateDenominatedExt = function (
-    nBalanceToDenominate,
-    tallyItem,
-    fCreateMixingCollaterals
-  ) {
-    const func = "CreateDenominatedExt";
-    const __func__ = func;
-
-    // denominated input is always a single one, so we can check its amount directly and return early
-    // TODO: FIXME: make sure CompactTallyItem has vecInputCoins with a .size() function
-    // TODO: FIXME: make sure CompactTallyItem has .nAmount
-    if (
-      tallyItem.vecInputCoins.size() == 1 &&
-      CoinJoin.IsDenominatedAmount(tallyItem.nAmount)
-    ) {
-      return false;
-    }
-
-    //const auto pwallet = GetWallet(mixingWallet.GetName());
-
-    let pwallet = self.mixingWallet;
-    if (!pwallet) {
-      self.LogPrint(
-        `CCoinJoinClientSession::${func} -- Couldn't get wallet pointer`
-      );
-      return false;
-    }
-
-    //CTransactionBuilder txBuilder(pwallet, tallyItem);
-    let txBuilder = new CTransactionBuilder(pwallet, tallyItem); // TODO: CTransactionBuilder
-
-    self.LogPrint(
-      `CCoinJoinClientSession::${func} -- Start ${txBuilder.ToString()}`
-    );
-
-    // ****** Add an output for mixing collaterals ************ /
-
-    if (
-      fCreateMixingCollaterals &&
-      !txBuilder.AddOutput(CoinJoin.GetMaxCollateralAmount())
-    ) {
-      self.LogPrint(
-        `CCoinJoinClientSession::${func} -- Failed to add collateral output`
-      );
-      return false;
-    }
-
-    // ****** Add outputs for denoms ************ /
-
-    //bool fAddFinal = true;
-    //auto denoms = CoinJoin::GetStandardDenominations();
-
-    let fAddFinal = true;
-    let denoms = CoinJoin.GetStandardDenominations(); // TODO:
-    //std::map<CAmount, int> mapDenomCount;
-    let mapDenomCount;
-    for (const nDenomValue of denoms) {
-      //mapDenomCount.insert(std::pair<CAmount, int>(nDenomValue, mixingWallet.CountInputsWithAmount(nDenomValue)));
-      mapDenomCount[nDenomValue] = self.mixingWallet.CountInputsWithAmount(); // TODO
-    }
-
-    // Will generate outputs for the createdenoms up to coinjoinmaxdenoms per denom
-
-    // This works in the way creating PS denoms has traditionally worked, assuming enough funds,
-    // it will start with the smallest denom then create 11 of those, then go up to the next biggest denom create 11
-    // and repeat. Previously, once the largest denom was reached, as many would be created were created as possible and
-    // then any remaining was put into a change address and denominations were created in the same manner a block later.
-    // Now, in this system, so long as we don't reach COINJOIN_DENOM_OUTPUTS_THRESHOLD outputs the process repeats in
-    // the same transaction, creating up to nCoinJoinDenomsHardCap per denomination in a single transaction.
-
-    while (
-      txBuilder.CouldAddOutput(CoinJoin.GetSmallestDenomination()) &&
-      txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD
-    ) {
-      //for (auto it = denoms.rbegin(); it != denoms.rend(); ++it) {
-      for (const it of denoms) {
-        let nDenomValue = it;
-        let currentDenomIt = mapDenomCount.find(nDenomValue);
-
-        let nOutputs = 0;
-
-        const strFunc = __func__;
-        let needMoreOutputs = function () {
-          if (txBuilder.CouldAddOutput(nDenomValue)) {
-            if (
-              fAddFinal &&
-              nBalanceToDenominate > 0 &&
-              nBalanceToDenominate < nDenomValue
-            ) {
-              fAddFinal = false; // add final denom only once, only the smalest possible one
-              self.LogPrint(
-                `CCoinJoinClientSession::${strFunc} -- 1 - FINAL - nDenomValue: ${
-                  nDenomValue / COIN
-                }, nBalanceToDenominate: ${
-                  nBalanceToDenominate / COIN
-                }, nOutputs: ${nOutputs}, ${txBuilder.ToString()}`
-              );
-              return true;
-            } else if (nBalanceToDenominate >= nDenomValue) {
-              return true;
-            }
-          }
-          return false;
-        };
-
-        // add each output up to 11 times or until it can't be added again or until we reach nCoinJoinDenomsGoal
-        while (
-          needMoreOutputs() &&
-          nOutputs <= 10 &&
-          currentDenomIt.second < self.CCoinJoinClientOptions.GetDenomsGoal()
-        ) {
-          // Add output and subtract denomination amount
-          if (txBuilder.AddOutput(nDenomValue)) {
-            ++nOutputs;
-            currentDenomIt.second += 1;
-            nBalanceToDenominate -= nDenomValue;
-            self.LogPrint(
-              `CCoinJoinClientSession::${__func__} -- 1 - nDenomValue: ${
-                nDenomValue / COIN
-              }, nBalanceToDenominate: ${nBalanceToDenominate}, nOutputs: ${nOutputs}, ${txBuilder.ToString()}`
-            );
-          } else {
-            self.LogPrint(
-              `CCoinJoinClientSession::${__func__} -- 1 - Error: AddOutput failed for nDenomValue: ${
-                nDenomValue / COIN
-              }, nBalanceToDenominate: ${
-                nBalanceToDenominate / COIN
-              }, nOutputs: ${nOutputs}, ${txBuilder.ToString()}`
-            );
-            return false;
-          }
-        }
-
-        if (txBuilder.GetAmountLeft() == 0 || nBalanceToDenominate <= 0) break;
-      }
-
-      let finished = true;
-      //orig: for (const auto [denom, count] : mapDenomCount) {
-      for (const denom in mapDenomCount) {
-        // Check if this specific denom could use another loop, check that there aren't nCoinJoinDenomsGoal of this
-        // denom and that our nValueLeft/nBalanceToDenominate is enough to create one of these denoms, if so, loop again.
-        let count = mapDenomCount[denom];
-        if (
-          count < self.CCoinJoinClientOptions.GetDenomsGoal() &&
-          txBuilder.CouldAddOutput(denom) &&
-          nBalanceToDenominate > 0
-        ) {
-          finished = false;
-          self.LogPrint(
-            `CCoinJoinClientSession::${__func__} -- 1 - NOT finished - nDenomValue: ${
-              denom / COIN
-            }, count: ${count}, nBalanceToDenominate: ${
-              nBalanceToDenominate / COIN
-            }, ${txBuilder.ToString()}`
-          );
-          break;
-        }
-        self.LogPrint(
-          `CCoinJoinClientSession::${__func__} -- 1 - FINISHED - nDenomValue: ${
-            denom / COIN
-          }, count: ${count}, nBalanceToDenominate: ${
-            nBalanceToDenominate / COIN
-          }, ${txBuilder.ToString()}`
-        );
-      }
-
-      if (finished) break;
-    }
-
-    // Now that nCoinJoinDenomsGoal worth of each denom have been created or the max number of denoms given the value of the input, do something with the remainder.
-    if (
-      txBuilder.CouldAddOutput(CoinJoin.GetSmallestDenomination()) &&
-      nBalanceToDenominate >= CoinJoin.GetSmallestDenomination() &&
-      txBuilder.CountOutputs() < COINJOIN_DENOM_OUTPUTS_THRESHOLD
-    ) {
-      let nLargestDenomValue = denoms[0];
-
-      self.LogPrint(
-        `CCoinJoinClientSession::${__func__} -- 2 - Process remainder: ${txBuilder.ToString()}`
-      );
-
-      let countPossibleOutputs = function (nAmount) {
-        //orig: std::vector<CAmount> vecOutputs;
-        let vecOutputs = new Vector();
-        while (true) {
-          // Create a potential output
-          vecOutputs.push_back(nAmount);
-          if (
-            !txBuilder.CouldAddOutputs(vecOutputs) ||
-            txBuilder.CountOutputs() + vecOutputs.size() >
-              COINJOIN_DENOM_OUTPUTS_THRESHOLD
-          ) {
-            // If it's not possible to add it due to insufficient amount left or total number of outputs exceeds
-            // COINJOIN_DENOM_OUTPUTS_THRESHOLD drop the output again and stop trying.
-            vecOutputs.pop_back(); // TODO:
-            break;
-          }
-        }
-        return vecOutputs.size();
-      };
-
-      // Go big to small
-      for (const nDenomValue of denoms.contents) {
-        if (nBalanceToDenominate <= 0) break;
-        let nOutputs = 0;
-
-        // Number of denoms we can create given our denom and the amount of funds we have left
-        let denomsToCreateValue = countPossibleOutputs(nDenomValue);
-        // Prefer overshooting the target balance by larger denoms (hence `+1`) instead of a more
-        // accurate approximation by many smaller denoms. This is ok because when we get here we
-        // should have nCoinJoinDenomsGoal of each smaller denom already. Also, without `+1`
-        // we can end up in a situation when there is already nCoinJoinDenomsHardCap of smaller
-        // denoms, yet we can't mix the remaining nBalanceToDenominate because it's smaller than
-        // nDenomValue (and thus denomsToCreateBal == 0), so the target would never get reached
-        // even when there is enough funds for that.
-        let denomsToCreateBal = nBalanceToDenominate / nDenomValue + 1;
-        // Use the smaller value
-        let denomsToCreate =
-          denomsToCreateValue > denomsToCreateBal
-            ? denomsToCreateBal
-            : denomsToCreateValue;
-        self.LogPrint(
-          "CCoinJoinClientSession::%s -- 2 - nBalanceToDenominate: %f, nDenomValue: %f, denomsToCreateValue: %d, denomsToCreateBal: %d\n",
-          __func__,
-          nBalanceToDenominate / COIN,
-          nDenomValue / COIN,
-          denomsToCreateValue,
-          denomsToCreateBal
-        );
-        let it = mapDenomCount.find(nDenomValue);
-        //for (const auto i : irange::range(denomsToCreate)) {
-        for (const i of denomsToCreate) {
-          // Never go above the cap unless it's the largest denom
-          if (
-            nDenomValue != nLargestDenomValue &&
-            it.second >= self.CCoinJoinClientOptions.GetDenomsHardCap()
-          )
-            break;
-
-          // Increment helpers, add output and subtract denomination amount
-          if (txBuilder.AddOutput(nDenomValue)) {
-            nOutputs++;
-            it.second++; // TODO:
-            nBalanceToDenominate -= nDenomValue;
-          } else {
-            self.LogPrint(
-              "CCoinJoinClientSession::%s -- 2 - Error: AddOutput failed at %d/%d, %s\n",
-              __func__,
-              i + 1,
-              denomsToCreate,
-              txBuilder.ToString()
-            );
-            break;
-          }
-          self.LogPrint(
-            "CCoinJoinClientSession::%s -- 2 - nDenomValue: %f, nBalanceToDenominate: %f, nOutputs: %d, %s\n",
-            __func__,
-            nDenomValue / COIN,
-            nBalanceToDenominate / COIN,
-            nOutputs,
-            txBuilder.ToString()
-          );
-          if (txBuilder.CountOutputs() >= COINJOIN_DENOM_OUTPUTS_THRESHOLD)
-            break;
-        }
-        if (txBuilder.CountOutputs() >= COINJOIN_DENOM_OUTPUTS_THRESHOLD) break;
-      }
-    }
-
-    self.LogPrint(
-      "CCoinJoinClientSession::%s -- 3 - nBalanceToDenominate: %f, %s\n",
-      __func__,
-      nBalanceToDenominate / COIN,
-      txBuilder.ToString()
-    );
-
-    //for (const auto [denom, count] : mapDenomCount) {
-    for (const denom in mapDenomCount) {
-      self.LogPrint(
-        "CCoinJoinClientSession::%s -- 3 - DONE - nDenomValue: %f, count: %d\n",
-        __func__,
-        denom / COIN,
-        count
-      );
-    }
-
-    // No reasons to create mixing collaterals if we can't create denoms to mix
-    if (
-      (fCreateMixingCollaterals && txBuilder.CountOutputs() == 1) ||
-      txBuilder.CountOutputs() == 0
-    ) {
-      return false;
-    }
-
-    let strResult;
-    if (!txBuilder.Commit(strResult)) {
-      self.LogPrint(
-        "CCoinJoinClientSession::%s -- Commit failed: %s\n",
-        __func__,
-        strResult.original
-      );
-      return false;
-    }
-
-    // use the same nCachedLastSuccessBlock as for DS mixing to prevent race
-    coinJoinClientManagers.at(mixingWallet.GetName()).UpdatedSuccessBlock();
-
-    self.LogPrint(
-      "CCoinJoinClientSession::%s -- txid: %s\n",
-      __func__,
-      strResult.original
-    );
-
-    return true;
-  };
-
-  /// Split up large inputs or make fee sized inputs
-  //orig: bool MakeCollateralAmounts();
-  //orig: bool MakeCollateralAmounts(const CompactTallyItem& tallyItem, bool fTryDenominated);
-  self.MakeCollateralAmounts = function (
-    tallyItem = null,
-    fTryDenominated = null
-  ) {};
-
-  //orig: bool CreateCollateralTransaction(CMutableTransaction& txCollateral, std::string& strReason);
-  self.CreateCollateralTransaction = function (txCollateral, strReason) {};
-
-  //orig: bool JoinExistingQueue(CAmount nBalanceNeedsAnonymized, CConnman& connman);
-  self.JoinExistingQueue = function (nBalanceNeedsAnonymized, connman) {};
-  //orig: bool StartNewQueue(CAmount nBalanceNeedsAnonymized, CConnman& connman);
-  self.StartNewQueue = function (nBalanceNeedsAnonymized, connman) {};
-
-  /// step 0: select denominated inputs and txouts
-  //orig: bool SelectDenominate(std::string& strErrorRet, std::vector<CTxDSIn>& vecTxDSInRet);
-  self.SelectDenominate = function (strErrorRet, svecTxDSInRet) {};
-  /// step 1: prepare denominated inputs and outputs
-  //orig: bool PrepareDenominate(int nMinRounds, int nMaxRounds, std::string& strErrorRet, const std::vector<CTxDSIn>& vecTxDSIn, std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsRet, bool fDryRun = false);
-  self.PrepareDenominate = function (
-    nMinRounds,
-    nMaxRounds,
-    strErrorRet,
-    vecTxDSIn,
-    vecPSInOutPairsRet,
-    fDryRun = false
-  ) {};
-  /// step 2: send denominated inputs and outputs prepared in step 1
-  //orig: bool SendDenominate(const std::vector<std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsIn, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);
-  self.SendDenominate = function (vecPSInOutPairsIn, connman) {};
-
-  /// Process Masternode updates about the progress of mixing
-  //orig: void ProcessPoolStateUpdate(CCoinJoinStatusUpdate psssup);
-  self.ProcessPoolStateUpdate = function (psssup) {};
-  // Set the 'state' value, with some logging and capturing when the state changed
-  //orig: void SetState(PoolState nStateNew);
-  self.SetState = function (nStateNew) {};
-
-  //orig: void CompletedTransaction(PoolMessage nMessageID);
-  self.CompletedTransaction = function (nMessageID) {};
-
-  /// As a client, check and sign the final transaction
-  //orig: bool SignFinalTransaction(const CTxMemPool& mempool, const CTransaction& finalTransactionNew, CNode& peer, CConnman& connman) LOCKS_EXCLUDED(cs_coinjoin);
-  self.SignFinalTransaction = function (
-    mempool,
-    finalTransactionNew,
-    peer,
-    connman
-  ) {};
-
-  //orig: void RelayIn(const CCoinJoinEntry& entry, CConnman& connman) const;
-  self.RelayIn = function (entry, connman) {};
-
-  //orig: void SetNull() EXCLUSIVE_LOCKS_REQUIRED(cs_coinjoin);
-  self.SetNull = function () {};
-
-  //orig: void ProcessMessage(CNode& peer, CConnman& connman, const CTxMemPool& mempool, std::string_view msg_type, CDataStream& vRecv);
-  self.ProcessMessage = function (peer, connman, mempool, msg_type, vRecv) {
-    // TODO: make easier to check: if (!CCoinJoinClientOptions::IsEnabled()) return;
-    if (!self.m_mn_sync.IsBlockchainSynced()) {
-      return;
-    }
-
-    if (msg_type == self.NetMsgType.DSSTATUSUPDATE) {
-      if (!self.mixingMasternode) {
-        return;
-      }
-      // TODO FIXME: make pdmnState.addr
-      // TODO FIXME: make peer.addr
-      if (self.mixingMasternode.pdmnState.addr != peer.addr) {
-        return;
-      }
-
-      /**
-       * TODO: FIXME: figure out how to unserialize a message off the wire
-       * and parse it as a CCoinJoinStatusUpdate
-       */
-      let psssup = vRecv.read("CCoinJoinStatusUpdate");
-
-      self.ProcessPoolStateUpdate(psssup);
-    } else if (msg_type == self.NetMsgType.DSFINALTX) {
-      if (!self.mixingMasternode) {
-        return;
-      }
-      if (self.mixingMasternode.pdmnState.addr != peer.addr) {
-        return;
-      }
-
-      /**
-        int nMsgSessionID;
-        vRecv >> nMsgSessionID;
-        CTransaction txNew(deserialize, vRecv);
-				*/
-      let nMsgSessionID = vRecv.read("CTransaction");
-
-      if (nSessionID != nMsgSessionID) {
-        self.LogPrint(
-          "DSFINALTX -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n",
-          nSessionID,
-          nMsgSessionID
-        );
-        return;
-      }
-
-      self.LogPrint("DSFINALTX -- txNew %s", txNew.ToString()); /* Continued */
-
-      // check to see if input is spent already? (and probably not confirmed)
-      SignFinalTransaction(mempool, txNew, peer, connman); // TODO
-    } else if (msg_type == self.NetMsgType.DSCOMPLETE) {
-      if (!mixingMasternode) return;
-      if (mixingMasternode.pdmnState.addr != peer.addr) {
-        // TODO
-        self.LogPrint(
-          "DSCOMPLETE -- message doesn't match current Masternode: infoMixingMasternode=%s  addr=%s\n",
-          mixingMasternode.pdmnState.addr.ToString(),
-          peer.addr.ToString()
-        );
-        return;
-      }
-
-      let nMsgSessionID;
-      //PoolMessage nMsgMessageID;
-      //orig: vRecv >> nMsgSessionID >> nMsgMessageID;
-      nMsgMessageID = vRecv.read("PoolMessage"); // TODO:
-      /**
-       * THIS SECOND LINE IS NOT A MISTAKE.
-       * We are trying to emulate reading nMsgSessionID twice
-       */
-      nMsgMessageID = vRecv.read("PoolMessage"); // TODO:
-
-      if (nMsgMessageID < MSG_POOL_MIN || nMsgMessageID > MSG_POOL_MAX) {
-        self.LogPrint(
-          "DSCOMPLETE -- nMsgMessageID is out of bounds: %d\n",
-          nMsgMessageID
-        );
-        return;
-      }
-
-      if (nSessionID !== nMsgSessionID) {
-        self.LogPrint(
-          "DSCOMPLETE -- message doesn't match current CoinJoin session: nSessionID: %d  nMsgSessionID: %d\n",
-          nSessionID,
-          nMsgSessionID
-        );
-        return;
-      }
-
-      LogPrint(
-        "DSCOMPLETE -- nMsgSessionID %d  nMsgMessageID %d (%s)\n",
-        nMsgSessionID,
-        nMsgMessageID,
-        CoinJoin.GetMessageByID(nMsgMessageID).translated
-      );
-
-      self.CompletedTransaction(nMsgMessageID);
-    }
-  };
-
-  //orig: void UnlockCoins();
-  self.UnlockCoins = function () {};
-
-  //orig: void ResetPool() LOCKS_EXCLUDED(cs_coinjoin);
-  self.ResetPool = function () {};
-
-  //orig: bilingual_str GetStatus(bool fWaitForBlock) const;
-  self.GetStatus = function (fWaitForBlock) {};
-
-  //orig: bool GetMixingMasternodeInfo(CDeterministicMNCPtr& ret) const;
-  self.GetMixingMasternodeInfo = function (ret) {};
-
-  /// Passively run mixing in the background according to the configuration in settings
-  //orig: bool DoAutomaticDenominating(CTxMemPool& mempool, CConnman& connman, bool fDryRun = false) LOCKS_EXCLUDED(cs_coinjoin);
-  self.DoAutomaticDenominating = function (
-    mempool,
-    connman,
-    fDryRun = false
-  ) {};
-
-  /// As a client, submit part of a future mixing transaction to a Masternode to start the process
-  //orig: bool SubmitDenominate(CConnman& connman);
-  self.SubmitDenominate = function (connman) {};
-
-  //orig: bool ProcessPendingDsaRequest(CConnman& connman);
-  self.ProcessPendingDsaRequest = function (connman) {};
-
-  //orig: bool CheckTimeout();
-  self.CheckTimeout = function () {};
-
-  //orig: void GetJsonInfo(UniValue& obj) const;
-  self.GetJsonInfo = function (obj) {};
+#!/usr/bin/env node
+'use strict';
+const COIN = require('./coin-join-constants.js').COIN;
+const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
+const Network = require('./network.js');
+const toSerializedFormat = Network.util.toSerializedFormat;
+const fsu = require('./fs-util.js');
+const xt = require('@mentoc/xtract').xt;
+const DsfInspect = require('./dsf-inspect.js');
+const Util = require('./util.js');
+const { getDataDir, extract, extractSigScript, bigint_safe_json_stringify } =
+  Util;
+let { debug, info, error, d, dd } = Util;
+const NetworkUtil = require('./network-util.js');
+const hexToBytes = NetworkUtil.hexToBytes;
+const hashByteOrder = NetworkUtil.hashByteOrder;
+const assert = require('assert');
+let DashCore = require('@dashevo/dashcore-lib');
+let Transaction = DashCore.Transaction;
+let Script = DashCore.Script;
+const fs = require('fs');
+const LibInput = require('./choose-inputs.js');
+//let PrivateKey = DashCore.PrivateKey;
+const extractOption = require('./argv.js').extractOption;
+const { extractUserDetails } = require('./bootstrap/user-details.js');
+const dashboot = require('./bootstrap/index.js');
+const MasterNodeConnection =
+  require('./masternode-connection.js').MasterNodeConnection;
+let INPUTS = 2;
+let dboot = null;
+
+let id = {};
+
+let config = require('./.mn0-config.json');
+id.mn = 0;
+if (process.argv.includes('--mn0')) {
+	config = require('./.mn0-config.json');
+	id.mn = 0;
 }
+if (process.argv.includes('--mn1')) {
+	config = require('./.mn1-config.json');
+	id.mn = 1;
+}
+if (process.argv.includes('--mn2')) {
+	config = require('./.mn2-config.json');
+	id.mn = 2;
+}
+
+let masterNodeIP = config.masterNodeIP;
+let masterNodePort = config.masterNodePort;
+let network = config.network;
+let ourIP = config.ourIP;
+let startBlockHeight = config.startBlockHeight;
+
+let mainUser;
+let randomPayeeName;
+let payee;
+let username;
+let instanceName;
+
+let nickName = null;
+
+/**
+ * Periodically print id information
+ */
+if (process.argv.includes('--id')) {
+	setInterval(function () {
+		console.info(id);
+	}, 10000);
+}
+/** FIXME: put in library */
+function getDemoDenomination() {
+	return parseInt(COIN / 1000 + 1, 10);
+}
+let client_session = {
+	address_info: {},
+	username: null,
+	used_txids: [],
+	col_txids: [],
+	used_addresses: [],
+	mixing_inputs: [],
+	get_used_txids: function () {
+		return [...client_session.used_txids, ...client_session.col_txids];
+	},
+	get_used_addresses: function () {
+		return client_session.used_addresses;
+	},
+	add_txids: function (a) {
+		client_session.used_txids = [...client_session.used_txids, ...a];
+	},
+	add_addresses: function (a) {
+		client_session.used_addresses = [...client_session.used_addresses, ...a];
+	},
+};
+async function getUserOutputs(username, denominatedAmount, count) {
+	debug(`getUserOutputs for user "${username}"`);
+	let outputs = [];
+
+	for (let i = 0; i < count; i++) {
+		outputs.push(denominatedAmount);
+	}
+	return outputs;
+}
+async function onDSSUChanged(parsed) {
+	//, _self) {
+	let msgId = parsed.message_id[1];
+	let state = parsed.state[1];
+	let update = parsed.status_update[1];
+	d({ msgId, state, update });
+	if (msgId === 'ERR_INVALID_COLLATERAL') {
+		client_session.used_txids.push(mainUser.utxos[0].txid);
+		await dboot.mark_txid_used(username, mainUser.utxos[0].txid);
+		debug('marked collateral inputs as used');
+	}
+}
+async function createDSIPacket(
+	masterNode,
+	username,
+	denominationAmount,
+	count
+) {
+	count = parseInt(count, 10);
+	if (count <= 0 || isNaN(count)) {
+		throw new Error('count must be a valid positive integer');
+	}
+	denominationAmount = parseInt(denominationAmount, 10);
+	if (denominationAmount <= 0 || isNaN(denominationAmount)) {
+		throw new Error('denominationAmount must be a valid positive integer');
+	}
+	/**
+   * Step 1: create inputs
+   */
+	let chosenInputTxns = await dboot.filter_denominated_transaction(
+		username,
+		denominationAmount,
+		count,
+		client_session.get_used_txids()
+	);
+	if (chosenInputTxns.length !== count) {
+		throw new Error('Couldn\'t find enough denominated input transactions');
+	}
+	client_session.add_txids(extract(chosenInputTxns, 'txid'));
+	client_session.add_addresses(extract(chosenInputTxns, 'address'));
+	client_session.mixing_inputs = chosenInputTxns;
+	client_session.submitted = [];
+	for (let i = 0; i < client_session.mixing_inputs.length; i++) {
+		let privateKey = await dboot
+			.get_private_key(
+				client_session.username,
+				client_session.mixing_inputs[i].address
+			)
+			.catch(function (error) {
+				console.error(error);
+				return null;
+			});
+		if (privateKey === null) {
+			throw new Error('private key could not be loaded');
+		}
+		client_session.mixing_inputs[i].private_key = privateKey;
+		client_session.address_info[client_session.mixing_inputs[i].address] =
+      privateKey;
+		client_session.submitted.push({
+			username,
+			address: client_session.mixing_inputs[i].address,
+			privateKey,
+			index: i,
+			txn: chosenInputTxns[i],
+			txid: chosenInputTxns[i].txid,
+			outputIndex: chosenInputTxns[i].outputIndex,
+			vout: chosenInputTxns[i].outputIndex,
+		});
+	}
+	if (extractOption('verbose') && (await Util.dataDirExists())) {
+		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
+		await fs.writeFileSync(
+			`${getDataDir()}/dsf-mixing-inputs-${
+				client_session.username
+			}-${lmdb_counter}.json`,
+			JSON.stringify(client_session, null, 2)
+		);
+	}
+
+	/**
+   * Step 2: create collateral transaction
+   */
+	let collateralTxn = await makeDSICollateralTx(masterNode, username);
+	//dd(collateralTxn.uncheckedSerialize());
+
+	let userOutputs = await getUserOutputs(username, denominationAmount, count);
+	let userOutputAddresses = await dboot.filter_shuffle_address_count(
+		username,
+		client_session.get_used_addresses(),
+		count
+	);
+	//dd({ userOutputAddresses, current: client_session });
+	if (userOutputAddresses.length !== count) {
+		throw new Error(`Couldnt find ${count} unique unused addresses`);
+	}
+	return Network.packet.coinjoin.dsi({
+		chosen_network: masterNode.network,
+		userInputs: chosenInputTxns,
+		collateralTxn,
+		userOutputs,
+		userOutputAddresses,
+		sourceAddress: client_session.used_addresses[0], // FIXME
+	});
+}
+async function makeDSICollateralTx(masterNode, username) {
+	let amount = parseInt(LOW_COLLATERAL * 2, 10);
+	let fee = 50000; // FIXME
+	let payee = await dboot.random_payee_address(username);
+	let payeeAddress = payee.address;
+	let utxoList = await dboot.filter_denominated_transaction(
+		username,
+		getDemoDenomination(),
+		1,
+		client_session.get_used_txids()
+	);
+	assert.equal(amount > 0, true, 'amount has to be non-zero positive');
+	assert.notEqual(payee.user, username, 'payee cannot be the same as user');
+	assert.notEqual(payeeAddress.length, 0, 'payeeAddress cannot be empty');
+	assert.notEqual(utxoList, null, 'no utxos found');
+	assert.notEqual(utxoList.length, 0, 'denominated utxos could not be found');
+	assert.equal(utxoList.length, 1, 'not enough utxos could be found');
+
+	const chosenTxn = utxoList.shift();
+	let sourceAddress = chosenTxn.address;
+	let txid = chosenTxn.txid;
+	let vout = chosenTxn.outputIndex;
+	let satoshis = chosenTxn.satoshis;
+	assert.notEqual(sourceAddress, null, 'sourceAddress is empty');
+
+	client_session.add_addresses([sourceAddress]);
+	let changeAddress = await dboot.random_change_address(
+		username,
+		client_session.get_used_addresses()
+	);
+	if (changeAddress === null) {
+		throw new Error('changeAddress cannot be null');
+	}
+	client_session.add_addresses([changeAddress]);
+	let privateKey = await dboot
+		.get_private_key(username, sourceAddress)
+		.catch(function (error) {
+			console.error('Error: get_private_key:', error);
+			return null;
+		});
+	if (privateKey === null) {
+		throw new Error('private key is empty');
+	}
+	let unspent = satoshis - amount;
+	let utxos = {
+		txId: txid,
+		outputIndex: vout,
+		sequenceNumber: 0xffffffff,
+		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+		satoshis,
+	};
+	client_session.add_txids([txid]);
+	let tx = new Transaction()
+		.from(utxos)
+		.to(payeeAddress, amount)
+		.to(changeAddress, unspent - fee)
+		.sign(privateKey);
+	await dboot.mark_txid_used(username, txid);
+	return tx;
+}
+async function onCollateralTxCreated(tx, masterNode) {
+	debug(`onCollateralTxCreated via masterNode: ${masterNode.id()}`);
+	await dboot.mark_txid_used(tx.user, tx.txid);
+}
+async function onDSFMessage(parsed, masterNode) {
+	if (extractOption('verbose') && data_dir_exists) {
+		const fs = require('fs');
+		debug('onDSFMessage hit');
+		debug(masterNode.dsfOrig);
+		await fs.writeFileSync(
+			`${getDataDir()}/dsf-${client_session.username}.dat`,
+			masterNode.dsfOrig
+		);
+	}
+	let amount = getDemoDenomination();
+	let sigScripts = {};
+	debug(`submitted.length: ${client_session.submitted.length}`);
+	for (const submission of client_session.submitted) {
+		let sig = await extractSigScript(
+			dboot,
+			parsed,
+			client_session.username,
+			submission,
+			amount
+		);
+		debug({ txid: submission.txid, outputIndex: submission.outputIndex });
+		sigScripts[submission.txid] = {
+			signature: sig,
+			outputIndex: submission.outputIndex,
+		};
+	}
+	masterNode.client.write(
+		Network.packet.coinjoin.dss({
+			chosen_network: masterNode.network,
+			dsfPacket: parsed,
+			signatures: sigScripts,
+		})
+	);
+}
+async function initialize(
+	_in_instanceName,
+	_in_username,
+	_in_nickname,
+	_in_count,
+	_in_send_dsi
+) {
+	nickName = _in_nickname;
+	instanceName = _in_instanceName;
+	username = _in_username;
+	//console.info(`[status]: loading "${instanceName}" instance...`);
+	dboot = await dashboot.load_instance(instanceName);
+	mainUser = await extractUserDetails(username);
+	randomPayeeName = await dboot.get_random_payee(username);
+	payee = await extractUserDetails(randomPayeeName);
+
+	client_session.nickName = nickName;
+	client_session.instanceName = instanceName;
+	client_session.username = _in_username;
+	client_session.dboot = dboot;
+	client_session.mainUser = mainUser;
+	client_session.randomPayeeName = randomPayeeName;
+	client_session.payee = payee;
+
+	LibInput.initialize({
+		dboot,
+		denominatedAmount: getDemoDenomination(),
+		client_session,
+	});
+}
+
+/**
+ * argv should include:
+ * - instance name
+ * - user
+ */
+(async function (
+	_in_instanceName,
+	_in_username,
+	_in_nickname,
+	_in_count,
+	_in_send_dsi
+) {
+	if (_in_count) {
+		INPUTS = parseInt(_in_count, 10);
+	}
+	if (isNaN(INPUTS)) {
+		throw new Error('--count must be a positive integer');
+	}
+	if (INPUTS >= 253) {
+		throw new Error('--count currently only supports a max of 252');
+		process.exit(1);
+	}
+	await initialize(
+		_in_instanceName,
+		_in_username,
+		_in_nickname,
+		_in_count,
+		_in_send_dsi
+	);
+
+	//let signed = await signWhatWeCan(
+	//	await fs.readFileSync(`./dsf-${client_session.username}.dat`)
+	//);
+
+	let masterNodeConnection = new MasterNodeConnection({
+		ip: masterNodeIP,
+		port: masterNodePort,
+		network,
+		ourIP,
+		startBlockHeight,
+		onCollateralTxCreated: onCollateralTxCreated,
+		onStatusChange: stateChanged,
+		onDSSU: onDSSUChanged,
+		onDSF: onDSFMessage,
+		debugFunction: null,
+		userAgent: config.userAgent ?? null,
+		coinJoinData: mainUser,
+		user: mainUser.user,
+		payee,
+		changeAddresses: mainUser.changeAddresses,
+	});
+
+	let dsaSent = false;
+	//let dsi = await createDSIPacket(
+	//	masterNodeConnection,
+	//	_in_username,
+	//	getDemoDenomination(),
+	//	INPUTS
+	//);
+	//dd({ dsi });
+
+	async function stateChanged(obj) {
+		let self = obj.self;
+		let masterNode = self;
+		switch (masterNode.status) {
+		default:
+			//console.info("unhandled status:", masterNode.status);
+			break;
+		case 'CLOSED':
+			console.warn('[-] Connection closed');
+			break;
+		case 'NEEDS_AUTH':
+		case 'EXPECT_VERACK':
+		case 'EXPECT_HCDP':
+		case 'RESPOND_VERACK':
+			//console.info("[ ... ] Handshake in progress");
+			break;
+		case 'READY':
+			//console.log("[+] Ready to start dealing with CoinJoin traffic...");
+			if (dsaSent === false) {
+				self.denominationsAmount = getDemoDenomination();
+				masterNode.client.write(
+					Network.packet.coinjoin.dsa({
+						chosen_network: network,
+						denomination: getDemoDenomination(),
+						collateral: await masterNode.makeCollateralTx(),
+					})
+				);
+				dsaSent = true;
+				//console.debug("sent dsa");
+			}
+			break;
+		case 'DSQ_RECEIVED':
+			{
+				//console.log('dsq received');
+				//console.log("[+][COINJOIN] DSQ received. Responding with inputs...");
+				//console.debug(self.dsq, "<< dsq");
+				if (self.dsq.fReady) {
+					debug('sending dsi');
+					//console.log("[+][COINJOIN] Ready to send dsi message...");
+				} else {
+					info('[-][COINJOIN] masternode not ready for dsi...');
+					return;
+				}
+				if (String(_in_send_dsi) === 'false') {
+					info('not sending dsi as per cli switch');
+					return;
+				}
+				let packet = await createDSIPacket(
+					masterNode,
+					_in_username,
+					getDemoDenomination(),
+					INPUTS
+				);
+				masterNode.client.write(packet);
+				debug('sent dsi packet');
+			}
+			break;
+		case 'EXPECT_DSQ':
+			//console.info("[+] dsa sent");
+			break;
+		}
+	}
+
+	masterNodeConnection.connect();
+})(
+	extractOption('instance', true),
+	extractOption('username', true),
+	extractOption('nickname', true),
+	extractOption('count', true),
+	extractOption('senddsi', true)
+);
