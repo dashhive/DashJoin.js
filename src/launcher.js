@@ -78,7 +78,7 @@ function nickname(user) {
 	}
 	return names[ctr++];
 }
-const CONCURRENT_USERS = 6;
+const CONCURRENT_USERS = 3;
 module.exports = {
 	run_cli_program: function () {
 		(async function (instanceName) {
@@ -97,7 +97,6 @@ module.exports = {
 			let f = [];
 			let ctr = 0;
 			for (const choice of uniqueUsers) {
-				let senddsi = ++ctr < 4 ? 'true' : 'false';
 				/**
          * Spawn CONCURRENT_USERS different processes.
          * Hand them each their own user
@@ -110,8 +109,9 @@ module.exports = {
 					`--instance=${instanceName}`,
 					`--username=${choice.user}`,
 					`--nickname=${nickname(choice.user)}`,
+					'--verbose=1',
 					'--count=1',
-					`--senddsi=${senddsi}`,
+					'--senddsi=true',
 				]);
 				m.stdout.on('data', (data) => {
 					console.log('[ok]: ', data.toString());

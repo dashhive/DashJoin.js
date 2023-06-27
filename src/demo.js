@@ -4,16 +4,22 @@ const COIN = require('./coin-join-constants.js').COIN;
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const Network = require('./network.js');
 const toSerializedFormat = Network.util.toSerializedFormat;
+const fsu = require('./fs-util.js');
 const xt = require('@mentoc/xtract').xt;
+const DsfInspect = require('./dsf-inspect.js');
+const Util = require('./util.js');
+const { getDataDir, extract, extractSigScript, bigint_safe_json_stringify } =
+  Util;
+let { debug, info, error, d, dd } = Util;
 const NetworkUtil = require('./network-util.js');
 const hexToBytes = NetworkUtil.hexToBytes;
 const hashByteOrder = NetworkUtil.hashByteOrder;
-//const hexToBytes = NetworkUtil.hexToBytes;
 const assert = require('assert');
 let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
 const fs = require('fs');
+const LibInput = require('./choose-inputs.js');
 //let PrivateKey = DashCore.PrivateKey;
 const extractOption = require('./argv.js').extractOption;
 const { extractUserDetails } = require('./bootstrap/user-details.js');
@@ -38,22 +44,6 @@ if (process.argv.includes('--mn1')) {
 if (process.argv.includes('--mn2')) {
 	config = require('./.mn2-config.json');
 	id.mn = 2;
-}
-function debug(...args) {
-	console.debug(`${nickName}[DBG]:`, ...args);
-}
-function info(...args) {
-	console.info(`${nickName}[INFO]:`, ...args);
-}
-function error(...args) {
-	console.error(`[${nickName}[ERROR]:`, ...args);
-}
-function d(...args) {
-	debug(...args);
-}
-function dd(...args) {
-	debug(...args);
-	process.exit();
 }
 
 let masterNodeIP = config.masterNodeIP;
@@ -81,28 +71,6 @@ if (process.argv.includes('--id')) {
 /** FIXME: put in library */
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
-}
-async function getUserInputs(username, denominatedAmount, count) {
-	let utxos = await dboot.get_denominated_utxos(username, denominatedAmount);
-	let selected = [];
-	let txids = {};
-	let maxReps = 150000;
-	let iteration = 0;
-	let i = 0;
-	while (selected.length < count) {
-		if (++iteration > maxReps) {
-			throw new Error(`Couldnt find unused user input after ${maxReps} tries`);
-		}
-		if (typeof txids[utxos[i].txid] !== 'undefined') {
-			++i;
-			continue;
-		}
-		txids[utxos[i].txid] = 1;
-		selected.push(utxos[i]);
-		await dboot.mark_txid_used(username, utxos[i].txid);
-		++i;
-	}
-	return selected;
 }
 let client_session = {
 	address_info: {},
@@ -144,13 +112,6 @@ async function onDSSUChanged(parsed) {
 		await dboot.mark_txid_used(username, mainUser.utxos[0].txid);
 		debug('marked collateral inputs as used');
 	}
-}
-function extract(array, key) {
-	let selected = [];
-	for (const ele of array) {
-		selected.push(ele[key]);
-	}
-	return selected;
 }
 async function createDSIPacket(
 	masterNode,
@@ -206,13 +167,18 @@ async function createDSIPacket(
 			txn: chosenInputTxns[i],
 			txid: chosenInputTxns[i].txid,
 			outputIndex: chosenInputTxns[i].outputIndex,
+			vout: chosenInputTxns[i].outputIndex,
 		});
 	}
-	let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
-	await fs.writeFileSync(
-		`./dsf-mixing-inputs-${client_session.username}-${lmdb_counter}.json`,
-		JSON.stringify(client_session, null, 2)
-	);
+	if (extractOption('verbose') && (await Util.dataDirExists())) {
+		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
+		await fs.writeFileSync(
+			`${getDataDir()}/dsf-mixing-inputs-${
+				client_session.username
+			}-${lmdb_counter}.json`,
+			JSON.stringify(client_session, null, 2)
+		);
+	}
 
 	/**
    * Step 2: create collateral transaction
@@ -296,105 +262,20 @@ async function makeDSICollateralTx(masterNode, username) {
 		.to(payeeAddress, amount)
 		.to(changeAddress, unspent - fee)
 		.sign(privateKey);
+	await dboot.mark_txid_used(username, txid);
 	return tx;
 }
 async function onCollateralTxCreated(tx, masterNode) {
 	debug(`onCollateralTxCreated via masterNode: ${masterNode.id()}`);
 	await dboot.mark_txid_used(tx.user, tx.txid);
 }
-async function getPrivateKeyFromRawTx(rawTx) {
-	for (const input of client_session.mixing_inputs) {
-		if (input.txid === rawTx) {
-			return input.private_key;
-		}
-	}
-}
-/**
- * TODO: move to import via utils lib
- */
-function bigint_safe_json_stringify(buffer, stringify_space = 2) {
-	return JSON.stringify(
-		buffer,
-		(key, value) =>
-			typeof value === 'bigint' ? value.toString() + 'n' : value,
-		stringify_space
-	);
-}
-function dump_parsed(parsed) {
-	console.log('sessionID', xt(parsed, 'sessionID'));
-	console.log('transaction: { ');
-	console.log('version: ', xt(parsed, 'transaction.version'), ',');
-	console.log('inputCount: ', xt(parsed, 'transaction.inputCount'), ',');
-	process.stdout.write('inputs: [');
-	const inputs = xt(parsed, 'transaction.inputs');
-	for (let i = 0; i < inputs.length; i++) {
-		process.stdout.write(bigint_safe_json_stringify(inputs[i], 2));
-		if (i + 1 !== inputs.length) {
-			console.log(',');
-		}
-	}
-	console.log('],');
-	console.log('outputCount: ', xt(parsed, 'transaction.outputCount'), ',');
-	process.stdout.write('outputs: [');
-	const outputs = xt(parsed, 'transaction.outputs');
-	for (let i = 0; i < outputs.length; i++) {
-		process.stdout.write('{');
-		console.log('duffs: ', xt(outputs, `${i}.duffs`), ',');
-		console.log(
-			'pubkey_script_bytes: ',
-			xt(outputs, `${i}.pubkey_script_bytes`),
-			','
-		);
-		console.log('pubkey_script: [');
-		Network.util.dumpAsHex(xt(outputs, `${i}.pubkey_script`));
-		process.stdout.write(']}');
-		if (i + 1 !== outputs.length) {
-			console.log(',');
-		}
-	}
-	console.log('],');
-}
-async function extractSigScript(
-	parsed,
-	username,
-	sourceAddress,
-	denominatedAmount
-) {
-	if (extractOption('verbose')) {
-		dump_parsed(parsed);
-	}
-	const inputs = xt(parsed, 'transaction.inputs');
-	let utxos = {
-		txId: hashByteOrder(inputs[0].txid),
-		outputIndex: inputs[0].vout,
-		sequenceNumber: 0xffffffff,
-		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-		satoshis: denominatedAmount,
-	};
-	let privateKey = await dboot
-		.get_private_key(username, sourceAddress)
-		.catch(function (error) {
-			console.error('Error: get_private_key failed with:', error);
-			return null;
-		});
-	if (privateKey === null) {
-		throw new Error('no private key could be found');
-	}
-
-	let tx = new Transaction().from(utxos).sign(privateKey);
-	let sigScript = tx.inputs[0]._scriptBuffer;
-	let encodedScript = sigScript.toString('hex');
-	let len = encodedScript.length / 2;
-	return new Uint8Array([len, ...hexToBytes(encodedScript)]);
-}
-
 async function onDSFMessage(parsed, masterNode) {
-	if (!extractOption('nosavedsf')) {
+	if (extractOption('verbose') && data_dir_exists) {
 		const fs = require('fs');
 		debug('onDSFMessage hit');
 		debug(masterNode.dsfOrig);
 		await fs.writeFileSync(
-			`./dsf-${client_session.username}.dat`,
+			`${getDataDir()}/dsf-${client_session.username}.dat`,
 			masterNode.dsfOrig
 		);
 	}
@@ -403,9 +284,10 @@ async function onDSFMessage(parsed, masterNode) {
 	debug(`submitted.length: ${client_session.submitted.length}`);
 	for (const submission of client_session.submitted) {
 		let sig = await extractSigScript(
+			dboot,
 			parsed,
 			client_session.username,
-			submission.address,
+			submission,
 			amount
 		);
 		debug({ txid: submission.txid, outputIndex: submission.outputIndex });
@@ -422,6 +304,37 @@ async function onDSFMessage(parsed, masterNode) {
 		})
 	);
 }
+async function initialize(
+	_in_instanceName,
+	_in_username,
+	_in_nickname,
+	_in_count,
+	_in_send_dsi
+) {
+	nickName = _in_nickname;
+	instanceName = _in_instanceName;
+	username = _in_username;
+	//console.info(`[status]: loading "${instanceName}" instance...`);
+	dboot = await dashboot.load_instance(instanceName);
+	mainUser = await extractUserDetails(username);
+	randomPayeeName = await dboot.get_random_payee(username);
+	payee = await extractUserDetails(randomPayeeName);
+
+	client_session.nickName = nickName;
+	client_session.instanceName = instanceName;
+	client_session.username = _in_username;
+	client_session.dboot = dboot;
+	client_session.mainUser = mainUser;
+	client_session.randomPayeeName = randomPayeeName;
+	client_session.payee = payee;
+
+	LibInput.initialize({
+		dboot,
+		denominatedAmount: getDemoDenomination(),
+		client_session,
+	});
+}
+
 /**
  * argv should include:
  * - instance name
@@ -444,16 +357,13 @@ async function onDSFMessage(parsed, masterNode) {
 		throw new Error('--count currently only supports a max of 252');
 		process.exit(1);
 	}
-
-	nickName = _in_nickname;
-	instanceName = _in_instanceName;
-	username = _in_username;
-	client_session.username = _in_username;
-	//console.info(`[status]: loading "${instanceName}" instance...`);
-	dboot = await dashboot.load_instance(instanceName);
-	mainUser = await extractUserDetails(username);
-	randomPayeeName = await dboot.get_random_payee(username);
-	payee = await extractUserDetails(randomPayeeName);
+	await initialize(
+		_in_instanceName,
+		_in_username,
+		_in_nickname,
+		_in_count,
+		_in_send_dsi
+	);
 
 	//let signed = await signWhatWeCan(
 	//	await fs.readFileSync(`./dsf-${client_session.username}.dat`)
