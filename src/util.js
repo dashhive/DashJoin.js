@@ -1,5 +1,5 @@
 'use strict';
-//const xt = require('@mentoc/xtract').xt;
+const xt = require('@mentoc/xtract').xt;
 const assert = require('assert');
 const NetworkUtil = require('./network-util.js');
 const hexToBytes = NetworkUtil.hexToBytes;
@@ -151,6 +151,13 @@ function ps_extract(ps, newlines = true) {
 	}
 	return { err, out };
 }
+async function sleep_ms(ms) {
+	return new Promise((resolve) => {
+		setTimeout(() => {
+			resolve();
+		}, ms);
+	});
+}
 module.exports = {
 	sanitize_txid,
 	sanitize_address,
@@ -170,4 +177,6 @@ module.exports = {
 	flatten,
 	unique,
 	ps_extract,
+	xt,
+	sleep_ms,
 };

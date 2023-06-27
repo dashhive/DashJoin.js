@@ -26,7 +26,7 @@ const { extractOption } = require('../argv.js');
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
-const NetworkUtil = require('./network-util.js');
+const NetworkUtil = require('../network-util.js');
 const hexToBytes = NetworkUtil.hexToBytes;
 //const hashByteOrder = NetworkUtil.hashByteOrder;
 let db_cj, db_cj_ns, db_put, db_get, db_append;

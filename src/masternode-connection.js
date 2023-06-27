@@ -1,24 +1,15 @@
 'use strict';
 const Network = require('./network.js');
 const crypto = require('crypto');
-const { createHash } = crypto;
 const net = require('net');
 const COIN = require('./coin-join-constants.js').COIN;
 let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
-let PrivateKey = DashCore.PrivateKey;
-let Address = DashCore.Address;
 let { hexToBytes } = require('./network-util.js');
+const Util = require('./util.js');
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 
-function d(f) {
-	console.debug(f);
-}
-function dd(f) {
-	console.debug(f);
-	process.exit();
-}
 let Lib = {};
 module.exports = Lib;
 
@@ -31,7 +22,7 @@ function getopt(opt) {
    *
    */
 	for (let arg of process.argv) {
-		let matches = arg.match(/^[\-]{2}([^=]+)=(.*)$/);
+		let matches = arg.match(/^[-]{2}([^=]+)=(.*)$/);
 		if (matches) {
 			if (matches[1] === opt) {
 				return matches[2];
@@ -42,38 +33,19 @@ function getopt(opt) {
 const {
 	PROTOCOL_VERSION,
 	MNAUTH_CHALLENGE_SIZE,
-	TESTNET,
+	//TESTNET,
 	SERVICE_IDENTIFIERS,
 	MESSAGE_HEADER_SIZE,
 	VERSION_PACKET_MINIMUM_SIZE,
-	SENDHEADERS_PAYLOAD_SIZE /* (H) sendheaders payload */,
-	SENDCMPCT_PAYLOAD_SIZE /* (C) sendcmpct payload */,
-	SENDDSQ_PAYLOAD_SIZE /* (D) senddsq payload */,
-	PING_PAYLOAD_SIZE /* (P) Ping message payload */,
-	PING_NONCE_SIZE,
+	//SENDHEADERS_PAYLOAD_SIZE /* (H) sendheaders payload */,
+	//SENDCMPCT_PAYLOAD_SIZE /* (C) sendcmpct payload */,
+	//SENDDSQ_PAYLOAD_SIZE /* (D) senddsq payload */,
+	//PING_PAYLOAD_SIZE /* (P) Ping message payload */,
+	//PING_NONCE_SIZE,
 } = Network.constants;
 
 const { mapIPv4ToIpv6 } = Network.util;
 const PacketParser = Network.packet.parse;
-
-let STATUSES = [
-	'NEEDS_AUTH',
-	'EXPECT_VERACK',
-	'RESPOND_VERACK',
-	/**
-   * HCDP is an acronym for:
-   * 'headers', 'cmpct', 'dsq', 'ping'
-   * These corresspond to to the response of
-   * the MN sending the following once you send a verack to
-   * the MN:
-   * - sendheaders
-   * - sendcmpct
-   * - senddsq
-   * - ping
-   */
-	'EXPECT_HCDP',
-	'READY',
-];
 
 /**
  * "constructor"
@@ -92,7 +64,11 @@ function MasterNode({
 	userAgent = null,
 	coinJoinData,
 	payee,
+	onConnectionClose = null,
+	onConnectionError = null,
+	nickName,
 }) {
+	Util.setNickname(nickName);
 	let self = this;
 	/**
    * Our member variables
@@ -100,13 +76,15 @@ function MasterNode({
 	self.buffer = new Uint8Array();
 	self.client = null;
 	self.collateralTx = null;
-	if (!self.debugFunction) {
+	self.debugFunction = null;
+	if (!debugFunction) {
 		self.debugFunction = () => {};
 	} else {
 		self.debugFunction = debugFunction;
 	}
 	self.coinJoinData = coinJoinData;
-	self.payee = payee;
+	self.dsf = null;
+	self.dsfOrig = null;
 	self.dsq = null;
 	self.frames = [];
 	self.userAgent = userAgent;
@@ -129,22 +107,14 @@ function MasterNode({
 	self.ip = ip;
 	self.mnauth_challenge = null;
 	self.network = network;
-	self.dsf = null;
-	self.dsfOrig = null;
+	self.onCollateralTxCreated = null;
+	self.onConnectionClose = null;
+	self.onConnectionError = null;
 	self.onStatusChange = onStatusChange;
 	self.onDSF = onDSF;
-	self.dispatchDSF = function (packet) {
-		if (typeof self.onDSF === 'function') {
-			self.onDSF(packet, self);
-		}
-	};
 	self.onDSSU = onDSSU;
-	self.dispatchDSSU = function (packet) {
-		if (typeof self.onDSSU === 'function') {
-			self.onDSSU(packet, self);
-		}
-	};
 	self.ourIP = ourIP;
+	self.payee = payee;
 	self.port = port;
 	self.processDebounce = null;
 	self.processRecvBuffer = null;
@@ -153,6 +123,44 @@ function MasterNode({
 	self.startBlockHeight = startBlockHeight;
 	self.status = null;
 	self.statusChangedAt = 0;
+
+	if (typeof onCollateralTxCreated === 'function') {
+		self.onCollateralTxCreated = onCollateralTxCreated;
+	}
+	if (typeof onConnectionClose === 'function') {
+		self.onConnectionClose = onConnectionClose;
+	}
+	if (typeof onConnectionError === 'function') {
+		self.onConnectionError = onConnectionError;
+	}
+	/**
+   * Member functions
+   */
+	self.dispatchCollateralTxCreated = function (tx) {
+		if (typeof self.onCollateralTxCreated === 'function') {
+			self.onCollateralTxCreated(tx, self);
+		}
+	};
+	self.dispatchConnectionClosed = function () {
+		if (typeof self.onConnectionClose === 'function') {
+			self.onConnectionClose(self);
+		}
+	};
+	self.dispatchConnectionError = function (err) {
+		if (typeof self.onConnectionError === 'function') {
+			self.onConnectionError(err, self);
+		}
+	};
+	self.dispatchDSF = function (packet) {
+		if (typeof self.onDSF === 'function') {
+			self.onDSF(packet, self);
+		}
+	};
+	self.dispatchDSSU = function (packet) {
+		if (typeof self.onDSSU === 'function') {
+			self.onDSSU(packet, self);
+		}
+	};
 	self.makeCollateralTx = async function () {
 		let amount = parseInt(LOW_COLLATERAL * 2, 10);
 		let fee = 50000; // FIXME
@@ -195,15 +203,6 @@ function MasterNode({
 		self.dispatchCollateralTxCreated(tx);
 		return hexToBytes(tx.uncheckedSerialize());
 	};
-	self.dispatchCollateralTxCreated = function (tx) {
-		if (typeof self.onCollateralTxCreated === 'function') {
-			self.onCollateralTxCreated(tx, self);
-		}
-	};
-
-	/**
-   * Member functions
-   */
 	self.debug = function (...args) {
 		if (self.debugFunction) {
 			self.debugFunction(...args);
@@ -373,15 +372,20 @@ function MasterNode({
 				case 'sendcmpct':
 					break;
 				case 'senddsq':
-					setTimeout(function () {
-						self.client.write(
-							Network.packet.senddsq({
-								chosen_network: network,
-								fSendDSQueue: true,
-							})
-						);
-						self.setStatus('READY');
-					}, 10000);
+					setTimeout(
+						(function (_self, _net) {
+							return function () {
+								_self.client.write(
+									Network.packet.senddsq({
+										chosen_network: _net,
+										fSendDSQueue: true,
+									})
+								);
+								_self.setStatus('READY');
+							};
+						})(self, network),
+						800
+					);
 					break;
 				case 'dsq':
 					self.debugFunction({ command, payloadSize });
@@ -535,9 +539,11 @@ function MasterNode({
 		self.client.on('close', function () {
 			self.setStatus('CLOSED');
 			self.client.destroy();
+			self.dispatchConnectionClosed(self);
 		});
 		self.client.on('error', function (err) {
 			self.client.destroy();
+			self.dispatchConnectionError(err);
 		});
 
 		/**

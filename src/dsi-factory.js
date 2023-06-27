@@ -1,14 +1,10 @@
-#!/usr/bin/env node
 'use strict';
 const COIN = require('./coin-join-constants.js').COIN;
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const Network = require('./network.js');
-//const toSerializedFormat = Network.util.toSerializedFormat;
-//const fsu = require('./fs-util.js');
-//const xt = require('@mentoc/xtract').xt;
-//const DsfInspect = require('./dsf-inspect.js');
 const Util = require('./util.js');
-let { debug, /*info, d,*/ dd } = Util;
+let { debug } = Util;
+
 const assert = require('assert');
 let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
@@ -16,27 +12,14 @@ let Script = DashCore.Script;
 const fs = require('fs');
 const LibInput = require('./choose-inputs.js');
 const { getUserInputs } = LibInput;
-//let PrivateKey = DashCore.PrivateKey;
 const extractOption = require('./argv.js').extractOption;
-
-let DSIFactory = {};
-module.exports = DSIFactory;
 
 let client_session;
 function setClientSession(c) {
 	client_session = c;
 }
-//let INPUTS;
 let dboot;
 let denominatedAmount;
-//let network;
-//let mainUser;
-//let randomPayeeName;
-//let payee;
-//let username;
-//let nickName;
-//let count;
-//let send_dsi;
 
 async function makeDSICollateralTx(masterNode, username) {
 	assert.equal(masterNode !== null, true, 'masterNode object cannot be null');
@@ -143,13 +126,11 @@ async function createDSIPacket(
 		ele.privateKey = privateKey;
 		return ele;
 	});
-	dd(client_session.report_inputs());
+	Util.d(client_session.report_inputs());
 	if (extractOption('verbose') && (await Util.dataDirExists())) {
 		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 		await fs.writeFileSync(
-			`${Util.getDataDir()}/dsf-mixing-inputs-${
-				client_session.username
-			}-${lmdb_counter}.json`,
+			`${Util.getDataDir()}/dsf-mixing-inputs-${username}-${lmdb_counter}.json`,
 			JSON.stringify(client_session, null, 2)
 		);
 	}
@@ -186,25 +167,16 @@ async function initialize(
 	_in_send_dsi,
 	_in_denominated_amount,
 	_in_client_session
-	//_in_mainUser,
-	//_in_randomPayeeName,
-	//_in_payee
 ) {
 	debug(`${_in_username},${_in_nickname},${_in_count},${_in_send_dsi}`);
-	//nickName = _in_nickname;
-	//username = _in_username;
+	Util.setNickname(_in_nickname);
 	dboot = _in_dboot;
-	//mainUser = _in_mainUser;
-	//randomPayeeName = _in_randomPayeeName;
-	//payee = _in_payee;
-	//count = _in_count;
-	//send_dsi = _in_send_dsi;
 	denominatedAmount = _in_denominated_amount;
 	client_session = _in_client_session;
 	setClientSession(client_session);
 }
 
-DSIFactory = {
+module.exports = {
 	setClientSession,
 	makeDSICollateralTx,
 	getUserOutputs,

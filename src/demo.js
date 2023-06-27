@@ -13,6 +13,7 @@ const dashboot = require('./bootstrap/index.js');
 const MasterNodeConnection =
   require('./masternode-connection.js').MasterNodeConnection;
 
+let done = false;
 let dboot;
 let network;
 let sendDsi;
@@ -127,15 +128,17 @@ async function stateChanged(obj) {
 		break;
 	}
 }
-let { masterNodeConnection } = (async function preInit(
+(async function preInit(
 	_in_instanceName,
 	_in_username,
 	_in_nickname,
 	_in_count,
 	_in_send_dsi
 ) {
+	let nickName = _in_nickname;
+	Util.setNickname(nickName);
 	client_session = new ClientSession();
-	let INPUTS = 2;
+	INPUTS = 2;
 	sendDsi = _in_send_dsi;
 
 	let id = {};
@@ -169,7 +172,6 @@ let { masterNodeConnection } = (async function preInit(
 	if (INPUTS >= 253) {
 		throw new Error('--count currently only supports a max of 252');
 	}
-	let nickName = _in_nickname;
 	let instanceName = _in_instanceName;
 	username = _in_username;
 	dboot = await dashboot.load_instance(instanceName);
@@ -189,6 +191,7 @@ let { masterNodeConnection } = (async function preInit(
 		dboot,
 		denominatedAmount: getDemoDenomination(),
 		client_session,
+		nickName,
 	});
 	DsiFactory.initialize(
 		dboot,
@@ -219,26 +222,15 @@ let { masterNodeConnection } = (async function preInit(
 		user: mainUser.user,
 		payee,
 		changeAddresses: mainUser.changeAddresses,
-	});
-	return {
-		masterNodeConnection,
-		masterNodeIP,
-		masterNodePort,
-		network,
-		ourIP,
-		config,
-		startBlockHeight,
-		id,
-		client_session,
-		INPUTS,
-		dboot,
-		mainUser,
-		randomPayeeName,
-		payee,
-		username,
-		instanceName,
 		nickName,
-	};
+	});
+	debug('Connecting...');
+	await masterNodeConnection.connect();
+	debug('connected.');
+	while (!done) {
+		await Util.sleep_ms(1500);
+	}
+	debug('exiting main function');
 })(
 	extractOption('instance', true),
 	extractOption('username', true),
@@ -246,9 +238,3 @@ let { masterNodeConnection } = (async function preInit(
 	extractOption('count', true),
 	extractOption('senddsi', true)
 );
-
-(async function main() {
-	debug('Connecting...');
-	await masterNodeConnection.connect();
-	debug('connected.');
-})();

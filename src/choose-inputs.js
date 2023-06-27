@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 'use strict';
-const Bootstrap = require('./bootstrap/index.js');
+const Util = require('./util.js');
 let dboot = null;
 let localState = {
 	dboot: null,
 	denom: null,
 };
 function setDboot(db) {
-	if (!(db instanceof Bootstrap)) {
-		throw new Error('dboot must be a Bootstrap instance');
-	}
 	localState.dboot = db;
 	dboot = localState.dboot;
 }
@@ -70,6 +67,7 @@ LibInput.getPrivateKey = getPrivateKey;
 LibInput.getDemoDenomination = getDemoDenomination;
 LibInput.setDenom = setDenom;
 LibInput.initialize = async function (obj) {
+	Util.setNickname(obj.nickName);
 	setDboot(obj.dboot);
 	setDenom(obj.denominatedAmount);
 };
