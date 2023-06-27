@@ -35,10 +35,17 @@ async function getPrivateKey(username, address) {
 	return privateKey;
 }
 async function getUserInputs(username, denominatedAmount, count) {
+	count = parseInt(count, 10);
+	if (count <= 0 || isNaN(count)) {
+		throw new Error('count must be a valid positive integer');
+	}
+	denominatedAmount = parseInt(denominatedAmount, 10);
+	if (denominatedAmount <= 0 || isNaN(denominatedAmount)) {
+		throw new Error('denominatedAmount must be a valid positive integer');
+	}
 	let utxos = await dboot.get_denominated_utxos(username, denominatedAmount);
 	let selected = [];
 	let txids = {};
-	let iteration = 0;
 	let i = 0;
 	while (selected.length < count) {
 		if (typeof txids[utxos[i].txid] !== 'undefined') {
@@ -57,6 +64,7 @@ let LibInput = {};
 
 module.exports = LibInput;
 
+LibInput.getUserInputs = getUserInputs;
 LibInput.setDboot = setDboot;
 LibInput.getPrivateKey = getPrivateKey;
 LibInput.getDemoDenomination = getDemoDenomination;

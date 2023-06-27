@@ -8,6 +8,7 @@ const fsu = require('./fs-util.js');
 const xt = require('@mentoc/xtract').xt;
 const DsfInspect = require('./dsf-inspect.js');
 const Util = require('./util.js');
+const { ClientSession } = require('./client-session.js');
 const { getDataDir, extract, extractSigScript, bigint_safe_json_stringify } =
   Util;
 let { debug, info, error, d, dd } = Util;
@@ -20,12 +21,14 @@ let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
 const fs = require('fs');
 const LibInput = require('./choose-inputs.js');
+const { getUserInputs } = LibInput;
 //let PrivateKey = DashCore.PrivateKey;
 const extractOption = require('./argv.js').extractOption;
 const { extractUserDetails } = require('./bootstrap/user-details.js');
 const dashboot = require('./bootstrap/index.js');
 const MasterNodeConnection =
   require('./masternode-connection.js').MasterNodeConnection;
+let client_session = new ClientSession();
 let INPUTS = 2;
 let dboot = null;
 
@@ -72,26 +75,6 @@ if (process.argv.includes('--id')) {
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
 }
-let client_session = {
-	address_info: {},
-	username: null,
-	used_txids: [],
-	col_txids: [],
-	used_addresses: [],
-	mixing_inputs: [],
-	get_used_txids: function () {
-		return [...client_session.used_txids, ...client_session.col_txids];
-	},
-	get_used_addresses: function () {
-		return client_session.used_addresses;
-	},
-	add_txids: function (a) {
-		client_session.used_txids = [...client_session.used_txids, ...a];
-	},
-	add_addresses: function (a) {
-		client_session.used_addresses = [...client_session.used_addresses, ...a];
-	},
-};
 async function getUserOutputs(username, denominatedAmount, count) {
 	debug(`getUserOutputs for user "${username}"`);
 	let outputs = [];
@@ -119,57 +102,37 @@ async function createDSIPacket(
 	denominationAmount,
 	count
 ) {
-	count = parseInt(count, 10);
-	if (count <= 0 || isNaN(count)) {
-		throw new Error('count must be a valid positive integer');
-	}
-	denominationAmount = parseInt(denominationAmount, 10);
-	if (denominationAmount <= 0 || isNaN(denominationAmount)) {
-		throw new Error('denominationAmount must be a valid positive integer');
-	}
 	/**
    * Step 1: create inputs
    */
-	let chosenInputTxns = await dboot.filter_denominated_transaction(
+	let chosenInputTxns = await getUserInputs(
 		username,
 		denominationAmount,
 		count,
 		client_session.get_used_txids()
-	);
+	).catch(function (error) {
+		throw new Error(error);
+		return null;
+	});
+	if (chosenInputTxns === null) {
+		throw new Error('Failed to get denominated input transactions');
+	}
 	if (chosenInputTxns.length !== count) {
 		throw new Error('Couldn\'t find enough denominated input transactions');
 	}
-	client_session.add_txids(extract(chosenInputTxns, 'txid'));
-	client_session.add_addresses(extract(chosenInputTxns, 'address'));
-	client_session.mixing_inputs = chosenInputTxns;
+	client_session.add_inputs(chosenInputTxns);
 	client_session.submitted = [];
-	for (let i = 0; i < client_session.mixing_inputs.length; i++) {
+	client_session.get_inputs().map(async function (ele) {
 		let privateKey = await dboot
-			.get_private_key(
-				client_session.username,
-				client_session.mixing_inputs[i].address
-			)
+			.get_private_key(username, ele.address)
 			.catch(function (error) {
 				console.error(error);
 				return null;
 			});
-		if (privateKey === null) {
-			throw new Error('private key could not be loaded');
-		}
-		client_session.mixing_inputs[i].private_key = privateKey;
-		client_session.address_info[client_session.mixing_inputs[i].address] =
-      privateKey;
-		client_session.submitted.push({
-			username,
-			address: client_session.mixing_inputs[i].address,
-			privateKey,
-			index: i,
-			txn: chosenInputTxns[i],
-			txid: chosenInputTxns[i].txid,
-			outputIndex: chosenInputTxns[i].outputIndex,
-			vout: chosenInputTxns[i].outputIndex,
-		});
-	}
+		ele.privateKey = privateKey;
+		return ele;
+	});
+	dd(client_session.report_inputs());
 	if (extractOption('verbose') && (await Util.dataDirExists())) {
 		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 		await fs.writeFileSync(
@@ -184,7 +147,6 @@ async function createDSIPacket(
    * Step 2: create collateral transaction
    */
 	let collateralTxn = await makeDSICollateralTx(masterNode, username);
-	//dd(collateralTxn.uncheckedSerialize());
 
 	let userOutputs = await getUserOutputs(username, denominationAmount, count);
 	let userOutputAddresses = await dboot.filter_shuffle_address_count(
