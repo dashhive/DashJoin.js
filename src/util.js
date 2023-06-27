@@ -1,5 +1,6 @@
 'use strict';
-const xt = require('@mentoc/xtract').xt;
+//const xt = require('@mentoc/xtract').xt;
+const assert = require('assert');
 const NetworkUtil = require('./network-util.js');
 const hexToBytes = NetworkUtil.hexToBytes;
 const hashByteOrder = NetworkUtil.hashByteOrder;
@@ -49,7 +50,10 @@ function extract(array, key) {
 function bigint_safe_json_stringify(buffer, stringify_space = 2) {
 	return JSON.stringify(
 		buffer,
-		(_, value) => (typeof value === 'bigint' ? value.toString() + 'n' : value),
+		function (key, value) {
+			this.k = key;
+			return typeof value === 'bigint' ? value.toString() + 'n' : value;
+		},
 		stringify_space
 	);
 }
@@ -60,6 +64,7 @@ async function extractSigScript(
 	submission,
 	denominatedAmount
 ) {
+	assert.equal(parsed !== null, true, 'parsed shouldnt be null');
 	let utxos = {
 		txId: hashByteOrder(submission.txid),
 		outputIndex: submission.vout,
