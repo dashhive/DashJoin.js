@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { createHash } = crypto;
 const NetUtil = require('./network-util.js');
 const COIN = require('./coin-join-constants.js').COIN;
+const hashByteOrder = NetUtil.hashByteOrder;
 let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
 //let Script = DashCore.Script;
@@ -962,7 +963,8 @@ function dsi(
 function dss(
 	args = {
 		chosen_network, // 'testnet'
-		inputs,
+		dsfPacket,
+		signatures,
 	}
 ) {
 	/**
@@ -970,13 +972,14 @@ function dss(
    * -----------
    * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
    */
-	const inputs = args.inputs;
+	const signatures = args.signatures;
+	const dsfPacket = args.dsfPacket;
 	assert.equal(
-		inputs.length < 253,
+		dsfPacket.transaction.inputCount < 253,
 		true,
 		'Can only support up to 252 inputs currently'
 	);
-	const USER_INPUT_SIZE = inputs.length;
+	const USER_INPUT_SIZE = Object.keys(signatures).length;
 	/**
    * The input count byte
    */
@@ -984,12 +987,10 @@ function dss(
 	const TXID_LENGTH = 32;
 	const OUTPUT_INDEX_LENGTH = 4;
 	const SEQUENCE_NUMBER_LENGTH = 4;
-	for (const input of inputs) {
-		TOTAL_SIZE +=
-      TXID_LENGTH +
-      OUTPUT_INDEX_LENGTH +
-      hexToBytes(input.script).length +
-      SEQUENCE_NUMBER_LENGTH;
+	for (const txid in signatures) {
+		TOTAL_SIZE += TXID_LENGTH + OUTPUT_INDEX_LENGTH;
+		TOTAL_SIZE += signatures[txid].signature.length;
+		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
 	}
 
 	/**
@@ -1003,14 +1004,14 @@ function dss(
 	/**
    * Add each input
    */
-	for (const input of inputs) {
-		packet.set(hexToBytes(input.txid), offset);
+	for (const txid in signatures) {
+		packet.set(hexToBytes(hashByteOrder(txid)), offset);
 		offset += 32;
-		packet.set(hexToBytes(input.outputIndex), offset);
+		packet.set([signatures[txid].outputIndex], offset);
 		offset += 4;
-		packet.set(hexToBytes(input.script), offset);
-		offset += hexToBytes(input.script).length;
-		packet.set(hexToBytes(0xffffffff), offset);
+		packet.set(signatures[txid].signature, offset);
+		offset += signatures[txid].signature.length;
+		packet.set(hexToBytes('ffffffff'), offset);
 		offset += 4;
 	}
 

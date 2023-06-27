@@ -7,6 +7,7 @@ const toSerializedFormat = Network.util.toSerializedFormat;
 const xt = require('@mentoc/xtract').xt;
 const NetworkUtil = require('./network-util.js');
 const hexToBytes = NetworkUtil.hexToBytes;
+const hashByteOrder = NetworkUtil.hashByteOrder;
 //const hexToBytes = NetworkUtil.hexToBytes;
 const assert = require('assert');
 let DashCore = require('@dashevo/dashcore-lib');
@@ -364,7 +365,7 @@ async function extractSigScript(
 	}
 	const inputs = xt(parsed, 'transaction.inputs');
 	let utxos = {
-		txId: inputs[0].txid,
+		txId: hashByteOrder(inputs[0].txid),
 		outputIndex: inputs[0].vout,
 		sequenceNumber: 0xffffffff,
 		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
@@ -379,22 +380,6 @@ async function extractSigScript(
 	if (privateKey === null) {
 		throw new Error('no private key could be found');
 	}
-	/**
-   *
-PublicKeyHashInput {
-  output: Output {
-    _satoshisBN: BN { negative: 0, words: [Array], length: 1, red: null },
-    _satoshis: 100001,
-    _scriptBuffer: <Buffer 76 a9 14 3e 84 bb a1 86 81 f7 fb b3 f4 be c4 ca e6 44 d1 b0 80 bc 44 88 ac>,
-    _script: Script { chunks: [Array], _isOutput: true }
-  },
-  prevTxId: <Buffer a4 00 9c d7 be 36 c0 b4 1e 70 46 72 3e 51 60 4a 1a 5d 7e 7e 2a eb 90 24 fb ea fc d0 7b 44 e7 53>,
-  outputIndex: 0,
-  sequenceNumber: 4294967295,
-  _script: Script { chunks: [ [Object], [Object] ], _isInput: true },
-  _scriptBuffer: <Buffer 47 30 44 02 20 7f 83 84 3b b7 36 c2 3f 78 b4 46 d6 8c 96 93 f1 ea be b4 9d 52 46 dc 44 95 0c bd 89 b1 f3 2e bb 02 20 4a 21 e3 e7 6c 70 32 3f 7b 2b 46 ... 56 more bytes>
-}
-*/
 
 	let tx = new Transaction().from(utxos).sign(privateKey);
 	let sigScript = tx.inputs[0]._scriptBuffer;
@@ -402,66 +387,6 @@ PublicKeyHashInput {
 	let len = encodedScript.length / 2;
 	return new Uint8Array([len, ...hexToBytes(encodedScript)]);
 }
-
-Bootstrap._dsftest1 = async function (buffer, username) {
-	//let utxos = await Bootstrap.get_denominated_utxos(
-	//  "7250bb2a2e294f728081f50ee2bdd3a1",
-	//  100001
-	//);
-	//dd(utxos);
-	/**
-   * Network.packet.parse.dsf is not async
-   */
-	let parsed = Network.packet.parse.dsf(buffer);
-	if (extractOption('verbose')) {
-		dump_parsed(parsed);
-	}
-	let sourceAddress = 'yS21kYR1kcgmLi9sUPArp6whJKBoXa42fb';
-
-	const inputs = xt(parsed, 'transaction.inputs');
-	let utxos = {
-		txId: inputs[0].txid,
-		outputIndex: inputs[0].vout,
-		sequenceNumber: 0xffffffff,
-		scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-		satoshis: 100001,
-	};
-	let privateKey = await Bootstrap.get_private_key(
-		username,
-		sourceAddress
-	).catch(function (error) {
-		console.error('Error: get_private_key failed with:', error);
-		return null;
-	});
-	if (privateKey === null) {
-		throw new Error('no private key could be found');
-	}
-	privateKey = flatten(privateKey);
-	/**
-   *
-PublicKeyHashInput {
-  output: Output {
-    _satoshisBN: BN { negative: 0, words: [Array], length: 1, red: null },
-    _satoshis: 100001,
-    _scriptBuffer: <Buffer 76 a9 14 3e 84 bb a1 86 81 f7 fb b3 f4 be c4 ca e6 44 d1 b0 80 bc 44 88 ac>,
-    _script: Script { chunks: [Array], _isOutput: true }
-  },
-  prevTxId: <Buffer a4 00 9c d7 be 36 c0 b4 1e 70 46 72 3e 51 60 4a 1a 5d 7e 7e 2a eb 90 24 fb ea fc d0 7b 44 e7 53>,
-  outputIndex: 0,
-  sequenceNumber: 4294967295,
-  _script: Script { chunks: [ [Object], [Object] ], _isInput: true },
-  _scriptBuffer: <Buffer 47 30 44 02 20 7f 83 84 3b b7 36 c2 3f 78 b4 46 d6 8c 96 93 f1 ea be b4 9d 52 46 dc 44 95 0c bd 89 b1 f3 2e bb 02 20 4a 21 e3 e7 6c 70 32 3f 7b 2b 46 ... 56 more bytes>
-}
-*/
-
-	let tx = new Transaction().from(utxos).sign(privateKey);
-	let sigScript = tx.inputs[0]._scriptBuffer;
-	let encodedScript = sigScript.toString('hex');
-	let len = encodedScript.length / 2;
-	let payload = new Uint8Array([len, ...hexToBytes(encodedScript)]);
-	d(sigScript.toString('hex'));
-	dd(payload);
-};
 
 async function onDSFMessage(parsed, masterNode) {
 	if (!extractOption('nosavedsf')) {
@@ -474,17 +399,8 @@ async function onDSFMessage(parsed, masterNode) {
 		);
 	}
 	let amount = getDemoDenomination();
-	let sigScripts = [];
-	/**
-   * signatures = [{
-        txid,
-        vout,
-        signatureScript
-     },{
-       ...
-     }
-    ]
-   */
+	let sigScripts = {};
+	debug(`submitted.length: ${client_session.submitted.length}`);
 	for (const submission of client_session.submitted) {
 		let sig = await extractSigScript(
 			parsed,
@@ -492,16 +408,17 @@ async function onDSFMessage(parsed, masterNode) {
 			submission.address,
 			amount
 		);
-		sigScripts.push({
-			txid: submission.txid,
+		debug({ txid: submission.txid, outputIndex: submission.outputIndex });
+		sigScripts[submission.txid] = {
+			signature: sig,
 			outputIndex: submission.outputIndex,
-			script: sig,
-		});
+		};
 	}
 	masterNode.client.write(
 		Network.packet.coinjoin.dss({
 			chosen_network: masterNode.network,
-			inputs: sigScripts,
+			dsfPacket: parsed,
+			signatures: sigScripts,
 		})
 	);
 }

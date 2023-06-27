@@ -79,6 +79,9 @@ module.exports = function (_DB) {
 			Lib.db_cj_ns([username]);
 		}
 		let existing = Lib.meta_get(username, key);
+		if (!Array.isArray(existing)) {
+			existing = [];
+		}
 		if (Array.isArray(values)) {
 			for (const r of values) {
 				existing.push(r);

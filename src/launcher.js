@@ -97,7 +97,7 @@ module.exports = {
 			let f = [];
 			let ctr = 0;
 			for (const choice of uniqueUsers) {
-				let senddsi = ++ctr < 3 ? 'true' : 'false';
+				let senddsi = ++ctr < 4 ? 'true' : 'false';
 				/**
          * Spawn CONCURRENT_USERS different processes.
          * Hand them each their own user
