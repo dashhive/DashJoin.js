@@ -3,18 +3,14 @@
 const COIN = require('./coin-join-constants.js').COIN;
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const Network = require('./network.js');
-const toSerializedFormat = Network.util.toSerializedFormat;
-const fsu = require('./fs-util.js');
-const xt = require('@mentoc/xtract').xt;
-const DsfInspect = require('./dsf-inspect.js');
-const Util = require('./util.js');
+//const toSerializedFormat = Network.util.toSerializedFormat;
+//const fsu = require('./fs-util.js');
+//const xt = require('@mentoc/xtract').xt;
+//const DsfInspect = require('./dsf-inspect.js');
 const { ClientSession } = require('./client-session.js');
-const { getDataDir, extract, extractSigScript, bigint_safe_json_stringify } =
-  Util;
-let { debug, info, error, d, dd } = Util;
-const NetworkUtil = require('./network-util.js');
-const hexToBytes = NetworkUtil.hexToBytes;
-const hashByteOrder = NetworkUtil.hashByteOrder;
+const Util = require('./util.js');
+const { getDataDir, extractSigScript } = Util;
+let { debug, info, d, dd } = Util;
 const assert = require('assert');
 let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
@@ -112,7 +108,6 @@ async function createDSIPacket(
 		client_session.get_used_txids()
 	).catch(function (error) {
 		throw new Error(error);
-		return null;
 	});
 	if (chosenInputTxns === null) {
 		throw new Error('Failed to get denominated input transactions');

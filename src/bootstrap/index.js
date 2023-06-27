@@ -8,6 +8,28 @@
 const xt = require('@mentoc/xtract').xt;
 const Network = require('../network.js');
 const MetaDB = require('./metadb.js');
+const Util = require('../util.js');
+const { dump_parsed } = require('../dsf-inspect.js');
+const {
+	dd,
+	d,
+	unique,
+	bigint_safe_json_stringify,
+	uniqueByKey,
+	flatten,
+	sanitize_txid,
+	sanitize_address,
+	sanitize_addresses,
+	ps_extract,
+} = Util;
+const { extractOption } = require('../argv.js');
+const DashCore = require('@dashevo/dashcore-lib');
+const Transaction = DashCore.Transaction;
+const Script = DashCore.Script;
+const NetworkUtil = require('./network-util.js');
+const hexToBytes = NetworkUtil.hexToBytes;
+//const hashByteOrder = NetworkUtil.hashByteOrder;
+let db_cj, db_cj_ns, db_put, db_get, db_append;
 
 let Bootstrap = {};
 module.exports = Bootstrap;
@@ -17,40 +39,11 @@ let cproc = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 
-/**
- * TODO: move to import via utils lib
- */
-function bigint_safe_json_stringify(buffer, stringify_space = 2) {
-	return JSON.stringify(
-		buffer,
-		(key, value) =>
-			typeof value === 'bigint' ? value.toString() + 'n' : value,
-		stringify_space
-	);
-}
-function uniqueByKey(array, key) {
-	let map = {};
-	let saved = [];
-	for (const ele of array) {
-		if (typeof map[ele[key]] !== 'undefined') {
-			continue;
-		}
-		map[ele[key]] = 1;
-		saved.push(ele);
-	}
-	return saved;
-}
-function flatten(arr) {
-	if (arr.length === 1 && Array.isArray(arr[0])) {
-		return flatten(arr[0]);
-	}
-	if (!Array.isArray(arr)) {
-		return arr;
-	}
-	if (Array.isArray(arr) && !Array.isArray(arr[0])) {
-		return arr[0];
-	}
-	return arr;
+function cli_args(list) {
+	return [
+		'-conf=' + process.env.HOME + '/.dashmate/local_seed/core/dash.conf',
+		...list,
+	];
 }
 Bootstrap._dsftest1 = async function (buffer, username) {
 	//let utxos = await Bootstrap.get_denominated_utxos(
@@ -191,21 +184,10 @@ function arbuf_to_hexstr(buffer) {
 		.join('');
 }
 Bootstrap.ps_extract = ps_extract;
-function ps_extract(ps, newlines = true) {
-	let out = ps.stdout.toString();
-	let err = ps.stderr.toString();
-	out = out.replace(/^[\s]+/, '').replace(/[\s]+$/, '');
-	err = err.replace(/^[\s]+/, '').replace(/[\s]+$/, '');
-	if (!newlines) {
-		out = out.replace(/[\n]+$/, '');
-		err = err.replace(/[\n]+$/, '');
-	}
-	return { err, out };
-}
 Bootstrap.set_dash_cli = function (p) {
 	Bootstrap.DASH_CLI = p;
 };
-Bootstrap.get_dash_cli = function (p) {
+Bootstrap.get_dash_cli = function () {
 	return Bootstrap.DASH_CLI;
 };
 Bootstrap.get_config = function () {
@@ -314,7 +296,7 @@ Bootstrap.mkpath = async function (path) {
 };
 
 Bootstrap.random_name = async function () {
-	return crypto.randomUUID().replace(/\-/gi, '');
+	return crypto.randomUUID().replace(/-/gi, '');
 };
 
 Bootstrap.run = async function (cli_arguments) {
@@ -322,30 +304,6 @@ Bootstrap.run = async function (cli_arguments) {
 };
 
 Bootstrap.__error = null;
-
-function cli_args(list) {
-	return [
-		'-conf=' + process.env.HOME + '/.dashmate/local_seed/core/dash.conf',
-		...list,
-	];
-}
-
-let db_cj, db_cj_ns, db_put, db_get, db_append;
-
-function sanitize_txid(txid) {
-	return txid.replace(/[^a-f0-9]+/gi, '').replace(/[\n]+$/, '');
-}
-function sanitize_address(address) {
-	return address.replace(/[^a-zA-Z0-9]+/gi, '').replace(/[\n]+$/, '');
-}
-
-function sanitize_addresses(list) {
-	let flist = [];
-	for (const row of list) {
-		flist.push(row.replace(/[^a-zA-Z0-9]+/gi, ''));
-	}
-	return flist;
-}
 
 Bootstrap.load_instance = async function (instance_name) {
 	Bootstrap.DASH_CLI = [process.env.HOME, 'bin', 'dash-cli'].join('/');
@@ -367,7 +325,7 @@ Bootstrap.load_instance = async function (instance_name) {
 		maxDbs: Bootstrap.__data.instance.max_dbs,
 		mapSize: 32 * 1024 * 1024,
 	});
-	Bootstrap.MetaDB = MetaDB(Bootstrap.DB);
+	Bootstrap.MetaDB = new MetaDB(Bootstrap.DB);
 	db_cj = Bootstrap.MetaDB.db_cj;
 	db_cj_ns = Bootstrap.MetaDB.db_cj_ns;
 	db_get = Bootstrap.MetaDB.db_get;
@@ -475,7 +433,7 @@ Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
 };
 Bootstrap.get_change_address_from_cli = async function (username) {
 	let buffer = await Bootstrap.wallet_exec(username, ['getrawchangeaddress']);
-	let { err, out } = ps_extract(buffer, false);
+	let { out } = ps_extract(buffer, false);
 	if (out.length) {
 		return out;
 	}
@@ -615,7 +573,7 @@ Bootstrap.create_wallets = async function (count = 10) {
 		let w_addresses = [];
 		for (let actr = 0; actr < 10; actr++) {
 			let buffer = await Bootstrap.wallet_exec(wallet_name, ['getnewaddress']);
-			let { err, out } = ps_extract(buffer, false);
+			let { out } = ps_extract(buffer, false);
 			if (out.length) {
 				w_addresses.push(out);
 			}
@@ -749,7 +707,7 @@ Bootstrap.dump_all_privkeys = async function () {
 		}
 	}
 	for (const pair of keep) {
-		let r = await Bootstrap.meta_set(
+		await Bootstrap.meta_set(
 			[pair.user, 'privatekey'],
 			pair.address,
 			pair.privateKey
@@ -757,7 +715,6 @@ Bootstrap.dump_all_privkeys = async function () {
 	}
 };
 Bootstrap.generate_dash_to_all = async function () {
-	let keep = [];
 	const users = await Bootstrap.user_list();
 	for (const user of users) {
 		const addresses = await Bootstrap.get_addresses(user);
@@ -787,7 +744,6 @@ Bootstrap.generate_dash_to_all = async function () {
 };
 
 Bootstrap.generate_dash_to = async function (username) {
-	let keep = [];
 	let user = username;
 	const addresses = await Bootstrap.get_addresses(user);
 	if (Array.isArray(addresses) === false || addresses.length === 0) {
@@ -814,13 +770,6 @@ Bootstrap.generate_dash_to = async function (username) {
 		}
 	}
 };
-function d(f) {
-	console.debug(f);
-}
-function dd(f) {
-	console.debug(f);
-	process.exit();
-}
 
 function usage() {
 	console.log('Usage: dashboot [options] --instance=N');
@@ -890,7 +839,6 @@ function usage() {
 	console.log(' utxos, and addresses.                                 ');
 	console.log('                                                       ');
 }
-const { extractOption } = require('../argv.js');
 
 Bootstrap.run_cli_program = async function () {
 	let help = false;
@@ -959,7 +907,7 @@ Bootstrap.run_cli_program = async function () {
 		let capture = false;
 		let args = [];
 		for (const arg of process.argv) {
-			if (arg.match(/^\-\-wallet\-cmd.*$/)) {
+			if (arg.match(/^--wallet-cmd.*$/)) {
 				capture = true;
 				continue;
 			}
@@ -1082,18 +1030,6 @@ Bootstrap.run_cli_program = async function () {
 	}
 	process.exit(1);
 };
-function unique(arr) {
-	let map = {};
-	let uni = [];
-	for (const a of arr) {
-		if (typeof map[a] !== 'undefined') {
-			continue;
-		}
-		map[a] = 1;
-		uni.push(a);
-	}
-	return uni;
-}
 Bootstrap.is_txid_used = async function (username, txid) {
 	let existing = await Bootstrap.get_used_txids(username);
 	return existing.indexOf(txid) !== -1;
@@ -1165,7 +1101,6 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 		if (filterByDenoms === null) {
 			for (let k = 0; k < Object.keys(utxos).length; k++) {
 				for (let x = 0; x < utxos[k].length; x++) {
-					let txid = utxos[k][x].txid;
 					utxos[k][x].privateKey = addrMap[utxos[k][x].address];
 					if (filterByDenoms !== null) {
 						if (utxos[k][x].satoshis !== parseInt(filterByDenoms, 10)) {
@@ -1209,7 +1144,7 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 Bootstrap.getRandomPayee = async function (username) {
 	let users = await Bootstrap.user_list();
 	for (const user of users) {
-		if (user != username && Math.random() * 100 > 50) {
+		if (user !== username && Math.random() * 100 > 50) {
 			return user;
 		}
 	}

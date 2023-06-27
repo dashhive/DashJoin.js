@@ -116,9 +116,7 @@ const MESSAGE_ID = {
 
 let PRE_CALC_MESSAGE_HEADER_SIZE = 0;
 for (const key in MSG_HEADER) {
-	if (MSG_HEADER.hasOwnProperty(key)) {
-		PRE_CALC_MESSAGE_HEADER_SIZE += MSG_HEADER[key];
-	}
+	PRE_CALC_MESSAGE_HEADER_SIZE += MSG_HEADER[key];
 }
 const MESSAGE_HEADER_SIZE = PRE_CALC_MESSAGE_HEADER_SIZE;
 const PAYLOAD_OFFSET = MSG_HEADER.MAGIC + MSG_HEADER.COMMAND;
@@ -153,9 +151,7 @@ let VERSION_PACKET_MINIMUM_SIZE = 0;
 	VERSION_PACKET_MINIMUM_SIZE = 0;
 	let sizes = getVersionSizes();
 	for (const key in sizes) {
-		if (sizes.hasOwnProperty(key)) {
-			VERSION_PACKET_MINIMUM_SIZE += sizes[key];
-		}
+		VERSION_PACKET_MINIMUM_SIZE += sizes[key];
 	}
 })();
 

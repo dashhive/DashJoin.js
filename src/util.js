@@ -83,8 +83,73 @@ async function extractSigScript(
 	let len = encodedScript.length / 2;
 	return new Uint8Array([len, ...hexToBytes(encodedScript)]);
 }
+function uniqueByKey(array, key) {
+	let map = {};
+	let saved = [];
+	for (const ele of array) {
+		if (typeof map[ele[key]] !== 'undefined') {
+			continue;
+		}
+		map[ele[key]] = 1;
+		saved.push(ele);
+	}
+	return saved;
+}
+function flatten(arr) {
+	if (arr.length === 1 && Array.isArray(arr[0])) {
+		return flatten(arr[0]);
+	}
+	if (!Array.isArray(arr)) {
+		return arr;
+	}
+	if (Array.isArray(arr) && !Array.isArray(arr[0])) {
+		return arr[0];
+	}
+	return arr;
+}
+function unique(arr) {
+	let map = {};
+	let uni = [];
+	for (const a of arr) {
+		if (typeof map[a] !== 'undefined') {
+			continue;
+		}
+		map[a] = 1;
+		uni.push(a);
+	}
+	return uni;
+}
 
+function sanitize_txid(txid) {
+	return txid.replace(/[^a-f0-9]+/gi, '').replace(/[\n]+$/, '');
+}
+function sanitize_address(address) {
+	return address.replace(/[^a-zA-Z0-9]+/gi, '').replace(/[\n]+$/, '');
+}
+
+function sanitize_addresses(list) {
+	let flist = [];
+	for (const row of list) {
+		flist.push(row.replace(/[^a-zA-Z0-9]+/gi, ''));
+	}
+	return flist;
+}
+
+function ps_extract(ps, newlines = true) {
+	let out = ps.stdout.toString();
+	let err = ps.stderr.toString();
+	out = out.replace(/^[\s]+/, '').replace(/[\s]+$/, '');
+	err = err.replace(/^[\s]+/, '').replace(/[\s]+$/, '');
+	if (!newlines) {
+		out = out.replace(/[\n]+$/, '');
+		err = err.replace(/[\n]+$/, '');
+	}
+	return { err, out };
+}
 module.exports = {
+	sanitize_txid,
+	sanitize_address,
+	sanitize_addresses,
 	setNickname,
 	getDataDir,
 	dataDirExists,
@@ -96,4 +161,8 @@ module.exports = {
 	dd,
 	d,
 	error,
+	uniqueByKey,
+	flatten,
+	unique,
+	ps_extract,
 };
