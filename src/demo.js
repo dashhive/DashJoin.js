@@ -218,12 +218,14 @@ async function stateChanged(obj) {
 	d('before load');
 	dboot = await dashboot.load_instance(instanceName);
 	d('after load');
+	d({ username });
 	mainUser = await UserDetails.extractUserDetails(username);
 	d('user details fetched');
 	let randomPayeeName = await dboot.get_random_payee(username);
 	d('random payee fetched');
 	let payee = await UserDetails.extractUserDetails(randomPayeeName);
 
+	dd({ payee });
 	client_session.nickName = nickName;
 	client_session.instanceName = instanceName;
 	client_session.username = _in_username;

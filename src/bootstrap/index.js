@@ -411,7 +411,7 @@ Bootstrap.sane_instance = function () {
 };
 Bootstrap.user_list = async function (options = {}) {
 	db_cj();
-	let list = db_get('users');
+	let list = await db_get('users');
 	try {
 		list = JSON.parse(list);
 		if (!Array.isArray(list)) {
@@ -454,9 +454,6 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 			}
 			if (start !== existing.length) {
 				await Bootstrap.store_addresses(username, existing);
-				//	console.log(`Added ${existing.length - start} addresses to the db`);
-				//} else {
-				//	console.log('All addresses already in db');
 			}
 		} catch (e) {
 			console.error(e);
@@ -476,9 +473,16 @@ Bootstrap.user_utxos_from_cli = async function (username, addresses) {
 		if (err.length) {
 			console.error(err);
 		} else {
+			if (out === '[\n]') {
+				continue;
+			}
 			try {
 				let txns = JSON.parse(out);
-				utxos.push(txns);
+				if (Array.isArray(txns)) {
+					utxos.push(...txns);
+				} else {
+					utxos.push(txns);
+				}
 			} catch (e) {
 				d(e);
 			}
@@ -500,7 +504,7 @@ Bootstrap.user_exists = async function (username) {
 Bootstrap.user_create = async function (username) {
 	username = Bootstrap.alias_check(username);
 	db_cj();
-	let list = db_get('users');
+	let list = await db_get('users');
 	try {
 		list = JSON.parse(list);
 		if (!Array.isArray(list)) {
@@ -515,10 +519,14 @@ Bootstrap.user_create = async function (username) {
 		}
 	}
 	list.push(username);
-	db_put('users', JSON.stringify(list));
+	await db_put('users', JSON.stringify(list));
 };
 
 Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
+	if (['1', 'true'].indexOf(String(extractOption('verbose', true))) !== -1) {
+		let args = cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments]);
+		console.info(`wallet_exec: "${Bootstrap.DASH_CLI} ${args}`);
+	}
 	return await cproc.spawnSync(
 		Bootstrap.DASH_CLI,
 		cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments])
@@ -613,10 +621,18 @@ Bootstrap.get_denominated_utxos = async function (username, denominatedAmount) {
 	let addresses = await Bootstrap.user_addresses(username);
 	let utxos = await Bootstrap.user_utxos_from_cli(username, addresses);
 	let matches = [];
-	for (const batch of utxos) {
+	for (let batch of utxos) {
+		if (Array.isArray(batch) === false) {
+			if (xt(batch, 'address')) {
+				batch = [batch];
+			} else {
+				continue;
+			}
+		}
 		for (const ut of batch) {
-			if (ut.satoshis === parseInt(denominatedAmount, 10)) {
-				if (Bootstrap.ram_txid_used(ut.txid)) {
+			d({ ut });
+			if (parseInt(ut.satoshis, 10) === parseInt(denominatedAmount, 10)) {
+				if (Bootstrap.is_txid_used(ut.txid)) {
 					continue;
 				}
 				matches.push(ut);
@@ -727,25 +743,35 @@ Bootstrap.create_wallets = async function (count = 10) {
 	await Bootstrap.generate_dash_to_all();
 	await Bootstrap.create_denominations_to_all();
 };
+Bootstrap.grind = async function () {
+	for (let i = 0; i < 100; i++) {
+		if (i % 10 === 0) {
+			await Bootstrap.generate_dash_to_all();
+		}
+		await Bootstrap.create_denominations_to_all();
+	}
+};
 Bootstrap.create_denominations_to_all = async function () {
+	await Bootstrap.unlock_all_wallets();
 	/**
    * Loop through all wallets and send the lowest denomination to
    * all other users
    */
 	let users = await Bootstrap.user_list();
 	for (const user of users) {
-		await Bootstrap.unlock_wallet(user);
 		for (const otherUser of users) {
 			if (otherUser === user) {
 				continue;
 			}
-			let addresses = await Bootstrap.user_addresses(otherUser);
-			let max_addresses = 10;
+			let addresses = await Bootstrap.user_addresses(otherUser).catch(function (
+				err
+			) {
+				console.error(err);
+				return null;
+			});
 			for (const address of addresses) {
-				if (--max_addresses === 0) {
-					break;
-				}
-				for (let i = 0; i < 10; i++) {
+				d({ user, address });
+				for (let i = 0; i < 2; i++) {
 					let ps = await Bootstrap.wallet_exec(user, [
 						'sendtoaddress',
 						address,
@@ -859,28 +885,37 @@ Bootstrap.dump_all_privkeys = async function () {
 	}
 };
 Bootstrap.generate_dash_to_all = async function () {
+	await Bootstrap.unlock_all_wallets();
 	const users = await Bootstrap.user_list();
 	for (const user of users) {
 		const addresses = await Bootstrap.get_addresses(user);
 		if (Array.isArray(addresses) === false || addresses.length === 0) {
+			console.info(`${user} doesnt' have addresses. Skipping`);
 			continue;
 		}
+		console.info(`${user} has ${addresses.length} addresses...`);
 		for (const address of addresses) {
+			console.info('Running wallet_exec..');
 			let ps = await Bootstrap.wallet_exec(user, [
 				'generatetoaddress',
-				'10',
+				'2',
 				address,
 			]);
-			let { err, out } = ps_extract(ps);
+			let { err, out } = ps_extract(ps, false);
 			if (err.length) {
-				console.error(err);
+				console.error(`ERROR: ${user}: "${err}"`);
 			} else {
+				console.log({ out });
 				try {
 					let txns = JSON.parse(out);
+					if (txns.length === 0) {
+						console.info(`${user} skipping empty output`);
+						continue;
+					}
 					await Bootstrap.meta_store([user, 'utxos'], address, txns);
 					d({ [user]: address, utxos: out, txns });
 				} catch (e) {
-					dd(e);
+					console.error(e);
 				}
 			}
 		}
@@ -889,6 +924,7 @@ Bootstrap.generate_dash_to_all = async function () {
 
 Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
+	await Bootstrap.unlock_all_wallets();
 	let user = username;
 	const addresses = await Bootstrap.get_addresses(user);
 	if (Array.isArray(addresses) === false || addresses.length === 0) {
@@ -905,8 +941,12 @@ Bootstrap.generate_dash_to = async function (username) {
 		if (err.length) {
 			console.error(err);
 		} else {
+			console.log({ out });
 			try {
 				let txns = JSON.parse(out);
+				if (txns.length === 0) {
+					continue;
+				}
 				console.info(`storing ${txns.length} txns at ${user}.utxos`);
 				await Bootstrap.meta_store([user, 'utxos'], address, txns);
 				d({ [user]: address, utxos: out, txns });
@@ -967,6 +1007,9 @@ function usage() {
 		'--sync-all         Will import all addresses from dash-cli into lmdb for ALL users'
 	);
 	console.log('--alias-users      Will give easy to use names for each user');
+	console.log(
+		'--grind            Calls generate dash and create denoms in a loop'
+	);
 	if (extractOption('helpinstances')) {
 		console.log('');
 		console.log('# What are instances?');
@@ -1037,6 +1080,12 @@ Bootstrap.run_cli_program = async function () {
 	}
 	await Bootstrap.load_instance(config.instance);
 	{
+		if (extractOption('grind')) {
+			d(await Bootstrap.grind());
+			process.exit(0);
+		}
+	}
+	{
 		let user = extractOption('new-addr', true);
 		if (user) {
 			d(await Bootstrap.generate_address(user));
@@ -1095,6 +1144,7 @@ Bootstrap.run_cli_program = async function () {
 			};
 
 			let users = await Bootstrap.user_list();
+			d(users);
 			for (const user of users) {
 				let addresses = await Bootstrap.user_addresses(user);
 				stats.addresses += addresses.length;
@@ -1102,28 +1152,32 @@ Bootstrap.run_cli_program = async function () {
 				stats.utxos += utxos.length;
 				stats.users += 1;
 				report(stats);
-				for (const batch of utxos) {
-					if (batch.length === 0) {
-						stats.empty_utxos += 1;
-						report(stats);
-						continue;
+				for (let batch of utxos) {
+					if (Array.isArray(batch) === false) {
+						if (xt(batch, 'address')) {
+							batch = [batch];
+						} else {
+							d(batch);
+							continue;
+						}
 					}
+					let txids = [];
 					for (const utxo of batch) {
 						if (Bootstrap.is_txid_used(utxo.txid)) {
 							stats.skipped += 1;
 							report(stats);
 							continue;
 						}
-						await Bootstrap.meta_store(
-							[user, 'utxos'],
-							utxo.address,
-							utxo.txid
-						);
+						txids.push(utxo.txid);
 						stats.good += 1;
 						report(stats);
 					}
+					if (txids.length) {
+						await Bootstrap.meta_set(user, 'utxos', txids);
+					}
 				}
 			}
+
 			for (const user of users) {
 				await Bootstrap.import_user_addresses_from_cli(user);
 			}
@@ -1283,14 +1337,17 @@ Bootstrap.run_cli_program = async function () {
 		for (let i = 0; i < addresses.length / CHUNK_SIZE; i++) {
 			let chunk = addresses.splice(i + i * CHUNK_SIZE, i + 1 * CHUNK_SIZE);
 			let utxos = await Bootstrap.user_utxos_from_cli(config.list_utxos, chunk);
-			for (const u of utxos) {
-				if (u.length === 0) {
-					continue;
-				}
-				if (u.length === 1) {
-					await LogUtxos(config.list_utxos, u[0]);
-				} else {
-					await LogUtxos(config.list_utxos, u);
+			d(utxos);
+			if (extractOption('log-to-file')) {
+				for (const u of utxos) {
+					if (u.length === 0) {
+						continue;
+					}
+					if (u.length === 1) {
+						await LogUtxos(config.list_utxos, u[0]);
+					} else {
+						await LogUtxos(config.list_utxos, u);
+					}
 				}
 			}
 		}
@@ -1299,7 +1356,7 @@ Bootstrap.run_cli_program = async function () {
 	usage();
 	process.exit(1);
 };
-Bootstrap.is_txid_used = async function (username, txid) {
+Bootstrap.is_txid_used = function (username, txid) {
 	return Bootstrap.ram_txid_used(txid);
 };
 Bootstrap.used_txids = [];
@@ -1360,21 +1417,19 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 	}
 	if (typeof options.except_users !== 'undefined') {
 		users = users.filter(function (username) {
-			username = Bootstrap.alias_check(username);
 			return options.except_users.indexOf(username) !== -1;
 		});
 	}
 
 	let flatUtxos = [];
 	for (const user of users) {
+		d({ user });
 		flatUtxos = [];
 		if (count === choices.length - 1) {
 			return choices;
 		}
 		let addresses = await Bootstrap.get_addresses(user);
-		if (xt(addresses, 'length') > 10) {
-			addresses = addresses.splice(0, 10);
-		}
+		d({ addresses });
 		let utxos = await Bootstrap.user_utxos_from_cli(user, addresses).catch(
 			function (error) {
 				console.error({ error });
@@ -1411,11 +1466,8 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 							continue;
 						}
 					}
-					if (!Bootstrap.ram_txid_used(utxos[k][x].txid)) {
+					if (!Bootstrap.is_txid_used(utxos[k][x].txid)) {
 						flatUtxos.push(utxos[k][x]);
-						process.stdout.write('.');
-					} else {
-						process.stdout.write('x');
 					}
 				}
 			}
@@ -1425,7 +1477,7 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 			flatUtxos = uniqueByKey(flatUtxos, 'txid');
 			let finalUtxos = [];
 			for (const u of flatUtxos) {
-				if (!Bootstrap.ram_txid_used(u.txid)) {
+				if (!Bootstrap.is_txid_used(u.txid)) {
 					finalUtxos.push(u);
 				}
 			}
