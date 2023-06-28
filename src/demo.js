@@ -4,8 +4,9 @@ const COIN = require('./coin-join-constants.js').COIN;
 const Network = require('./network.js');
 const { ClientSession } = require('./client-session.js');
 const Util = require('./util.js');
+const SigScript = require('./sigscript.js');
 const DsiFactory = require('./dsi-factory.js');
-const { debug, info, d } = Util;
+const { debug, info, d, dd } = require('./debug.js');
 const LibInput = require('./choose-inputs.js');
 const extractOption = require('./argv.js').extractOption;
 const UserDetails = require('./bootstrap/user-details.js');
@@ -36,13 +37,20 @@ async function onDSFMessage(parsed, masterNode) {
 	}
 	let amount = getDemoDenomination();
 	let sigScripts = {};
-	debug(`submitted.length: ${client_session.submitted.length}`);
-	for (const submission of client_session.submitted) {
-		let sig = await Util.extractSigScript(
+	debug(`submitted transactions: ${client_session.get_inputs().length}`);
+	debug(client_session.get_inputs());
+	for (const submission of client_session.get_inputs()) {
+		d({ submission });
+		let sig = await SigScript.extractSigScript(
 			dboot,
-			parsed,
 			client_session.username,
-			submission,
+			{
+				needs_hash_byte_order: true,
+				txid: submission.txid,
+				address: submission.address,
+				outputIndex: submission.outputIndex,
+				privateKey: submission.privateKey,
+			},
 			amount
 		);
 		debug({ txid: submission.txid, outputIndex: submission.outputIndex });
@@ -136,7 +144,6 @@ async function stateChanged(obj) {
 	_in_send_dsi
 ) {
 	let nickName = _in_nickname;
-	Util.setNickname(nickName);
 	client_session = new ClientSession();
 	INPUTS = 2;
 	sendDsi = _in_send_dsi;

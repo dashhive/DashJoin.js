@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-const Util = require('./util.js');
+const DebugLib = require('./debug.js');
 let dboot = null;
 let localState = {
 	dboot: null,
@@ -67,7 +67,7 @@ LibInput.getPrivateKey = getPrivateKey;
 LibInput.getDemoDenomination = getDemoDenomination;
 LibInput.setDenom = setDenom;
 LibInput.initialize = async function (obj) {
-	Util.setNickname(obj.nickName);
+	DebugLib.setNickname(obj.nickName);
 	setDboot(obj.dboot);
 	setDenom(obj.denominatedAmount);
 };

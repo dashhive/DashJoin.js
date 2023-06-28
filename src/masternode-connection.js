@@ -7,7 +7,7 @@ let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
 let Script = DashCore.Script;
 let { hexToBytes } = require('./network-util.js');
-const Util = require('./util.js');
+const DebugLib = require('./debug.js');
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 
 let Lib = {};
@@ -68,7 +68,7 @@ function MasterNode({
 	onConnectionError = null,
 	nickName,
 }) {
-	Util.setNickname(nickName);
+	DebugLib.setNickname(nickName);
 	let self = this;
 	/**
    * Our member variables

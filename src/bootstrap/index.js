@@ -8,20 +8,14 @@
 const xt = require('@mentoc/xtract').xt;
 const Network = require('../network.js');
 const MetaDB = require('./metadb.js');
-const Util = require('../util.js');
+const ArrayUtils = require('../array-utils.js');
+const DebugLib = require('../debug.js');
+const Sanitizers = require('../sanitizers.js');
 const { dump_parsed } = require('../dsf-inspect.js');
-const {
-	dd,
-	d,
-	unique,
-	bigint_safe_json_stringify,
-	uniqueByKey,
-	flatten,
-	sanitize_txid,
-	sanitize_address,
-	sanitize_addresses,
-	ps_extract,
-} = Util;
+const { unique, bigint_safe_json_stringify, uniqueByKey, ps_extract } =
+  ArrayUtils;
+const { dd, d } = DebugLib;
+const { sanitize_txid, sanitize_address, sanitize_addresses } = Sanitizers;
 const { extractOption } = require('../argv.js');
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
@@ -78,7 +72,7 @@ Bootstrap._dsftest1 = async function (buffer, username) {
 	if (privateKey === null) {
 		throw new Error('no private key could be found');
 	}
-	privateKey = flatten(privateKey);
+	privateKey = ArrayUtils.flatten(privateKey);
 	/**
    *
 PublicKeyHashInput {
@@ -337,6 +331,7 @@ Bootstrap.load_instance = async function (instance_name) {
 	db_cj();
 	return Bootstrap;
 };
+Bootstrap.initialize = Bootstrap.load_instance;
 
 Bootstrap.sane_instance = function () {
 	if (typeof Bootstrap.__data.instance.name === 'undefined') {
@@ -466,7 +461,7 @@ Bootstrap.get_private_key = async function (username, address) {
 	if (!pk) {
 		return null;
 	}
-	return flatten(pk);
+	return ArrayUtils.flatten(pk);
 };
 Bootstrap.store_addresses = async function (username, w_addresses) {
 	return await Bootstrap.meta_store(
@@ -809,35 +804,37 @@ function usage() {
 	console.log(
 		'--dsf-to=FILE      Dumps the db contents for DSF example payloads to the specified file'
 	);
-	console.log('');
-	console.log('# What are instances?');
-	console.log('-------------------------------------------------------');
-	console.log(' An instance is just a folder, but it helps in that it ');
-	console.log(' it will help you separate wallets on a name basis.    ');
-	console.log(' Passing in an instance of "foobar" will create the    ');
-	console.log(' following folder:                                     ');
-	console.log('   ~/.dashjoinjs/foobar/db/                            ');
-	console.log('                                                       ');
-	console.log(' Stored in that directory will be the lmdb database    ');
-	console.log(' which has all wallet data for that instance. This     ');
-	console.log(' makes it trivial to use different datasets by using   ');
-	console.log(' different instances.                                  ');
-	console.log('                                                       ');
-	console.log(' Keep in mind that if you end up deleting an instance  ');
-	console.log(' directory, the wallet and all its transaction data    ');
-	console.log(' still exists in your dashmate cluster.                ');
-	console.log(' This is usually not a problem as the point of dashboot');
-	console.log(' is to allow you to easily create lots of wallets and  ');
-	console.log(' addresses/utxos really easily.                        ');
-	console.log('                                                       ');
-	console.log('# Ideal use case                                       ');
-	console.log('-------------------------------------------------------');
-	console.log(' The ideal usecase is to create a completely brand new ');
-	console.log(' dashmate regtest cluster, then run dashboot for a few ');
-	console.log(' minutes. Then, point your development code at the LMDB');
-	console.log(' database which has all the randomly named wallets,    ');
-	console.log(' utxos, and addresses.                                 ');
-	console.log('                                                       ');
+	if (extractOption('helpinstances')) {
+		console.log('');
+		console.log('# What are instances?');
+		console.log('-------------------------------------------------------');
+		console.log(' An instance is just a folder, but it helps in that it ');
+		console.log(' it will help you separate wallets on a name basis.    ');
+		console.log(' Passing in an instance of "foobar" will create the    ');
+		console.log(' following folder:                                     ');
+		console.log('   ~/.dashjoinjs/foobar/db/                            ');
+		console.log('                                                       ');
+		console.log(' Stored in that directory will be the lmdb database    ');
+		console.log(' which has all wallet data for that instance. This     ');
+		console.log(' makes it trivial to use different datasets by using   ');
+		console.log(' different instances.                                  ');
+		console.log('                                                       ');
+		console.log(' Keep in mind that if you end up deleting an instance  ');
+		console.log(' directory, the wallet and all its transaction data    ');
+		console.log(' still exists in your dashmate cluster.                ');
+		console.log(' This is usually not a problem as the point of dashboot');
+		console.log(' is to allow you to easily create lots of wallets and  ');
+		console.log(' addresses/utxos really easily.                        ');
+		console.log('                                                       ');
+		console.log('# Ideal use case                                       ');
+		console.log('-------------------------------------------------------');
+		console.log(' The ideal usecase is to create a completely brand new ');
+		console.log(' dashmate regtest cluster, then run dashboot for a few ');
+		console.log(' minutes. Then, point your development code at the LMDB');
+		console.log(' database which has all the randomly named wallets,    ');
+		console.log(' utxos, and addresses.                                 ');
+		console.log('                                                       ');
+	}
 }
 
 Bootstrap.run_cli_program = async function () {

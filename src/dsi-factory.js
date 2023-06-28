@@ -3,7 +3,8 @@ const COIN = require('./coin-join-constants.js').COIN;
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const Network = require('./network.js');
 const Util = require('./util.js');
-let { debug } = Util;
+const DebugLib = require('./debug.js');
+let { debug, dd } = DebugLib;
 
 const assert = require('assert');
 let DashCore = require('@dashevo/dashcore-lib');
@@ -126,7 +127,8 @@ async function createDSIPacket(
 		ele.privateKey = privateKey;
 		return ele;
 	});
-	Util.d(client_session.report_inputs());
+	debug(client_session.get_inputs());
+	DebugLib.d(client_session.report_inputs());
 	if (extractOption('verbose') && (await Util.dataDirExists())) {
 		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 		await fs.writeFileSync(
@@ -169,7 +171,7 @@ async function initialize(
 	_in_client_session
 ) {
 	debug(`${_in_username},${_in_nickname},${_in_count},${_in_send_dsi}`);
-	Util.setNickname(_in_nickname);
+	DebugLib.setNickname(_in_nickname);
 	dboot = _in_dboot;
 	denominatedAmount = _in_denominated_amount;
 	client_session = _in_client_session;

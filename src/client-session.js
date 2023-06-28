@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-const { extract } = require('./util.js');
+const ArrayUtils = require('./array-utils.js');
 
 function ClientSession() {
 	let self = this;
@@ -14,8 +14,8 @@ function ClientSession() {
 		return [...self.used_txids, ...self.col_txids];
 	};
 	self.add_inputs = function (chosenInputTxns) {
-		self.add_txids(extract(chosenInputTxns, 'txid'));
-		self.add_addresses(extract(chosenInputTxns, 'address'));
+		self.add_txids(ArrayUtils.extract(chosenInputTxns, 'txid'));
+		self.add_addresses(ArrayUtils.extract(chosenInputTxns, 'address'));
 		self.mixing_inputs = chosenInputTxns;
 	};
 	self.get_inputs = function () {
