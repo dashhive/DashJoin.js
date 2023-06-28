@@ -842,12 +842,11 @@ function encodeInputs(inputs) {
 	return new Transaction().from(utxos);
 }
 
-function encodeOutputs(userOutputAddresses, amounts) {
+function encodeOutputs(userOutputAddresses, amount) {
 	var tx = new Transaction();
 	let i = 0;
-	for (let amt of amounts) {
-		console.debug({ userOutputAddresses, i });
-		tx.to(userOutputAddresses[i++], amt);
+	for (const address of userOutputAddresses) {
+		tx.to(address, amount);
 	}
 	return tx;
 }
@@ -857,9 +856,8 @@ function dsi(
 		chosen_network, // 'testnet'
 		userInputs,
 		collateralTxn,
-		userOutputs,
-		userOutputAddresses,
-		sourceAddress,
+		addresses,
+		denominatedAmount,
 	}
 ) {
 	let satoshisSet = false;
@@ -887,9 +885,9 @@ function dsi(
 	if (!(args.collateralTxn instanceof Transaction)) {
 		throw new Error('collateralTxn must be Transaction');
 	}
-	let userInputTxn = encodeInputs(args.userInputs);
 
-	let userOutputTxn = encodeOutputs(args.userOutputAddresses, args.userOutputs);
+	let userInputTxn = encodeInputs(args.userInputs);
+	let userOutputTxn = encodeOutputs(args.addresses, args.denominatedAmount);
 
 	// FIXME: very hacky
 	let trimmedUserInput = userInputTxn

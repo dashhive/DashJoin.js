@@ -15,7 +15,7 @@ const Signature = DashCore.crypto.Signature;
 const fs = require('fs');
 const LibInput = require('./choose-inputs.js');
 const { getUserInputs } = LibInput;
-const extractOption = require('./argv.js').extractOption;
+//const extractOption = require('./argv.js').extractOption;
 
 let client_session;
 function setClientSession(c) {
@@ -30,8 +30,8 @@ async function generateNewAddresses(username, count) {
 		count,
 		true
 	);
-	client_session.add_generated_addresses(addresses);
-  debug(`Generated addresses: ${addresses.join(',')}`);
+	debug(`Generated addresses: ${addresses.join(',')}`);
+	return addresses;
 }
 
 async function makeDSICollateralTx(masterNode, username) {
@@ -95,22 +95,12 @@ async function makeDSICollateralTx(masterNode, username) {
 	await dboot.mark_txid_used(username, txid);
 	return tx;
 }
-async function getUserOutputs(username, denominatedAmount, count) {
-	debug(`getUserOutputs for user "${username}"`);
-	let outputs = [];
-
-	for (let i = 0; i < count; i++) {
-		outputs.push(denominatedAmount);
-	}
-	return outputs;
-}
 async function createDSIPacket(
 	masterNode,
 	username,
 	denominationAmount,
 	count
 ) {
-	let addresses = await generateNewAddresses(username, count);
 	/**
    * Step 1: create inputs
    */
@@ -142,7 +132,7 @@ async function createDSIPacket(
 	});
 	debug(client_session.get_inputs());
 	DebugLib.d(client_session.report_inputs());
-	if (extractOption('verbose') && (await Util.dataDirExists())) {
+	if (await Util.dataDirExists()) {
 		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 		await fs.writeFileSync(
 			`${Util.getDataDir()}/dsf-mixing-inputs-${username}-${lmdb_counter}.json`,
@@ -155,23 +145,19 @@ async function createDSIPacket(
    */
 	let collateralTxn = await makeDSICollateralTx(masterNode, username);
 
-	let userOutputs = await getUserOutputs(username, denominationAmount, count);
-	let userOutputAddresses = await dboot.filter_shuffle_address_count(
-		username,
-		client_session.get_used_addresses(),
-		count
+	let addresses = await generateNewAddresses(username, count);
+	assert.equal(
+		addresses.length,
+		count,
+		'generateNewAddresses failed to generate the correct number of new addresses'
 	);
-	//dd({ userOutputAddresses, current: client_session });
-	if (userOutputAddresses.length !== count) {
-		throw new Error(`Couldnt find ${count} unique unused addresses`);
-	}
+	client_session.add_generated_addresses(addresses);
 	return Network.packet.coinjoin.dsi({
 		chosen_network: masterNode.network,
 		userInputs: chosenInputTxns,
 		collateralTxn,
-		userOutputs,
-		userOutputAddresses,
-		sourceAddress: client_session.used_addresses[0], // FIXME
+		addresses,
+		denominatedAmount: denominationAmount,
 	});
 }
 async function initialize(
@@ -194,11 +180,6 @@ async function initialize(
 module.exports = {
 	setClientSession,
 	makeDSICollateralTx,
-	getUserOutputs,
 	createDSIPacket,
 	initialize,
 };
-
-(async function(){
-  await generateNewAddresses(
-})();
