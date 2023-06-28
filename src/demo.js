@@ -11,6 +11,7 @@ const LibInput = require('./choose-inputs.js');
 const extractOption = require('./argv.js').extractOption;
 const UserDetails = require('./bootstrap/user-details.js');
 const dashboot = require('./bootstrap/index.js');
+const ArrayUtils = require('./array-utils.js');
 const MasterNodeConnection =
   require('./masternode-connection.js').MasterNodeConnection;
 
@@ -25,14 +26,34 @@ let mainUser;
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
 }
+function date() {
+	const d = new Date();
+	let h = d.getHours();
+	if (String(h).length === 1) {
+		h = `0${h}`;
+	}
+	let m = d.getMinutes();
+	if (String(m).length === 1) {
+		m = `0${m}`;
+	}
+	let s = d.getSeconds();
+	if (String(s).length === 1) {
+		s = `0${s}`;
+	}
+	return (
+		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
+    ' ' +
+    [h, m, s].join(':')
+	);
+}
 async function onDSFMessage(parsed, masterNode) {
 	if (extractOption('verbose') && (await Util.dataDirExists())) {
 		const fs = require('fs');
 		debug('onDSFMessage hit');
 		debug(masterNode.dsfOrig);
 		await fs.writeFileSync(
-			`${Util.getDataDir()}/dsf-${client_session.username}.dat`,
-			masterNode.dsfOrig
+			`${Util.getDataDir()}/dsf-${client_session.username}-${date()}.json`,
+			ArrayUtils.bigint_safe_json_stringify(parsed, 2) + '\n'
 		);
 	}
 	let amount = getDemoDenomination();
@@ -50,10 +71,17 @@ async function onDSFMessage(parsed, masterNode) {
 				address: submission.address,
 				outputIndex: submission.outputIndex,
 				privateKey: submission.privateKey,
+				parsed,
 			},
 			amount
 		);
 		debug({ txid: submission.txid, outputIndex: submission.outputIndex });
+		debug({
+			parsed,
+			t: parsed.transaction,
+			out: parsed.transaction.outputs,
+			in: parsed.transaction.inputs,
+		});
 		sigScripts[submission.txid] = {
 			signature: sig,
 			outputIndex: submission.outputIndex,
@@ -141,11 +169,17 @@ async function stateChanged(obj) {
 	_in_username,
 	_in_nickname,
 	_in_count,
-	_in_send_dsi
+	_in_send_dsi,
+	_in_verbose
 ) {
 	let nickName = _in_nickname;
+	if (String(_in_verbose).toLowerCase() === 'true') {
+		SigScript.setVerbosity(true);
+	} else {
+		SigScript.setVerbosity(false);
+	}
 	client_session = new ClientSession();
-	INPUTS = 2;
+	INPUTS = 3;
 	sendDsi = _in_send_dsi;
 
 	let id = {};
@@ -181,9 +215,13 @@ async function stateChanged(obj) {
 	}
 	let instanceName = _in_instanceName;
 	username = _in_username;
+	d('before load');
 	dboot = await dashboot.load_instance(instanceName);
+	d('after load');
 	mainUser = await UserDetails.extractUserDetails(username);
+	d('user details fetched');
 	let randomPayeeName = await dboot.get_random_payee(username);
+	d('random payee fetched');
 	let payee = await UserDetails.extractUserDetails(randomPayeeName);
 
 	client_session.nickName = nickName;
@@ -243,5 +281,6 @@ async function stateChanged(obj) {
 	extractOption('username', true),
 	extractOption('nickname', true),
 	extractOption('count', true),
-	extractOption('senddsi', true)
+	extractOption('senddsi', true),
+	extractOption('verbose', true)
 );

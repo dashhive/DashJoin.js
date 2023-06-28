@@ -10,6 +10,7 @@ function ClientSession() {
 	self.col_txids = [];
 	self.used_addresses = [];
 	self.mixing_inputs = [];
+	self.generated = [];
 	self.get_used_txids = function () {
 		return [...self.used_txids, ...self.col_txids];
 	};
@@ -17,6 +18,13 @@ function ClientSession() {
 		self.add_txids(ArrayUtils.extract(chosenInputTxns, 'txid'));
 		self.add_addresses(ArrayUtils.extract(chosenInputTxns, 'address'));
 		self.mixing_inputs = chosenInputTxns;
+	};
+	self.add_generated_addresses = function (list) {
+		self.generated = [...self.generated, ...list];
+		return self.generated;
+	};
+	self.get_generated_addresses = function () {
+		return self.generated;
 	};
 	self.get_inputs = function () {
 		return self.mixing_inputs;

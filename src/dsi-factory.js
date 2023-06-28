@@ -1,15 +1,17 @@
+#!/usr/bin/env node
 'use strict';
 const COIN = require('./coin-join-constants.js').COIN;
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const Network = require('./network.js');
 const Util = require('./util.js');
 const DebugLib = require('./debug.js');
-let { debug, dd } = DebugLib;
+const { debug, d } = DebugLib;
 
 const assert = require('assert');
-let DashCore = require('@dashevo/dashcore-lib');
-let Transaction = DashCore.Transaction;
-let Script = DashCore.Script;
+const DashCore = require('@dashevo/dashcore-lib');
+const Transaction = DashCore.Transaction;
+const Script = DashCore.Script;
+const Signature = DashCore.crypto.Signature;
 const fs = require('fs');
 const LibInput = require('./choose-inputs.js');
 const { getUserInputs } = LibInput;
@@ -21,6 +23,16 @@ function setClientSession(c) {
 }
 let dboot;
 let denominatedAmount;
+
+async function generateNewAddresses(username, count) {
+	let addresses = await dboot.get_multi_change_address_from_cli(
+		username,
+		count,
+		true
+	);
+	client_session.add_generated_addresses(addresses);
+  debug(`Generated addresses: ${addresses.join(',')}`);
+}
 
 async function makeDSICollateralTx(masterNode, username) {
 	assert.equal(masterNode !== null, true, 'masterNode object cannot be null');
@@ -79,7 +91,7 @@ async function makeDSICollateralTx(masterNode, username) {
 		.from(utxos)
 		.to(payeeAddress, amount)
 		.to(changeAddress, unspent - fee)
-		.sign(privateKey);
+		.sign([privateKey], Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
 	await dboot.mark_txid_used(username, txid);
 	return tx;
 }
@@ -98,6 +110,7 @@ async function createDSIPacket(
 	denominationAmount,
 	count
 ) {
+	let addresses = await generateNewAddresses(username, count);
 	/**
    * Step 1: create inputs
    */
@@ -185,3 +198,7 @@ module.exports = {
 	createDSIPacket,
 	initialize,
 };
+
+(async function(){
+  await generateNewAddresses(
+})();

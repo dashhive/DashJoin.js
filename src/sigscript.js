@@ -7,6 +7,7 @@ const hashByteOrder = NetworkUtil.hashByteOrder;
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
+const PrivateKey = DashCore.PrivateKey;
 const Signature = DashCore.crypto.Signature;
 const d = require('./debug.js');
 
@@ -42,23 +43,23 @@ async function extractSigScript(
 	};
 	if (verbose()) {
 		d.d({ utxos });
+		d.d({ utxoInfo, pk: utxoInfo.privateKey });
 	}
-	d.dd({ utxoInfo, pk: utxoInfo.privateKey });
+
+	let pk = PrivateKey.fromWIF(utxoInfo.privateKey);
 
 	let tx = new Transaction()
 		.from(utxos)
-		.sign(
-			utxoInfo.privateKey,
-			Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
-		);
+		.to(address, denominatedAmount)
+		.sign([pk], Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
+	d.d(tx.verify());
 	if (onlyTx) {
 		return tx;
 	}
 	let sigScript = tx.inputs[0]._scriptBuffer;
-	let sig = Script.buildPublicKeyIn(sigScript, 0x81);
-	let encodedScript = sig.toString('hex');
-	let len = encodedScript.length / 2;
-	return new Uint8Array([len, ...hexToBytes(encodedScript)]);
+	let encodedScript = hexToBytes(sigScript.toString('hex'));
+	let len = encodedScript.length;
+	return new Uint8Array([len, ...encodedScript]);
 }
 module.exports = {
 	extractSigScript,

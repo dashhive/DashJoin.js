@@ -369,6 +369,33 @@ Bootstrap.user_addresses = async function (username) {
 };
 Bootstrap.sanitize_address = sanitize_address;
 
+Bootstrap.import_user_addresses_from_cli = async function (username) {
+	let existing = await Bootstrap.user_addresses(username);
+	let start = existing.length;
+	let ps = await Bootstrap.wallet_exec(username, ['listaddressbalances']);
+	let { err, out } = ps_extract(ps);
+	if (err.length) {
+		console.error(err);
+	} else {
+		try {
+			const output = JSON.parse(out);
+			for (const address in output) {
+				if (existing.indexOf(address) === -1) {
+					existing.push(address);
+				}
+			}
+			if (start !== existing.length) {
+				await Bootstrap.store_addresses(username, existing);
+				console.log(`Added ${existing.length - start} addresses to the db`);
+			} else {
+				console.log('All addresses already in db');
+			}
+		} catch (e) {
+			console.error(e);
+		}
+	}
+};
+
 Bootstrap.user_utxos_from_cli = async function (username, addresses) {
 	let utxos = [];
 	for (const address of addresses) {
@@ -426,12 +453,33 @@ Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
 		cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments])
 	);
 };
-Bootstrap.get_change_address_from_cli = async function (username) {
+Bootstrap.get_multi_change_address_from_cli = async function (
+	username,
+	count,
+	save = true
+) {
+	let addresses = [];
+	for (let i = 0; i < count; i++) {
+		let buffer = await Bootstrap.wallet_exec(username, ['getrawchangeaddress']);
+		let { out } = ps_extract(buffer, false);
+		if (out.length) {
+			addresses.push(out);
+		}
+	}
+	if (save) {
+		await Bootstrap.store_addresses(addresses);
+	}
+	return addresses;
+};
+Bootstrap.get_change_address_from_cli = async function (username, save = true) {
 	let buffer = await Bootstrap.wallet_exec(username, ['getrawchangeaddress']);
 	let { out } = ps_extract(buffer, false);
-	if (out.length) {
+	if (!save) {
 		return out;
 	}
+
+	await Bootstrap.store_addresses(username, [out]);
+	return out;
 };
 Bootstrap.get_change_addresses = async function (username) {
 	return await Bootstrap.meta_get([username, 'change'], 'addresses');
@@ -804,6 +852,12 @@ function usage() {
 	console.log(
 		'--dsf-to=FILE      Dumps the db contents for DSF example payloads to the specified file'
 	);
+	console.log(
+		'--import-addresses=USER  Import addresses from dash-cli into lmdb'
+	);
+	console.log(
+		'--sync-all         Will import all addresses from dash-cli into lmdb for ALL users'
+	);
 	if (extractOption('helpinstances')) {
 		console.log('');
 		console.log('# What are instances?');
@@ -874,6 +928,19 @@ Bootstrap.run_cli_program = async function () {
 				txid
 			)
 		);
+	}
+	{
+		let user = extractOption('import-addresses', true);
+		if (user) {
+			dd(await Bootstrap.import_user_addresses_from_cli(user));
+		}
+	}
+	if (extractOption('sync-all')) {
+		let users = await Bootstrap.user_list();
+		for (const user of users) {
+			await Bootstrap.import_user_addresses_from_cli(user);
+		}
+		process.exit(0);
 	}
 	if (extractOption('increment')) {
 		dd(await Bootstrap.increment_key('randomuser', 'ctr'));
@@ -1022,9 +1089,11 @@ Bootstrap.run_cli_program = async function () {
 	}
 	if (config.list_utxos) {
 		let addresses = await Bootstrap.user_addresses();
+		d({ addresses });
 		d(await Bootstrap.user_utxos_from_cli(config.list_utxos, addresses));
 		process.exit(0);
 	}
+	usage();
 	process.exit(1);
 };
 Bootstrap.is_txid_used = async function (username, txid) {

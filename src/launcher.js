@@ -109,7 +109,7 @@ module.exports = {
 					`--instance=${instanceName}`,
 					`--username=${choice.user}`,
 					`--nickname=${nickname(choice.user)}`,
-					'--verbose=1',
+					'--verbose=true',
 					'--count=1',
 					'--senddsi=true',
 				]);
