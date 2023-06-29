@@ -220,6 +220,7 @@ async function stateChanged(obj) {
 	d('after load');
 	d({ username });
 	mainUser = await UserDetails.extractUserDetails(username);
+	dd({ mainUser });
 	d('user details fetched');
 	let randomPayeeName = await dboot.get_random_payee(username);
 	d('random payee fetched');

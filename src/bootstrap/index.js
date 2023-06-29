@@ -627,11 +627,17 @@ Bootstrap.random_payee_address = async function (forUser) {
 	forUser = Bootstrap.alias_check(forUser);
 	let users = await Bootstrap.user_list();
 	users = Bootstrap.shuffle(users);
+	let addy = null;
 	for (const user of users) {
 		if (user !== forUser) {
-			let addresses = await Bootstrap.get_addresses(user);
-			addresses = Bootstrap.shuffle(addresses);
-			return { user: user, address: addresses[0] };
+			await Bootstrap.user_addresses(user, function (addresses) {
+				addresses = Bootstrap.shuffle(addresses);
+				addy = { user: user, address: addresses[0] };
+				return false; // stop looping
+			});
+			if (addy !== null) {
+				return addy;
+			}
 		}
 	}
 };
@@ -888,37 +894,33 @@ Bootstrap.generate_dash_to_all = async function () {
 Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
 	await Bootstrap.unlock_all_wallets();
-	let user = username;
-	const addresses = await Bootstrap.get_addresses(user);
-	if (Array.isArray(addresses) === false || addresses.length === 0) {
-		// TODO: instead, just create a bunch of addresses for the user
-		throw new Error(`user: ${username} doesn't have any addresses`);
-	}
-	for (const address of addresses) {
-		let ps = await Bootstrap.wallet_exec(user, [
-			'generatetoaddress',
-			'10',
-			address,
-		]);
-		let { err, out } = ps_extract(ps);
-		if (err.length) {
-			console.error(err);
-		} else {
-			console.log({ out });
-			try {
-				let txns = JSON.parse(out);
-				if (txns.length === 0) {
-					continue;
+	await Bootstrap.user_addresses(username, async function (addresses) {
+		for (const address of addresses) {
+			let ps = await Bootstrap.wallet_exec(username, [
+				'generatetoaddress',
+				'10',
+				address,
+			]);
+			let { err, out } = ps_extract(ps);
+			if (err.length) {
+				console.error(err);
+			} else {
+				console.log({ out });
+				try {
+					let txns = JSON.parse(out);
+					if (txns.length === 0) {
+						continue;
+					}
+					console.info(`storing ${txns.length} txns at ${username}.utxos`);
+					db_cj();
+					await mdb.paged_store(username, 'utxos', txns);
+					d({ [username]: address, utxos: out, txns });
+				} catch (e) {
+					console.error(e);
 				}
-				console.info(`storing ${txns.length} txns at ${user}.utxos`);
-				db_cj();
-				await mdb.paged_store(user, 'utxos', txns);
-				d({ [user]: address, utxos: out, txns });
-			} catch (e) {
-				console.error(e);
 			}
 		}
-	}
+	});
 };
 
 function usage() {
@@ -1416,71 +1418,72 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 		if (count === choices.length - 1) {
 			return choices;
 		}
-		let addresses = await Bootstrap.get_addresses(user);
-		d({ addresses });
-		let utxos = await Bootstrap.user_utxos_from_cli(user, addresses).catch(
-			function (error) {
-				console.error({ error });
-				return null;
+		await Bootstrap.user_addresses(user, async function (addresses) {
+			d({ addresses });
+			let utxos = await Bootstrap.user_utxos_from_cli(user, addresses).catch(
+				function (error) {
+					console.error({ error });
+					return null;
+				}
+			);
+			if (!utxos || utxos.length === 0) {
+				d({ zero_utxos: user });
+				return true;
 			}
-		);
-		if (!utxos || utxos.length === 0) {
-			d({ zero_utxos: user });
-			continue;
-		}
-		let addrMap = {};
-		for (let k = 0; k < Object.keys(utxos).length; k++) {
-			for (let x = 0; x < utxos[k].length; x++) {
-				let u = utxos[k][x];
-				addrMap[u.address] = 1;
-			}
-		}
-		for (const addr in addrMap) {
-			let buffer = await Bootstrap.wallet_exec(user, ['dumpprivkey', addr]);
-			let { out, err } = Bootstrap.ps_extract(buffer, false);
-			if (err.length) {
-				console.error(err);
-			}
-			if (out.length) {
-				addrMap[addr] = out;
-			}
-		}
-		if (filterByDenoms === null) {
+			let addrMap = {};
 			for (let k = 0; k < Object.keys(utxos).length; k++) {
 				for (let x = 0; x < utxos[k].length; x++) {
-					utxos[k][x].privateKey = addrMap[utxos[k][x].address];
-					if (filterByDenoms !== null) {
-						if (utxos[k][x].satoshis !== parseInt(filterByDenoms, 10)) {
-							continue;
+					let u = utxos[k][x];
+					addrMap[u.address] = 1;
+				}
+			}
+			for (const addr in addrMap) {
+				let buffer = await Bootstrap.wallet_exec(user, ['dumpprivkey', addr]);
+				let { out, err } = Bootstrap.ps_extract(buffer, false);
+				if (err.length) {
+					console.error(err);
+				}
+				if (out.length) {
+					addrMap[addr] = out;
+				}
+			}
+			if (filterByDenoms === null) {
+				for (let k = 0; k < Object.keys(utxos).length; k++) {
+					for (let x = 0; x < utxos[k].length; x++) {
+						utxos[k][x].privateKey = addrMap[utxos[k][x].address];
+						if (filterByDenoms !== null) {
+							if (utxos[k][x].satoshis !== parseInt(filterByDenoms, 10)) {
+								continue;
+							}
+						}
+						if (!Bootstrap.is_txid_used(utxos[k][x].txid)) {
+							flatUtxos.push(utxos[k][x]);
 						}
 					}
-					if (!Bootstrap.is_txid_used(utxos[k][x].txid)) {
-						flatUtxos.push(utxos[k][x]);
+				}
+			} else {
+				let utxos = await Bootstrap.get_denominated_utxos(user, filterByDenoms);
+				flatUtxos = [...flatUtxos, ...utxos];
+				flatUtxos = uniqueByKey(flatUtxos, 'txid');
+				let finalUtxos = [];
+				for (const u of flatUtxos) {
+					if (!Bootstrap.is_txid_used(u.txid)) {
+						finalUtxos.push(u);
 					}
 				}
+				flatUtxos = finalUtxos;
 			}
-		} else {
-			let utxos = await Bootstrap.get_denominated_utxos(user, filterByDenoms);
-			flatUtxos = [...flatUtxos, ...utxos];
-			flatUtxos = uniqueByKey(flatUtxos, 'txid');
-			let finalUtxos = [];
-			for (const u of flatUtxos) {
-				if (!Bootstrap.is_txid_used(u.txid)) {
-					finalUtxos.push(u);
-				}
+			if (flatUtxos.length === 0) {
+				d({ skipping: user });
+				return true;
 			}
-			flatUtxos = finalUtxos;
-		}
-		if (flatUtxos.length === 0) {
-			d({ skipping: user });
-			continue;
-		}
-		let rando = await Bootstrap.getRandomPayee(user);
-		choices.push({
-			user: user,
-			utxos: flatUtxos,
-			changeAddress: await Bootstrap.get_change_address_from_cli(user),
-			randomPayee: rando,
+			let rando = await Bootstrap.getRandomPayee(user);
+			choices.push({
+				user: user,
+				utxos: flatUtxos,
+				changeAddress: await Bootstrap.get_change_address_from_cli(user),
+				randomPayee: rando,
+			});
 		});
 	}
 	d({ choices });
