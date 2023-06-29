@@ -140,8 +140,14 @@ module.exports = function (_DB) {
 			items_per_page: 250,
 		};
 	};
-	Lib.create_page_index = async function (username, key) {
-		let pkey = Lib.paged_index_key(username, key);
+	Lib.reset_page = async function (username, key, items_per_page = 250) {
+		let p = Lib.page();
+		let pindex = Lib.paged_index_key(username, key);
+		p.pages = 1;
+		p.template = `${username}|${key}|page|#`;
+		p.items_per_page = items_per_page;
+		await Lib.db_put(pindex, JSON.stringify(p));
+		return p;
 	};
 	Lib.create_page = async function (username, key, items_per_page = 250) {
 		let pindex = Lib.paged_index_key(username, key);
@@ -150,7 +156,7 @@ module.exports = function (_DB) {
 		if (xt(meta, 'pages') === null) {
 			let p = Lib.page();
 			p.pages = 1;
-			p.template = `${username}|${key}|page|${p.pages}`;
+			p.template = `${username}|${key}|page|#`;
 			p.items_per_page = items_per_page;
 			await Lib.db_put(pindex, JSON.stringify(p));
 			return p;
@@ -159,7 +165,7 @@ module.exports = function (_DB) {
 		try {
 			let page = JSON.parse(p);
 			page.pages += 1;
-			page.template = `${username}|${key}|page|${page.pages}`;
+			page.template = `${username}|${key}|page|#`;
 			page.items_per_page = items_per_page;
 			await Lib.db_put(pindex, JSON.stringify(page));
 			return page;
@@ -201,6 +207,32 @@ module.exports = function (_DB) {
 		}
 		return defaults;
 	}
+	Lib.paged_set = async function (username, key, values, items_per_page = 250) {
+		let page = await Lib.reset_page(username, key, items_per_page);
+		let page_number = 1;
+		let page_key = `${username}|${key}|page|${page_number}`;
+		if (!Array.isArray(values)) {
+			values = [values];
+		}
+		let ctr = 0;
+		if (values.length >= xt(page, 'items_per_page')) {
+			for (let i = 0; i <= values.length / page.items_per_page; i++) {
+				let chunk = values.splice(0, page.items_per_page);
+				ctr += chunk.length;
+				page_key = `${username}|${key}|page|${page.pages}`;
+				await staged_put(page_key, chunk);
+				page = await Lib.create_page(username, key, items_per_page);
+			}
+		} else {
+			await staged_put(page_key, values);
+			ctr = values.length;
+		}
+		return {
+			set: ctr,
+			page,
+			page_key,
+		};
+	};
 	Lib.paged_store = async function (
 		username,
 		key,
@@ -209,15 +241,11 @@ module.exports = function (_DB) {
 	) {
 		let pindex = Lib.paged_index_key(username, key);
 		let page = await json_get_object(pindex);
-		//console.debug({ page });
-		//console.debug({ x: xt(page, 'pages') });
 		if (!xt(page, 'pages')) {
-			console.debug('CREATING');
 			page = await Lib.create_page(username, key, items_per_page);
 		}
 		let page_number = xt(page, 'pages');
 		let page_key = `${username}|${key}|page|${page_number}`;
-		console.debug({ page_key });
 		if (!Array.isArray(values)) {
 			values = [values];
 		}
@@ -254,6 +282,9 @@ module.exports = function (_DB) {
 	};
 	Lib.paged_for_each = async function (username, key, options, cb) {
 		let pages = await get_page_index(username, key);
+		if (Lib.debug) {
+			d({ pages });
+		}
 		if (!pages) {
 			return 0;
 		}
