@@ -367,7 +367,7 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 				keep.push(address);
 			}
 			if (keep.length) {
-				await Bootstrap.store_addresses(username, keep);
+				await Bootstrap.set_addresses(username, keep);
 				console.info(`${keep.length} addresses imported for user: ${username}`);
 				return true;
 			} else {
@@ -482,6 +482,7 @@ Bootstrap.get_change_address_from_cli = async function (username, save = true) {
 };
 Bootstrap.get_change_addresses = async function (username, cb) {
 	username = Bootstrap.alias_check(username);
+	db_cj();
 	return await mdb.paged_for_each(
 		username,
 		'change',
@@ -503,8 +504,8 @@ Bootstrap.generate_address = async function (username) {
 	return w_addresses;
 };
 Bootstrap.store_change_addresses = async function (username, w_addresses) {
-	db_cj();
 	username = Bootstrap.alias_check(username);
+	db_cj();
 	return await mdb.paged_store(
 		username,
 		'change',
@@ -522,6 +523,7 @@ Bootstrap.normalize_pk = async function (privateKey) {
 Bootstrap.get_private_key = async function (username, address) {
 	username = Bootstrap.alias_check(username);
 	let pk = null;
+	db_cj();
 	await mdb.paged_for_each(
 		username,
 		['privatekey', address].join('|'),
@@ -542,7 +544,7 @@ Bootstrap.get_private_key = async function (username, address) {
 	);
 	return pk;
 };
-Bootstrap.store_addresses = async function (
+Bootstrap.set_addresses = async function (
 	username,
 	w_addresses,
 	items_per_page = 30
@@ -556,11 +558,26 @@ Bootstrap.store_addresses = async function (
 		items_per_page
 	);
 };
-Bootstrap.save_addresses = Bootstrap.store_addresses;
+
+Bootstrap.store_addresses = async function (
+	username,
+	w_addresses,
+	items_per_page = 30
+) {
+	db_cj();
+	username = Bootstrap.alias_check(username);
+	return await mdb.paged_store(
+		username,
+		'addresses',
+		sanitize_addresses(w_addresses),
+		items_per_page
+	);
+};
 
 Bootstrap.get_denominated_utxos = async function (username, denominatedAmount) {
 	username = Bootstrap.alias_check(username);
 	let matches = [];
+	db_cj();
 	await mdb.paged_for_each(
 		username,
 		'addresses',
@@ -621,6 +638,7 @@ Bootstrap.random_payee_address = async function (forUser) {
 Bootstrap.filter_address = async function (username, except) {
 	username = Bootstrap.alias_check(username);
 	let keep = [];
+	db_cj();
 	await mdb.paged_for_each(username, 'addresses', {}, function (addresses) {
 		for (const address of addresses) {
 			if (except.indexOf(address) === -1) {
@@ -670,10 +688,7 @@ Bootstrap.create_wallets = async function (count = 10) {
 				w_addresses.push(out);
 			}
 		}
-		await Bootstrap.store_addresses(
-			wallet_name,
-			sanitize_addresses(w_addresses)
-		);
+		await Bootstrap.set_addresses(wallet_name, sanitize_addresses(w_addresses));
 		await Bootstrap.unlock_wallet(wallet_name);
 	}
 	await Bootstrap.alias_users();
@@ -817,6 +832,7 @@ Bootstrap.dump_all_privkeys = async function () {
 				}
 				if (keep.length) {
 					for (const pair of keep) {
+						db_cj();
 						await _mdb.paged_store(
 							pair.user,
 							['privatekey', pair.address].join('|'),
@@ -856,6 +872,7 @@ Bootstrap.generate_dash_to_all = async function () {
 								console.info(`${_user} skipping empty output`);
 								continue;
 							}
+							db_cj();
 							await _mdb.paged_store(_user, 'utxos', txns);
 							d({ [_user]: address, utxos: out, txns });
 						} catch (e) {
@@ -894,6 +911,7 @@ Bootstrap.generate_dash_to = async function (username) {
 					continue;
 				}
 				console.info(`storing ${txns.length} txns at ${user}.utxos`);
+				db_cj();
 				await mdb.paged_store(user, 'utxos', txns);
 				d({ [user]: address, utxos: out, txns });
 			} catch (e) {
@@ -1131,6 +1149,7 @@ Bootstrap.run_cli_program = async function () {
 							report(stats);
 						}
 						if (txids.length) {
+							db_cj();
 							await mdb.paged_store(user, 'utxos', txids);
 						}
 					}
@@ -1363,6 +1382,7 @@ Bootstrap.mark_txid_used = async function (username, txid) {
 Bootstrap.get_used_txids = async function (username) {
 	username = Bootstrap.alias_check(username);
 	let list = [];
+	db_cj();
 	await mdb.paged_for_each(username, 'usedtxids', {}, function (txids) {
 		for (const tx of txids) {
 			list.push(tx);
