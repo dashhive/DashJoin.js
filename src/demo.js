@@ -1,222 +1,289 @@
 #!/usr/bin/env node
-"use strict";
-const COIN = require("./coin-join-constants.js").COIN;
-const Network = require("./network.js");
-const NetworkUtil = require("./network-util.js");
-const hexToBytes = NetworkUtil.hexToBytes;
-const assert = require("assert");
+'use strict';
+const COIN = require('./coin-join-constants.js').COIN;
+const Network = require('./network.js');
+const { ClientSession } = require('./client-session.js');
+const Util = require('./util.js');
+const SigScript = require('./sigscript.js');
+const DsiFactory = require('./dsi-factory.js');
+const { debug, info, d, dd } = require('./debug.js');
+const LibInput = require('./choose-inputs.js');
+const extractOption = require('./argv.js').extractOption;
+const UserDetails = require('./bootstrap/user-details.js');
+const dashboot = require('./bootstrap/index.js');
+const ArrayUtils = require('./array-utils.js');
+const MasterNodeConnection =
+  require('./masternode-connection.js').MasterNodeConnection;
 
-let id = {};
-
-let config = require("./.mn0-config.json");
-id.mn = 0;
-if (process.argv.includes("--mn0")) {
-  config = require("./.mn0-config.json");
-  id.mn = 0;
+let done = false;
+let dboot;
+let network;
+let sendDsi;
+let username;
+let INPUTS;
+let client_session;
+let mainUser;
+function getDemoDenomination() {
+	return parseInt(COIN / 1000 + 1, 10);
 }
-if (process.argv.includes("--mn1")) {
-  config = require("./.mn1-config.json");
-  id.mn = 1;
+function date() {
+	const d = new Date();
+	let h = d.getHours();
+	if (String(h).length === 1) {
+		h = `0${h}`;
+	}
+	let m = d.getMinutes();
+	if (String(m).length === 1) {
+		m = `0${m}`;
+	}
+	let s = d.getSeconds();
+	if (String(s).length === 1) {
+		s = `0${s}`;
+	}
+	return (
+		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
+    ' ' +
+    [h, m, s].join(':')
+	);
 }
-if (process.argv.includes("--mn2")) {
-  config = require("./.mn2-config.json");
-  id.mn = 2;
+async function onDSFMessage(parsed, masterNode) {
+	if (extractOption('verbose') && (await Util.dataDirExists())) {
+		const fs = require('fs');
+		debug('onDSFMessage hit');
+		debug(masterNode.dsfOrig);
+		await fs.writeFileSync(
+			`${Util.getDataDir()}/dsf-${client_session.username}-${date()}.json`,
+			ArrayUtils.bigint_safe_json_stringify(parsed, 2) + '\n'
+		);
+	}
+	let amount = getDemoDenomination();
+	let sigScripts = {};
+	debug(`submitted transactions: ${client_session.get_inputs().length}`);
+	debug(client_session.get_inputs());
+	for (const submission of client_session.get_inputs()) {
+		d({ submission });
+		let sig = await SigScript.extractSigScript(
+			dboot,
+			client_session.username,
+			{
+				needs_hash_byte_order: true,
+				txid: submission.txid,
+				address: submission.address,
+				outputIndex: submission.outputIndex,
+				privateKey: submission.privateKey,
+				parsed,
+			},
+			amount
+		);
+		debug({ txid: submission.txid, outputIndex: submission.outputIndex });
+		debug({
+			parsed,
+			t: parsed.transaction,
+			out: parsed.transaction.outputs,
+			in: parsed.transaction.inputs,
+		});
+		sigScripts[submission.txid] = {
+			signature: sig,
+			outputIndex: submission.outputIndex,
+		};
+	}
+	masterNode.client.write(
+		Network.packet.coinjoin.dss({
+			chosen_network: masterNode.network,
+			dsfPacket: parsed,
+			signatures: sigScripts,
+		})
+	);
 }
-
-let masterNodeIP = config.masterNodeIP;
-let masterNodePort = config.masterNodePort;
-let network = config.network;
-let ourIP = config.ourIP;
-let startBlockHeight = config.startBlockHeight;
-
-let DashCore = require("@dashevo/dashcore-lib");
-let dboot = null;
-
-/**
- * Periodically print id information
- */
-if (process.argv.includes("--id")) {
-  setInterval(function () {
-    console.info(id);
-  }, 10000);
+async function onDSSUChanged(parsed) {
+	let msgId = parsed.message_id[1];
+	let state = parsed.state[1];
+	let update = parsed.status_update[1];
+	d({ msgId, state, update });
+	if (msgId === 'ERR_INVALID_COLLATERAL') {
+		client_session.used_txids.push(mainUser.utxos[0].txid);
+		await dboot.mark_txid_used(username, mainUser.utxos[0].txid);
+		debug('marked collateral inputs as used');
+	}
 }
-(async function () {
-  /**
-   * Start 4 clients simultaneously
-   */
-  const dashboot = require('./bootstrap/index.js');
-  let instanceName = 'base';
-  for(const argv of process.argv){
-    let match = argv.match(/^\-\-instance=(.*)$/);
-    if(match){
-      instanceName = match[1];
-    }
-  }
-  console.info(`[status]: loading "${instanceName}" instance...`);
-  dboot = await dashboot.load_instance(instanceName);
-
-  let users = await dboot.user_list();
-  d({users});
-  let choices = [];
-  for(const user of users){
-    let addresses = await dboot.user_addresses(user);
-    if(addresses.length === 0){
-      continue;
-    }
-    let utxos = await dboot.user_utxos_from_cli(user,addresses).catch(function(error){
-      console.error({error});
-      return null;
-    });
-    if(!utxos || utxos.length === 0){
-      continue;
-    }
-    let addrMap = {};
-    for(let k=0; k < Object.keys(utxos).length; k++){
-      for(let x=0; x < utxos[k].length; x++){
-        let u = utxos[k][x];
-        addrMap[u.address] = 1;
-      }
-    }
-    for(const addr in addrMap){
-      let buffer = await dboot.wallet_exec(user, ["dumpprivkey",addr]);
-      let {out,err} = dboot.ps_extract(buffer,false);
-      if(err.length){
-        console.error(err);
-      }
-      if(out.length){
-        addrMap[addr] = out;
-      }
-    }
-    let flatUtxos = [];
-    for(let k=0; k < Object.keys(utxos).length;k++){
-      for(let x=0; x < utxos[k].length; x++){
-        let txid = utxos[k][x].txid;
-        utxos[k][x].privateKey = addrMap[utxos[k][x].address];
-        flatUtxos.push(utxos[k][x]);
-      }
-    }
-
-    choices.push({
-      user,
-      utxos: flatUtxos,
-      changeAddress: await dboot.get_change_address_from_cli(user),
-    });
-    if(choices.length > 5){
-      break;
-    }
-  }
-  
-  let dsaSent = false;
-
-  function stateChanged(obj) {
-    let self = obj.self;
-    let masterNode = self;
-    switch (masterNode.status) {
-      default:
-        console.info("unhandled status:", masterNode.status);
-        break;
-      case "CLOSED":
-        console.warn("[-] Connection closed");
-        break;
-      case "NEEDS_AUTH":
-      case "EXPECT_VERACK":
-      case "EXPECT_HCDP":
-      case "RESPOND_VERACK":
-        console.info("[ ... ] Handshake in progress");
-        break;
-      case "READY":
-        console.log("[+] Ready to start dealing with CoinJoin traffic...");
-        if (dsaSent === false) {
-          self.denominationsAmount = parseInt(COIN / 1000,10) + 1;
-          setTimeout(async function () {
-            masterNode.client.write(
-              Network.packet.coinjoin.dsa({
-                chosen_network: network,
-                denomination: self.denominationsAmount,
-                collateral: await self.makeCollateralTx(),
-              })
-            );
-            dsaSent = true;
-            console.debug("sent dsa");
-          }, 2000);
-        }
-        break;
-      case "DSQ_RECEIVED":
-        console.log("[+][COINJOIN] DSQ received. Responding with inputs...");
-        console.debug(self.dsq, "<< dsq");
-        if (self.dsq.fReady) {
-          console.log("[+][COINJOIN] Ready to send dsi message...");
-        } else {
-          console.info("[-][COINJOIN] masternode not ready for dsi...");
-          return;
-        }
-        setTimeout(async function () {
-          let data = await DemoData.util.fetchData();
-          let sourceAddress = data.sourceAddress;
-          let userInputs = await DemoData.getMultipleUnusedTransactionsFilter(
-            2,
-            ["txid", "vout", "amount"]
-          );
-          let collateralTxn = await DemoData.makeDSICollateralTx();
-          collateralTxn = hexToBytes(collateralTxn.uncheckedSerialize());
-          let userOutputs = [self.denominationsAmount];
-          masterNode.client.write(
-            Network.packet.coinjoin.dsi({
-              chosen_network: network,
-              userInputs,
-              collateralTxn,
-              userOutputs,
-              sourceAddress,
-            })
-          );
-          console.debug("sent dsi packet");
-        }, 2000);
-        break;
-      case "EXPECT_DSQ":
-        console.info("[+] dsa sent");
-        break;
-    }
-  }
-  //dd('exit');
-  //FIXME let collateralTxn = await DemoData.makeDSICollateralTx();
-  let collateralTxn = {};
-  //console.debug(collateralTxn.uncheckedSerialize());
-  let userOutputs = [1000, 1000]; // FIXME
-  //console.debug(
-  //  Network.packet.coinjoin.dsi({
-  //    chosen_network: network,
-  //    userInputs,
-  //    collateralTxn,
-  //    userOutputs,
-  //    sourceAddress,
-  //  })
-  //);
-  //console.debug("sent dsi packet");
-  //process.exit();
-
-  let MasterNodeConnection =
-    require("./masternode-connection.js").MasterNodeConnection;
-  let masterNodeConnection = new MasterNodeConnection({
-    ip: masterNodeIP,
-    port: masterNodePort,
-    network,
-    ourIP,
-    startBlockHeight,
-    onStatusChange: stateChanged,
-    debugFunction: console.debug,
-    userAgent: config.userAgent ?? null,
-    coinJoinData: choices[0],
-    payee: choices[1],
-    changeAddresses: choices[0].changeAddresses,
-  });
-
-  masterNodeConnection.connect();
-})();
-function d(f) {
-  console.debug(f);
+async function onCollateralTxCreated(tx, masterNode) {
+	debug(`onCollateralTxCreated via masterNode: ${masterNode.id()}`);
+	await dboot.mark_txid_used(tx.user, tx.txid);
 }
-function dd(f) {
-  console.debug(f);
-  process.exit();
+async function stateChanged(obj) {
+	let dsaSent = false;
+	let self = obj.self;
+	let masterNode = self;
+	switch (masterNode.status) {
+	default:
+		break;
+	case 'CLOSED':
+		console.warn('[-] Connection closed');
+		break;
+	case 'NEEDS_AUTH':
+	case 'EXPECT_VERACK':
+	case 'EXPECT_HCDP':
+	case 'RESPOND_VERACK':
+		break;
+	case 'READY':
+		if (dsaSent === false) {
+			self.denominationsAmount = getDemoDenomination();
+			masterNode.client.write(
+				Network.packet.coinjoin.dsa({
+					chosen_network: network,
+					denomination: getDemoDenomination(),
+					collateral: await masterNode.makeCollateralTx(),
+				})
+			);
+			dsaSent = true;
+		}
+		break;
+	case 'DSQ_RECEIVED':
+		{
+			if (self.dsq.fReady) {
+				debug('sending dsi');
+			} else {
+				info('[-][COINJOIN] masternode not ready for dsi...');
+				return;
+			}
+			if (String(sendDsi) === 'false') {
+				info('not sending dsi as per cli switch');
+				return;
+			}
+			let packet = await DsiFactory.createDSIPacket(
+				masterNode,
+				username,
+				getDemoDenomination(),
+				INPUTS
+			);
+			masterNode.client.write(packet);
+			debug('sent dsi packet');
+		}
+		break;
+	case 'EXPECT_DSQ':
+		break;
+	}
 }
+(async function preInit(
+	_in_instanceName,
+	_in_username,
+	_in_nickname,
+	_in_count,
+	_in_send_dsi,
+	_in_verbose
+) {
+	let nickName = _in_nickname;
+	if (String(_in_verbose).toLowerCase() === 'true') {
+		SigScript.setVerbosity(true);
+	} else {
+		SigScript.setVerbosity(false);
+	}
+	client_session = new ClientSession();
+	INPUTS = 3;
+	sendDsi = _in_send_dsi;
 
+	let id = {};
+
+	let config = require('./.mn0-config.json');
+	id.mn = 0;
+	if (extractOption('mn0')) {
+		config = require('./.mn0-config.json');
+		id.mn = 0;
+	}
+	if (extractOption('mn1')) {
+		config = require('./.mn1-config.json');
+		id.mn = 1;
+	}
+	if (extractOption('mn2')) {
+		config = require('./.mn2-config.json');
+		id.mn = 2;
+	}
+
+	let masterNodeIP = config.masterNodeIP;
+	let masterNodePort = config.masterNodePort;
+	network = config.network;
+	let ourIP = config.ourIP;
+	let startBlockHeight = config.startBlockHeight;
+	if (_in_count) {
+		INPUTS = parseInt(_in_count, 10);
+	}
+	if (isNaN(INPUTS)) {
+		throw new Error('--count must be a positive integer');
+	}
+	if (INPUTS >= 253) {
+		throw new Error('--count currently only supports a max of 252');
+	}
+	let instanceName = _in_instanceName;
+	username = _in_username;
+	d('before load');
+	dboot = await dashboot.load_instance(instanceName);
+	d('after load');
+	d({ username });
+	mainUser = await UserDetails.extractUserDetails(username);
+	dd({ mainUser });
+	d('user details fetched');
+	let randomPayeeName = await dboot.get_random_payee(username);
+	d('random payee fetched');
+	let payee = await UserDetails.extractUserDetails(randomPayeeName);
+
+	dd({ payee });
+	client_session.nickName = nickName;
+	client_session.instanceName = instanceName;
+	client_session.username = _in_username;
+	client_session.dboot = dboot;
+	client_session.mainUser = mainUser;
+	client_session.randomPayeeName = randomPayeeName;
+	client_session.payee = payee;
+
+	LibInput.initialize({
+		dboot,
+		denominatedAmount: getDemoDenomination(),
+		client_session,
+		nickName,
+	});
+	DsiFactory.initialize(
+		dboot,
+		_in_username,
+		_in_nickname,
+		_in_count,
+		_in_send_dsi,
+		getDemoDenomination(),
+		client_session,
+		mainUser,
+		randomPayeeName,
+		payee
+	);
+
+	let masterNodeConnection = new MasterNodeConnection({
+		ip: masterNodeIP,
+		port: masterNodePort,
+		network,
+		ourIP,
+		startBlockHeight,
+		onCollateralTxCreated: onCollateralTxCreated,
+		onStatusChange: stateChanged,
+		onDSSU: onDSSUChanged,
+		onDSF: onDSFMessage,
+		debugFunction: null,
+		userAgent: config.userAgent ?? null,
+		coinJoinData: mainUser,
+		user: mainUser.user,
+		payee,
+		changeAddresses: mainUser.changeAddresses,
+		nickName,
+	});
+	debug('Connecting...');
+	await masterNodeConnection.connect();
+	debug('connected.');
+	while (!done) {
+		await Util.sleep_ms(1500);
+	}
+	debug('exiting main function');
+})(
+	extractOption('instance', true),
+	extractOption('username', true),
+	extractOption('nickname', true),
+	extractOption('count', true),
+	extractOption('senddsi', true),
+	extractOption('verbose', true)
+);
