@@ -87,9 +87,10 @@ module.exports = {
        */
 			console.info(`[status]: loading "${instanceName}" instance...`);
 			dboot = await dashboot.load_instance(instanceName);
-			let uniqueUsers = await dboot.extract_unique_users(CONCURRENT_USERS, {
-				filterByDenoms: getDemoDenomination(),
-			});
+			let uniqueUsers = await dboot.extract_unique_users(
+				CONCURRENT_USERS,
+				getDemoDenomination()
+			);
 
 			/**
        * Pass choices[N] to a different process.
