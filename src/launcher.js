@@ -103,7 +103,7 @@ module.exports = {
          * Have them each submit to the same masternode
          *
          */
-				d({ user: choice.user, node: node() });
+				//d({ user: choice.user, node: node() });
 				let m = cproc.spawn('node', [
 					`${CURDIR}/demo.js`,
 					`--instance=${instanceName}`,

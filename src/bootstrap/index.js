@@ -15,6 +15,7 @@ const { unique, bigint_safe_json_stringify, uniqueByKey, ps_extract } =
 const { dd, d } = DebugLib;
 const { sanitize_txid, sanitize_address, sanitize_addresses } = Sanitizers;
 const { extractOption } = require('../argv.js');
+const COIN = require('../coin-join-constants.js').COIN;
 //const hashByteOrder = NetworkUtil.hashByteOrder;
 let db_cj, db_cj_ns, db_put, db_get, db_append;
 let mdb;
@@ -38,6 +39,15 @@ function cli_args(list) {
 		...list,
 	];
 }
+Bootstrap.save_denominated_tx = async function (
+	from,
+	to,
+	txid,
+	amount,
+	address
+) {
+	await mdb.paged_store(to, 'denomtx', [{ from, txid, amount, address }]);
+};
 Bootstrap.alias_users = async function () {
 	let users = await Bootstrap.user_list();
 	for (const user of users) {
@@ -346,10 +356,15 @@ Bootstrap.user_list = async function (options = {}) {
 	}
 };
 
-Bootstrap.user_addresses = async function (username, cb) {
+Bootstrap.user_addresses = async function (username, cb, context = {}) {
 	db_cj();
 	username = Bootstrap.alias_check(username);
-	await mdb.paged_for_each(username, 'addresses', { include_meta: true }, cb);
+	await mdb.paged_for_each(
+		username,
+		'addresses',
+		{ include_meta: true, context },
+		cb
+	);
 };
 Bootstrap.sanitize_address = sanitize_address;
 
@@ -358,7 +373,7 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 	let ps = await Bootstrap.wallet_exec(username, ['listaddressbalances']);
 	let { err, out } = ps_extract(ps);
 	if (err.length) {
-		console.error(err);
+		//console.error(err);
 	} else {
 		try {
 			let output = JSON.parse(out);
@@ -368,13 +383,13 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 			}
 			if (keep.length) {
 				await Bootstrap.set_addresses(username, keep);
-				console.info(`${keep.length} addresses imported for user: ${username}`);
+				//console.info(`${keep.length} addresses imported for user: ${username}`);
 				return true;
 			} else {
-				console.warn(`No addresses for user: ${username}`);
+				//console.warn(`No addresses for user: ${username}`);
 			}
 		} catch (e) {
-			console.error(e);
+			//console.error(e);
 		}
 	}
 	return false;
@@ -390,7 +405,7 @@ Bootstrap.user_utxos_from_cli = async function (username, addresses) {
 		]);
 		let { err, out } = ps_extract(ps);
 		if (err.length) {
-			console.error(err);
+			//console.error(err);
 		} else {
 			if (out === '[\n]') {
 				continue;
@@ -444,7 +459,7 @@ Bootstrap.user_create = async function (username) {
 Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
 	if (['1', 'true'].indexOf(String(extractOption('verbose', true))) !== -1) {
 		let args = cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments]);
-		console.info(`wallet_exec: "${Bootstrap.DASH_CLI} ${args}`);
+		//console.info(`wallet_exec: "${Bootstrap.DASH_CLI} ${args}`);
 	}
 	return await cproc.spawnSync(
 		Bootstrap.DASH_CLI,
@@ -594,7 +609,7 @@ Bootstrap.get_denominated_utxos = async function (username, denominatedAmount) {
 					}
 				}
 				for (const ut of batch) {
-					d({ ut });
+					//d({ ut });
 					if (parseInt(ut.satoshis, 10) === parseInt(denominatedAmount, 10)) {
 						if (Bootstrap.is_txid_used(ut.txid)) {
 							continue;
@@ -674,7 +689,7 @@ Bootstrap.create_wallets = async function (count = 10) {
 		await Bootstrap.user_create(wallet_name).catch(function (error) {
 			console.error('ERROR: ', error);
 		});
-		console.info(`[ok]: user "${wallet_name}" created`);
+		//console.info(`[ok]: user "${wallet_name}" created`);
 		await Bootstrap.run([
 			'createwallet',
 			wallet_name,
@@ -684,7 +699,7 @@ Bootstrap.create_wallets = async function (count = 10) {
 			'false',
 			'true',
 		]);
-		console.info(`[ok]: wallet "${wallet_name}" created`);
+		//console.info(`[ok]: wallet "${wallet_name}" created`);
 
 		let w_addresses = [];
 		for (let actr = 0; actr < 10; actr++) {
@@ -713,6 +728,7 @@ Bootstrap.grind = async function () {
 };
 Bootstrap.create_denominations_to_all = async function () {
 	await Bootstrap.unlock_all_wallets();
+	const AMOUNT = '0.00100001';
 	/**
    * Loop through all wallets and send the lowest denomination to
    * all other users
@@ -723,29 +739,52 @@ Bootstrap.create_denominations_to_all = async function () {
 			if (otherUser === user) {
 				continue;
 			}
-			(async function (_in_otherUser, _in_bs) {
+			let pmt_context = {
+				from: user,
+				to: otherUser,
+				amount: parseInt(parseFloat(AMOUNT, 10) * COIN, 10),
+			};
+			await (async function (_in_otherUser, _in_bs, _in_pmt_context) {
 				let _otherUser = _in_otherUser;
 				let _bs = _in_bs;
-				await _bs.user_addresses(_otherUser, async function (addresses) {
-					for (const address of addresses) {
-						d({ user, address });
-						for (let i = 0; i < 2; i++) {
-							let ps = await _bs.wallet_exec(user, [
-								'sendtoaddress',
-								address,
-								'0.00100001',
-							]);
-							let { out, err } = ps_extract(ps);
-							if (out.length) {
-								console.log(out);
+				let _pmt_context = _in_pmt_context;
+				await _bs.user_addresses(
+					_otherUser,
+					async function (addresses, meta, context) {
+						let ctr = 10;
+						for (const address of addresses) {
+							--ctr;
+							if (ctr < 0) {
+								return false;
 							}
-							if (err.length) {
-								console.error(err);
+							//d({ user, address });
+							for (let i = 0; i < 2; i++) {
+								let ps = await _bs.wallet_exec(user, [
+									'sendtoaddress',
+									address,
+									AMOUNT,
+								]);
+								let { out, err } = ps_extract(ps);
+								if (out.length) {
+									let txid = sanitize_txid(out);
+									await _bs.save_denominated_tx(
+										context.from,
+										context.to,
+										txid,
+										context.amount,
+										address
+									);
+									console.log(`Saved ${txid} for user: ${context.to}`);
+								}
+								if (err.length) {
+									console.error(err);
+								}
 							}
 						}
-					}
-				});
-			})(otherUser, Bootstrap);
+					},
+					_pmt_context
+				);
+			})(otherUser, Bootstrap, pmt_context);
 		}
 	}
 };
@@ -880,7 +919,7 @@ Bootstrap.generate_dash_to_all = async function () {
 							}
 							db_cj();
 							await _mdb.paged_store(_user, 'utxos', txns);
-							d({ [_user]: address, utxos: out, txns });
+							//d({ [_user]: address, utxos: out, txns });
 						} catch (e) {
 							console.error(e);
 						}
@@ -914,7 +953,7 @@ Bootstrap.generate_dash_to = async function (username) {
 					console.info(`storing ${txns.length} txns at ${username}.utxos`);
 					db_cj();
 					await mdb.paged_store(username, 'utxos', txns);
-					d({ [username]: address, utxos: out, txns });
+					//d({ [username]: address, utxos: out, txns });
 				} catch (e) {
 					console.error(e);
 				}
@@ -1067,12 +1106,13 @@ Bootstrap.run_cli_program = async function () {
 	}
 	let txid = null;
 	if ((txid = extractOption('addrfromtxid', true))) {
-		dd(
+		d(
 			await Bootstrap.get_address_from_txid(
 				extractOption('username', true),
 				txid
 			)
 		);
+		process.exit(0);
 	}
 	{
 		if (extractOption('all-utxos')) {
@@ -1105,9 +1145,11 @@ Bootstrap.run_cli_program = async function () {
 				for (const user of users) {
 					await Bootstrap.import_user_addresses_from_cli(user);
 				}
-				dd('done importing all user addresses');
+				d('done importing all user addresses');
+				process.exit(0);
 			}
-			dd(await Bootstrap.import_user_addresses_from_cli(user));
+			d(await Bootstrap.import_user_addresses_from_cli(user));
+			process.exit(0);
 		}
 	}
 	{
@@ -1165,13 +1207,15 @@ Bootstrap.run_cli_program = async function () {
 		}
 	}
 	if (extractOption('increment')) {
-		dd(await Bootstrap.increment_key('randomuser', 'ctr'));
+		d(await Bootstrap.increment_key('randomuser', 'ctr'));
+		process.exit(0);
 	}
 	if (extractOption('dsftest1')) {
 		let buffer = await fs.readFileSync(
 			'./dsf-7250bb2a2e294f728081f50ee2bdd3a1.dat'
 		);
-		dd(await Bootstrap._dsftest1(buffer, '7250bb2a2e294f728081f50ee2bdd3a1'));
+		d(await Bootstrap._dsftest1(buffer, '7250bb2a2e294f728081f50ee2bdd3a1'));
+		process.exit(0);
 	}
 	let denom = extractOption('denom-amt', true);
 	if (denom) {
@@ -1182,11 +1226,13 @@ Bootstrap.run_cli_program = async function () {
 			);
 			process.exit(1);
 		}
-		dd(await Bootstrap.get_denominated_utxos(username, denom));
+		d(await Bootstrap.get_denominated_utxos(username, denom));
+		process.exit(0);
 	}
 	let userDenoms = extractOption('user-denom', true);
 	if (userDenoms) {
-		dd(await Bootstrap.get_users_with_denominated_utxos(userDenoms));
+		d(await Bootstrap.get_users_with_denominated_utxos(userDenoms));
+		process.exit(0);
 	}
 	let cmd = extractOption('wallet-cmd', true);
 	if (cmd) {
@@ -1311,11 +1357,11 @@ Bootstrap.run_cli_program = async function () {
 	}
 	if (config.list_utxos) {
 		config.list_utxos = Bootstrap.alias_check(config.list_utxos);
-		d({ config });
+		//d({ config });
 		let num = await Bootstrap.user_addresses(
 			config.list_utxos,
 			async function (addresses) {
-				d({ addresses });
+				//d({ addresses });
 				const CHUNK_SIZE = 40;
 				for (let i = 0; i < addresses.length / CHUNK_SIZE; i++) {
 					let chunk = addresses.splice(i + i * CHUNK_SIZE, i + 1 * CHUNK_SIZE);
@@ -1340,7 +1386,7 @@ Bootstrap.run_cli_program = async function () {
 				return true;
 			}
 		);
-		dd({ num });
+		d({ num });
 		process.exit(0);
 	}
 	usage();
@@ -1413,13 +1459,13 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 
 	let flatUtxos = [];
 	for (const user of users) {
-		d({ user });
+		//d({ user });
 		flatUtxos = [];
 		if (count === choices.length - 1) {
 			return choices;
 		}
 		await Bootstrap.user_addresses(user, async function (addresses) {
-			d({ addresses });
+			//d({ addresses });
 			let utxos = await Bootstrap.user_utxos_from_cli(user, addresses).catch(
 				function (error) {
 					console.error({ error });
@@ -1474,7 +1520,7 @@ Bootstrap.extract_unique_users = async function (count, options = {}) {
 				flatUtxos = finalUtxos;
 			}
 			if (flatUtxos.length === 0) {
-				d({ skipping: user });
+				//d({ skipping: user });
 				return true;
 			}
 			let rando = await Bootstrap.getRandomPayee(user);

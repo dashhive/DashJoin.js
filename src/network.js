@@ -956,11 +956,37 @@ function dsi(
 
 function dss(
 	args = {
-		chosen_network, // 'testnet'
+		chosen_network,
 		dsfPacket,
 		signatures,
 	}
 ) {
+	/**
+   * dsfPacket = {
+     transaction: {
+		  sessionID: 4123, // queue identifier
+			version: 2,  // either 2 or 3
+			inputCount: 3,
+			inputs: [{
+        txid: '....', // 32 BYTES
+        outputIndex: 0, // 32 bits
+        satoshis: 10001, // 
+      },
+      {
+        txid: '....', // 32 BYTES
+        outputIndex: 0, // 32 bits
+        satoshis: 10001, // 
+      },
+      {
+        txid: '....', // 32 BYTES
+        outputIndex: 0, // 32 bits
+        satoshis: 10001, // 
+      }],
+			outputCount: 1,
+			outputs: [...],
+		}
+	};
+  */
 	/**
    * User inputs
    * -----------
@@ -973,7 +999,7 @@ function dss(
 		true,
 		'Can only support up to 252 inputs currently'
 	);
-	const USER_INPUT_SIZE = Object.keys(signatures).length;
+	const USER_INPUT_SIZE = parseInt(dsfPacket.transaction.inputCount, 10);
 	/**
    * The input count byte
    */
@@ -981,8 +1007,17 @@ function dss(
 	const TXID_LENGTH = 32;
 	const OUTPUT_INDEX_LENGTH = 4;
 	const SEQUENCE_NUMBER_LENGTH = 4;
-	for (const txid in signatures) {
+	for (let i = 0; i < USER_INPUT_SIZE; i++) {
+		let txid = dsfPacket.transaction.inputs[i].txid;
 		TOTAL_SIZE += TXID_LENGTH + OUTPUT_INDEX_LENGTH;
+		/**
+     * Assumes that the length byte of signatures[txid].signature
+     * is present as the first byte
+     */
+		assert.equal(
+			signatures[txid].signature[0] === signatures[txid].signature.length - 1,
+			'signature length byte must be present'
+		);
 		TOTAL_SIZE += signatures[txid].signature.length;
 		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
 	}

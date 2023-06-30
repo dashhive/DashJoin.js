@@ -30,15 +30,15 @@ module.exports = function (_DB) {
 		Lib.DB.set_namespaces(['coinjoin', ...list]);
 	};
 	Lib.db_put = async function db_put(key, val) {
-		if (Lib.debug) {
-			d({ db_put: { key, val } });
-		}
+		//if (Lib.debug) {
+		//	d({ db_put: { key, val } });
+		//}
 		await Lib.DB.ns.put(key, val);
 	};
 	Lib.db_get = async function db_get(key) {
-		if (Lib.debug) {
-			d({ db_get: key });
-		}
+		//if (Lib.debug) {
+		//	d({ db_get: key });
+		//}
 		return await Lib.DB.ns.get(key);
 	};
 	Lib.db_append = function db_append(key, val) {
@@ -72,9 +72,9 @@ module.exports = function (_DB) {
 		if (!Array.isArray(values)) {
 			values = [values];
 		}
-		console.debug(
-			`meta_set ${username}|${key} size: ${JSON.stringify(values).length}`
-		);
+		//console.debug(
+		//	`meta_set ${username}|${key} size: ${JSON.stringify(values).length}`
+		//);
 		await Lib.db_put(key, JSON.stringify(values));
 	};
 	Lib.meta_store = async function (username, key, values) {
@@ -99,9 +99,9 @@ module.exports = function (_DB) {
 		} else {
 			Lib.db_cj_ns([username]);
 		}
-		console.debug(
-			`meta_store ${username}|${key} size: ${JSON.stringify(existing).length}`
-		);
+		//console.debug(
+		//	`meta_store ${username}|${key} size: ${JSON.stringify(existing).length}`
+		//);
 		await Lib.db_put(key, JSON.stringify(existing));
 	};
 	Lib.meta_remove = async function (username, key, values) {
@@ -152,7 +152,7 @@ module.exports = function (_DB) {
 	Lib.create_page = async function (username, key, items_per_page = 250) {
 		let pindex = Lib.paged_index_key(username, key);
 		let meta = await Lib.db_get(pindex);
-		console.debug({ meta });
+		//console.debug({ meta });
 		if (xt(meta, 'pages') === null) {
 			let p = Lib.page();
 			p.pages = 1;
@@ -170,7 +170,7 @@ module.exports = function (_DB) {
 			await Lib.db_put(pindex, JSON.stringify(page));
 			return page;
 		} catch (e) {
-			console.error({ e });
+			//console.error({ e });
 			throw new Error(e);
 		}
 	};
@@ -190,7 +190,7 @@ module.exports = function (_DB) {
 			}
 			return c;
 		} catch (e) {
-			console.error(e);
+			//console.error(e);
 		}
 		return defaults;
 	}
@@ -203,7 +203,7 @@ module.exports = function (_DB) {
 			}
 			return c;
 		} catch (e) {
-			console.error(e);
+			//console.error(e);
 		}
 		return defaults;
 	}
@@ -282,12 +282,13 @@ module.exports = function (_DB) {
 	};
 	Lib.paged_for_each = async function (username, key, options, cb) {
 		let pages = await get_page_index(username, key);
-		if (Lib.debug) {
-			d({ pages });
-		}
+		//if (Lib.debug) {
+		//	d({ pages });
+		//}
 		if (!pages) {
 			return 0;
 		}
+		let context = xt(options, 'context');
 		let page_count = parseInt(pages.pages, 10);
 		if (isNaN(page_count) || page_count <= 0) {
 			return 0;
@@ -306,9 +307,10 @@ module.exports = function (_DB) {
 			}
 			let keep_going = await cb(
 				await Lib.paged_get(username, key, i),
-				meta
+				meta,
+				context
 			).catch(function (error) {
-				console.error(error);
+				//console.error(error);
 				return true;
 			});
 			if (keep_going === false) {

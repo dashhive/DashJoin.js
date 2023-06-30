@@ -59,9 +59,9 @@ async function onDSFMessage(parsed, masterNode) {
 	let amount = getDemoDenomination();
 	let sigScripts = {};
 	debug(`submitted transactions: ${client_session.get_inputs().length}`);
-	debug(client_session.get_inputs());
+	//debug(client_session.get_inputs());
 	for (const submission of client_session.get_inputs()) {
-		d({ submission });
+		//d({ submission });
 		let sig = await SigScript.extractSigScript(
 			dboot,
 			client_session.username,
@@ -220,7 +220,7 @@ async function stateChanged(obj) {
 	d('after load');
 	d({ username });
 	mainUser = await UserDetails.extractUserDetails(username);
-	dd({ mainUser });
+	//dd({ mainUser });
 	d('user details fetched');
 	let randomPayeeName = await dboot.get_random_payee(username);
 	d('random payee fetched');
