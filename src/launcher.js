@@ -87,9 +87,11 @@ module.exports = {
        */
 			console.info(`[status]: loading "${instanceName}" instance...`);
 			dboot = await dashboot.load_instance(instanceName);
+			let except = [];
 			let uniqueUsers = await dboot.extract_unique_users(
 				CONCURRENT_USERS,
-				getDemoDenomination()
+				getDemoDenomination(),
+				except
 			);
 
 			/**

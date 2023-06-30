@@ -1458,10 +1458,8 @@ Bootstrap.extract_unique_users = async function (
 		return besides.indexOf(user) === -1;
 	});
 
-	let flatUtxos = [];
 	for (const user of users) {
-		//d({ user });
-		flatUtxos = [];
+		d({ user });
 		if (count === choices.length - 1) {
 			return choices;
 		}

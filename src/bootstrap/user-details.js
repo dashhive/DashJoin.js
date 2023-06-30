@@ -3,24 +3,27 @@
 var Lib = {};
 module.exports = Lib;
 const dboot = require('./index.js');
+//const { dd } = require('../debug.js');
 
-Lib.extractUserDetails = async function (username) {
-	let addresses = await dboot.get_addresses(username);
-	let utxos = await dboot
-		.user_utxos_from_cli(username, addresses)
-		.catch(function (error) {
-			console.error({ error });
-			return null;
-		});
+Lib.extractUserDetails = async function (
+	username,
+	denominatedAmount,
+	count = 3
+) {
+	let utxos = await dboot.get_denominated_utxos(
+		username,
+		denominatedAmount,
+		count
+	);
 	if (!utxos || utxos.length === 0) {
 		throw new Error('User doesn\'t have any UTXOS!');
 	}
+	if (utxos.length !== count) {
+		throw new Error('Couldnt find enough UTXOS');
+	}
 	let addrMap = {};
-	for (let k = 0; k < Object.keys(utxos).length; k++) {
-		for (let x = 0; x < utxos[k].length; x++) {
-			let u = utxos[k][x];
-			addrMap[u.address] = 1;
-		}
+	for (const u of utxos) {
+		addrMap[u.address] = 1;
 	}
 	for (const addr in addrMap) {
 		let buffer = await dboot.wallet_exec(username, ['dumpprivkey', addr]);
@@ -32,22 +35,12 @@ Lib.extractUserDetails = async function (username) {
 			addrMap[addr] = out;
 		}
 	}
-	let flatUtxos = [];
-	for (let k = 0; k < Object.keys(utxos).length; k++) {
-		for (let x = 0; x < utxos[k].length; x++) {
-			let txid = utxos[k][x].txid;
-			let used = dboot.is_txid_used(username, txid);
-			if (used) {
-				continue;
-			}
-			utxos[k][x].privateKey = addrMap[utxos[k][x].address];
-			flatUtxos.push(utxos[k][x]);
-		}
+	for (let i = 0; i < utxos.length; i++) {
+		utxos[i].privateKey = addrMap[utxos[i].address];
 	}
-	//let rando = await dboot.getRandomPayee(username);
 	return {
 		user: username,
-		utxos: flatUtxos,
+		utxos,
 		changeAddress: await dboot.get_change_address_from_cli(username),
 	};
 };
