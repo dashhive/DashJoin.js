@@ -11,11 +11,15 @@ const crypto = require('crypto');
 const { createHash } = crypto;
 const NetUtil = require('./network-util.js');
 const COIN = require('./coin-join-constants.js').COIN;
-const hashByteOrder = NetUtil.hashByteOrder;
+//const hashByteOrder = NetUtil.hashByteOrder;
 let DashCore = require('@dashevo/dashcore-lib');
 let Transaction = DashCore.Transaction;
-//let Script = DashCore.Script;
+let Script = DashCore.Script;
+//let Address = DashCore.Address;
+let PrivateKey = DashCore.PrivateKey;
+let Signature = DashCore.crypto.Signature;
 let assert = require('assert');
+const fs = require('node:fs');
 
 let Lib = { packet: { parse: {} } };
 module.exports = Lib;
@@ -125,6 +129,25 @@ const SENDCMPCT_PAYLOAD_SIZE = 9;
 const SENDDSQ_PAYLOAD_SIZE = 1;
 const PING_PAYLOAD_SIZE = 8;
 
+function date() {
+	const d = new Date();
+	let h = d.getHours();
+	if (String(h).length === 1) {
+		h = `0${h}`;
+	}
+	let m = d.getMinutes();
+	if (String(m).length === 1) {
+		m = `0${m}`;
+	}
+	let s = d.getSeconds();
+	if (String(s).length === 1) {
+		s = `0${s}`;
+	}
+	return (
+		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
+    [h, m, s].join(':')
+	);
+}
 const getVersionSizes = function () {
 	let SIZES = {
 		VERSION: 4,
@@ -331,11 +354,11 @@ function extractChunk(buffer, start, end) {
 }
 let setUint32 = NetUtil.setUint32;
 let dot2num = NetUtil.dot2num;
-let num2array = NetUtil.num2array;
+//let num2array = NetUtil.num2array;
 let htonl = NetUtil.htonl;
 let is_ipv6_mapped_ipv4 = NetUtil.is_ipv6_mapped_ipv4;
 let htons = NetUtil.htons;
-let mapIPv4ToIpv6 = NetUtil.mapIPv4ToIpv6;
+//let mapIPv4ToIpv6 = NetUtil.mapIPv4ToIpv6;
 
 Lib.util = NetUtil;
 
@@ -842,10 +865,10 @@ function encodeInputs(inputs) {
 	return new Transaction().from(utxos);
 }
 
-function encodeOutputs(userOutputAddresses, amount) {
+function encodeOutputs(client_session, amount) {
 	var tx = new Transaction();
 	let i = 0;
-	for (const address of userOutputAddresses) {
+	for (const address of client_session.generated_addresses) {
 		tx.to(address, amount);
 	}
 	return tx;
@@ -854,48 +877,45 @@ function encodeOutputs(userOutputAddresses, amount) {
 function dsi(
 	args = {
 		chosen_network, // 'testnet'
-		userInputs,
 		collateralTxn,
-		addresses,
 		denominatedAmount,
+		client_session,
 	}
 ) {
-	let satoshisSet = false;
-	let amountSet = false;
-	for (let input of args.userInputs) {
-		satoshisSet = typeof input.satoshis !== 'undefined';
-		amountSet = typeof input.amount !== 'undefined';
-		if (typeof input.txid === 'undefined') {
-			throw new Error('input.txid must be defined on all userInputs');
-		}
-		if (
-			typeof input.vout === 'undefined' &&
-      typeof input.outputIndex === 'undefined'
-		) {
-			throw new Error(
-				'input.vout or input.outputIndex must be defined on all userInputs'
-			);
-		}
-		if (!satoshisSet && !amountSet) {
-			throw new Error(
-				'input.satoshis or input.amount must be defined on all userInputs'
-			);
-		}
-	}
+	let client_session = args.client_session;
+	let denominatedAmount = args.denominatedAmount;
 	if (!(args.collateralTxn instanceof Transaction)) {
 		throw new Error('collateralTxn must be Transaction');
 	}
+	let utxos = [];
+	var tx = new Transaction();
+	for (const input of client_session.mixing_inputs) {
+		utxos.push({
+			txId: input.txid,
+			outputIndex: input.outputIndex,
+			satoshis: input.satoshis,
+			scriptPubKey: [],
+			sequenceNumber: 0xffffffff,
+		});
+	}
+	tx.from(utxos);
+	for (const address of client_session.generated_addresses) {
+		tx.to(address, denominatedAmount);
+	}
 
-	let userInputTxn = encodeInputs(args.userInputs);
-	let userOutputTxn = encodeOutputs(args.addresses, args.denominatedAmount);
+	let userInputTxn = encodeInputs(client_session.mixing_inputs);
+	let userOutputTxn = encodeOutputs(client_session, denominatedAmount);
 
 	// FIXME: very hacky
 	let trimmedUserInput = userInputTxn
 		.uncheckedSerialize()
 		.substr(8)
 		.replace(/[0]{10}$/, '');
-	//dd(trimmedUserInput);
 
+	d({
+		collateral: args.collateralTxn,
+		serialized: args.collateralTxn.uncheckedSerialize(),
+	});
 	let collateralTxn = hexToBytes(args.collateralTxn.uncheckedSerialize());
 
 	// FIXME: very hacky
@@ -916,21 +936,11 @@ function dsi(
    */
 	let offset = 0;
 	let packet = new Uint8Array(TOTAL_SIZE);
-	//console.debug({ packetSize: TOTAL_SIZE, actual: packet.length });
-	//console.debug({ userInputPayloadSize: userInputPayload.length });
-	//console.debug({ userOutputPayloadSize: userOutputPayload.length });
-	//console.debug({ collateralTxnSize: args.collateralTxn.length });
 	/**
    * Set the user inputs
    */
 	packet.set(userInputPayload);
-	assert(
-		packet[0],
-		args.userInputs.length,
-		'userInputs.length must be the first byte in payload'
-	);
 	offset += userInputPayload.length;
-	//console.debug({ userInputPayload, packet });
 
 	/**
    * Set the collateral txn(s)
@@ -942,8 +952,6 @@ function dsi(
    * Set the outputs
    */
 	packet.set(userOutputPayload, offset);
-
-	//console.debug({ packet, offset }); // FIXME
 
 	assert.equal(
 		packet.length,
@@ -958,48 +966,23 @@ function dss(
 	args = {
 		chosen_network,
 		dsfPacket,
-		signatures,
+		client_session,
 	}
 ) {
-	/**
-   * dsfPacket = {
-     transaction: {
-		  sessionID: 4123, // queue identifier
-			version: 2,  // either 2 or 3
-			inputCount: 3,
-			inputs: [{
-        txid: '....', // 32 BYTES
-        outputIndex: 0, // 32 bits
-        satoshis: 10001, // 
-      },
-      {
-        txid: '....', // 32 BYTES
-        outputIndex: 0, // 32 bits
-        satoshis: 10001, // 
-      },
-      {
-        txid: '....', // 32 BYTES
-        outputIndex: 0, // 32 bits
-        satoshis: 10001, // 
-      }],
-			outputCount: 1,
-			outputs: [...],
-		}
-	};
-  */
 	/**
    * User inputs
    * -----------
    * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
    */
-	const signatures = args.signatures;
 	const dsfPacket = args.dsfPacket;
 	assert.equal(
 		dsfPacket.transaction.inputCount < 253,
 		true,
 		'Can only support up to 252 inputs currently'
 	);
-	const USER_INPUT_SIZE = parseInt(dsfPacket.transaction.inputCount, 10);
+	//const USER_INPUT_SIZE = args.dsfPacket.transaction.inputCount;
+	let client_session = args.client_session;
+	const USER_INPUT_SIZE = client_session.mixing_inputs.length;
 	/**
    * The input count byte
    */
@@ -1007,18 +990,47 @@ function dss(
 	const TXID_LENGTH = 32;
 	const OUTPUT_INDEX_LENGTH = 4;
 	const SEQUENCE_NUMBER_LENGTH = 4;
+	fs.writeFileSync(
+		`/home/foobar/data/dss-outputs-${client_session.username}-${date()}.json`,
+		JSON.stringify(client_session.mixing_inputs, null, 2)
+	);
+
 	for (let i = 0; i < USER_INPUT_SIZE; i++) {
-		let txid = dsfPacket.transaction.inputs[i].txid;
+		let txid = client_session.mixing_inputs[i].txid;
 		TOTAL_SIZE += TXID_LENGTH + OUTPUT_INDEX_LENGTH;
 		/**
      * Assumes that the length byte of signatures[txid].signature
      * is present as the first byte
      */
-		assert.equal(
-			signatures[txid].signature[0] === signatures[txid].signature.length - 1,
-			'signature length byte must be present'
-		);
-		TOTAL_SIZE += signatures[txid].signature.length;
+		console.debug({ txid });
+		let utxo = {
+			txId: client_session.mixing_inputs[i].txid,
+			outputIndex: client_session.mixing_inputs[i].outputIndex,
+			scriptPubKey: Script.buildPublicKeyHashOut(
+				client_session.mixing_inputs[i].address
+			),
+			satoshis: client_session.mixing_inputs[i].satoshis,
+		};
+		let tx = new Transaction()
+			.from(utxo)
+			.to(
+				client_session.generated_addresses[i],
+				client_session.denominatedAmount
+			)
+			.sign(
+				client_session.mixing_inputs[i].privateKey,
+				Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+			);
+
+		// we then extract the signature from the first input
+		let inputIndex = client_session.mixing_inputs[i].outputIndex;
+		let sig = tx.getSignatures(client_session.mixing_inputs[i].privateKey)[
+			inputIndex
+		].signature;
+		client_session.mixing_inputs[i].signature = sig;
+		let buffer = hexToBytes(sig.toString());
+		TOTAL_SIZE += 1;
+		TOTAL_SIZE += buffer.length;
 		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
 	}
 
@@ -1033,13 +1045,15 @@ function dss(
 	/**
    * Add each input
    */
-	for (const txid in signatures) {
-		packet.set(hexToBytes(hashByteOrder(txid)), offset);
+	for (const input of client_session.mixing_inputs) {
+		packet.set(hexToBytes(input.txid), offset);
 		offset += 32;
-		packet.set([signatures[txid].outputIndex], offset);
+		packet.set([input.outputIndex], offset);
 		offset += 4;
-		packet.set(signatures[txid].signature, offset);
-		offset += signatures[txid].signature.length;
+		packet.set([hexToBytes(input.signature).length], offset);
+		offset += 1;
+		packet.set(hexToBytes(input.signature), offset);
+		offset += hexToBytes(input.signature).length;
 		packet.set(hexToBytes('ffffffff'), offset);
 		offset += 4;
 	}
@@ -1387,6 +1401,7 @@ Lib.packet.parse.dsf = function (buffer) {
 	parsed.sessionID = extractUint32(buffer, offset);
 	offset += SIZES.SESSIONID;
 
+	let tx = extractChunk(buffer, offset, buffer.length);
 	/**
    * Grab the VERSION
    */
@@ -1454,6 +1469,7 @@ Lib.packet.parse.dsf = function (buffer) {
 		parsed.transaction.outputs.push(output);
 	}
 
+	parsed.raw_buffer = buffer;
 	return parsed;
 };
 function d(...args) {

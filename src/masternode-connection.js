@@ -9,6 +9,9 @@ let Script = DashCore.Script;
 let { hexToBytes } = require('./network-util.js');
 const DebugLib = require('./debug.js');
 const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
+const { d, dd } = DebugLib;
+const STATIC_PAYEE = 'yPhJTWFdAktwBokE3SzNxafNb1Qvb7hsPo';
+const { xt } = require('@mentoc/xtract');
 
 let Lib = {};
 module.exports = Lib;
@@ -67,12 +70,15 @@ function MasterNode({
 	onConnectionClose = null,
 	onConnectionError = null,
 	nickName,
+	client_session,
 }) {
 	DebugLib.setNickname(nickName);
 	let self = this;
 	/**
    * Our member variables
    */
+	self.client_session = client_session;
+	self.nickName = nickName;
 	self.buffer = new Uint8Array();
 	self.client = null;
 	self.collateralTx = null;
@@ -156,52 +162,76 @@ function MasterNode({
 			self.onDSF(packet, self);
 		}
 	};
+	self.disconnect = function (cb) {
+		self.client.destroy();
+		cb();
+	};
 	self.dispatchDSSU = function (packet) {
 		if (typeof self.onDSSU === 'function') {
 			self.onDSSU(packet, self);
 		}
 	};
-	self.makeCollateralTx = async function () {
+	self.existingCollateralTxns = [];
+	self.makeCollateralTx = async function (options = {}) {
 		let amount = parseInt(LOW_COLLATERAL * 2, 10);
-		let fee = 50000; // FIXME
-		let payeeAddress = self.payee.utxos[0].address;
-		let sourceAddress = self.coinJoinData.utxos[0].address;
-		let txid = self.coinJoinData.utxos[0].txid;
-		let vout = self.coinJoinData.utxos[0].outputIndex;
-		let satoshis = self.coinJoinData.utxos[0].satoshis;
+		let fee = 10000; // FIXME
 		let changeAddress = self.coinJoinData.changeAddress;
 		if (changeAddress === null) {
 			throw new Error('changeAddress cannot be null');
 		}
-		let privateKey = self.coinJoinData.utxos[0].privateKey;
-		let unspent = satoshis - amount;
-		let utxos = {
-			txId: txid,
-			outputIndex: vout,
-			sequenceNumber: 0xffffffff,
-			scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
-			satoshis,
-		};
-		let tx = new Transaction()
-			.from(utxos)
-			.to(payeeAddress, amount)
-			.to(changeAddress, unspent - fee)
-			.sign(privateKey);
-		self.collateralTx = {
-			tx,
-			utxos,
-			payeeAddress,
-			amount,
-			changeAddress,
-			privateKey,
-			txid,
-			vout,
-			satoshis,
-			sourceAddress,
-			user: self.coinJoinData.user,
-		};
-		self.dispatchCollateralTxCreated(tx);
-		return hexToBytes(tx.uncheckedSerialize());
+		d({ cjd_count: self.coinJoinData.utxos.length });
+		for (let i = 0; i < self.coinJoinData.utxos.length; i++) {
+			let txid = self.coinJoinData.utxos[i].txid;
+			let payeeAddress = STATIC_PAYEE;
+			let sourceAddress = self.coinJoinData.utxos[i].address;
+			let vout = self.coinJoinData.utxos[i].outputIndex;
+			let satoshis = self.coinJoinData.utxos[i].satoshis;
+			let privateKey = self.coinJoinData.utxos[i].privateKey;
+			let unspent = satoshis - amount;
+			if (unspent - fee < 0) {
+				continue;
+			}
+			if (
+				self.existingCollateralTxns.length &&
+        self.existingCollateralTxns.indexOf(txid) !== -1
+			) {
+				continue;
+			}
+			self.existingCollateralTxns.push(txid);
+
+			let utxos = {
+				txId: txid,
+				outputIndex: vout,
+				sequenceNumber: 0xffffffff,
+				scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
+				satoshis,
+			};
+			d({ txid, utxos, amount, ch: unspent - fee, unspent, fee });
+			let tx = new Transaction();
+			tx.from(utxos);
+			tx.to(payeeAddress, amount - fee);
+			tx.fee(fee);
+			tx.change(changeAddress);
+			tx.sign(privateKey);
+			self.collateralTx = {
+				tx,
+				utxos,
+				payeeAddress,
+				amount,
+				changeAddress,
+				privateKey,
+				txid,
+				vout,
+				satoshis,
+				sourceAddress,
+				user: self.coinJoinData.user,
+			};
+			self.dispatchCollateralTxCreated(self.collateralTx);
+			if (xt(options, 'no_serialize')) {
+				return tx;
+			}
+			return hexToBytes(tx.uncheckedSerialize());
+		}
 	};
 	self.debug = function (...args) {
 		if (self.debugFunction) {
