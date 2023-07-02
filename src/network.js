@@ -11,17 +11,19 @@ const crypto = require('crypto');
 const { createHash } = crypto;
 const NetUtil = require('./network-util.js');
 const COIN = require('./coin-join-constants.js').COIN;
-//const hashByteOrder = NetUtil.hashByteOrder;
-let DashCore = require('@dashevo/dashcore-lib');
-let Transaction = DashCore.Transaction;
-let Script = DashCore.Script;
-//let Address = DashCore.Address;
-let PrivateKey = DashCore.PrivateKey;
-let Signature = DashCore.crypto.Signature;
-let assert = require('assert');
+const { xt } = require('@mentoc/xtract');
+const hashByteOrder = NetUtil.hashByteOrder;
+const DashCore = require('@dashevo/dashcore-lib');
+const Transaction = DashCore.Transaction;
+const Script = DashCore.Script;
+const Address = DashCore.Address;
+const PrivateKey = DashCore.PrivateKey;
+const PublicKey = DashCore.PublicKey;
+const Signature = DashCore.crypto.Signature;
+const assert = require('assert');
 const fs = require('node:fs');
 
-let Lib = { packet: { parse: {} } };
+const Lib = { packet: { parse: {} } };
 module.exports = Lib;
 
 const PROTOCOL_VERSION = 70227;
@@ -994,6 +996,14 @@ function dss(
 		`/home/foobar/data/dss-outputs-${client_session.username}-${date()}.json`,
 		JSON.stringify(client_session.mixing_inputs, null, 2)
 	);
+	let privkeys = [];
+	let pubkeys = [];
+	for (const input of client_session.mixing_inputs) {
+		privkeys.push(new PrivateKey(input.privateKey));
+	}
+	pubkeys = privkeys.map(PublicKey);
+	d({ pubkeys, len: xt(pubkeys, 'length'), type: typeof pubkeys });
+	//let address = new Address(pubkeys, pubkeys.length);
 
 	for (let i = 0; i < USER_INPUT_SIZE; i++) {
 		let txid = client_session.mixing_inputs[i].txid;
@@ -1003,35 +1013,46 @@ function dss(
      * is present as the first byte
      */
 		console.debug({ txid });
+
+		let pk = PrivateKey.fromWIF(client_session.mixing_inputs[i].privateKey);
+		let pub = pk.publicKey;
 		let utxo = {
+			address: client_session.mixing_inputs[i].address,
 			txId: client_session.mixing_inputs[i].txid,
 			outputIndex: client_session.mixing_inputs[i].outputIndex,
-			scriptPubKey: Script.buildPublicKeyHashOut(
-				client_session.mixing_inputs[i].address
-			),
+			//script: client_session.mixing_inputs[i].script,
+			scriptPubKey: Script.buildPublicKeyHashOut(pub),
 			satoshis: client_session.mixing_inputs[i].satoshis,
 		};
 		let tx = new Transaction()
-			.from(utxo)
-			.to(
-				client_session.generated_addresses[i],
-				client_session.denominatedAmount
-			)
+			.from(utxo) //, pubkeys, pubkeys.length)
+		//.to(
+		//	client_session.generated_addresses[i],
+		//	client_session.denominatedAmount
+		//)
 			.sign(
-				client_session.mixing_inputs[i].privateKey,
-				Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+				pk,
+				parseInt(Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY, 10)
 			);
-
-		// we then extract the signature from the first input
-		let inputIndex = client_session.mixing_inputs[i].outputIndex;
-		let sig = tx.getSignatures(client_session.mixing_inputs[i].privateKey)[
-			inputIndex
-		].signature;
-		client_session.mixing_inputs[i].signature = sig;
-		let buffer = hexToBytes(sig.toString());
+		let sigScript = tx.inputs[0]._scriptBuffer;
+		let encodedScript = hexToBytes(sigScript.toString('hex'));
+		let len = encodedScript.length;
+		client_session.mixing_inputs[i].script = {
+			value: sigScript,
+			buffer: encodedScript,
+			len,
+		};
 		TOTAL_SIZE += 1;
-		TOTAL_SIZE += buffer.length;
+		TOTAL_SIZE += client_session.mixing_inputs[i].script.len;
 		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
+
+		d({
+			ser: tx.uncheckedSerialize(),
+			//sig,
+			tx,
+			mi: client_session.mixing_inputs[i],
+			i,
+		});
 	}
 
 	/**
@@ -1046,14 +1067,14 @@ function dss(
    * Add each input
    */
 	for (const input of client_session.mixing_inputs) {
-		packet.set(hexToBytes(input.txid), offset);
+		packet.set(hexToBytes(hashByteOrder(input.txid)), offset);
 		offset += 32;
 		packet.set([input.outputIndex], offset);
 		offset += 4;
-		packet.set([hexToBytes(input.signature).length], offset);
+		packet.set([input.script.buffer.length], offset);
 		offset += 1;
-		packet.set(hexToBytes(input.signature), offset);
-		offset += hexToBytes(input.signature).length;
+		packet.set(input.script.buffer, offset);
+		offset += input.script.buffer.length;
 		packet.set(hexToBytes('ffffffff'), offset);
 		offset += 4;
 	}

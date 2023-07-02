@@ -1518,6 +1518,9 @@ Bootstrap.load_used_txid_ram_slots = async function () {
 			}
 			if (Array.isArray(u)) {
 				for (const u2 of u) {
+					if (u2 === null) {
+						continue;
+					}
 					if (map[u2] !== 1) {
 						Bootstrap.used_txids.push(u2);
 						map[u2] = 1;

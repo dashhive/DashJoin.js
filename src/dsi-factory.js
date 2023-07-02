@@ -36,6 +36,11 @@ async function createDSIPacket(masterNode, username, denominatedAmount, count) {
 		return parseInt(input.satoshis, 10) === parseInt(denominatedAmount, 10);
 	});
 	client_session.mixing_inputs = client_session.mixing_inputs.splice(0, count);
+	assert.equal(
+		client_session.mixing_inputs.length,
+		count,
+		'mixing inputs should equal count'
+	);
 	client_session.mixing_inputs.map(async function (ele) {
 		let privateKey = await dboot
 			.get_private_key(username, ele.address)
