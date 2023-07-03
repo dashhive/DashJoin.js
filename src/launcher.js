@@ -26,6 +26,7 @@ const path = require('path');
 const dashboot = require('./bootstrap/index.js');
 const DashCore = require('@dashevo/dashcore-lib');
 
+const INPUTS = 3;
 const CURDIR = path.resolve(__dirname);
 let dboot = null;
 
@@ -113,7 +114,7 @@ module.exports = {
 					`--username=${choice.user}`,
 					`--nickname=${nickname(choice.user)}`,
 					'--verbose=true',
-					'--count=1',
+					`--count=${INPUTS}`,
 					'--senddsi=true',
 				]);
 				m.stdout.on('data', (data) => {

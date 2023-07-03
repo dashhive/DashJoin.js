@@ -29,12 +29,22 @@ async function createDSIPacket(masterNode, username, denominatedAmount, count) {
 	client_session.mixing_inputs = await dboot.get_denominated_utxos(
 		client_session.username,
 		denominatedAmount,
-		250
+		5500
 	);
+	let addresses = [];
 	client_session.mixing_inputs = client_session.mixing_inputs.filter(function (
 		input
 	) {
-		return parseInt(input.satoshis, 10) === parseInt(denominatedAmount, 10);
+		if (dboot.is_txid_used(input.txid)) {
+			return false;
+		}
+		let save =
+      addresses.indexOf(input.address) === -1 &&
+      parseInt(input.satoshis, 10) === parseInt(denominatedAmount, 10);
+		if (save) {
+			addresses.push(input.address);
+		}
+		return save;
 	});
 	client_session.mixing_inputs = client_session.mixing_inputs.splice(0, count);
 	assert.equal(
@@ -58,16 +68,16 @@ async function createDSIPacket(masterNode, username, denominatedAmount, count) {
 		client_session.username,
 		count
 	);
-	let pk_mappings = [];
-	for (const addy of client_session.generated_addresses) {
-		pk_mappings.push({
-			address: addy,
-			privateKey: await dboot.get_private_key(username, addy),
+	let transformed = [];
+	for (const address of client_session.generated_addresses) {
+		transformed.push({
+			address: address,
+			privateKey: await dboot.get_private_key(username, address),
 		});
 	}
-	client_session.private_keys = pk_mappings;
+	client_session.generated_addresses = transformed;
 	if (await Util.dataDirExists()) {
-		debug('writing dsf file');
+		//debug('writing dsf file');
 		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 		await fs.writeFileSync(
 			`${Util.getDataDir()}/dsf-mixing-inputs-${username}-${lmdb_counter}.json`,

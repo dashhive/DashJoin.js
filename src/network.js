@@ -131,25 +131,6 @@ const SENDCMPCT_PAYLOAD_SIZE = 9;
 const SENDDSQ_PAYLOAD_SIZE = 1;
 const PING_PAYLOAD_SIZE = 8;
 
-function date() {
-	const d = new Date();
-	let h = d.getHours();
-	if (String(h).length === 1) {
-		h = `0${h}`;
-	}
-	let m = d.getMinutes();
-	if (String(m).length === 1) {
-		m = `0${m}`;
-	}
-	let s = d.getSeconds();
-	if (String(s).length === 1) {
-		s = `0${s}`;
-	}
-	return (
-		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
-    [h, m, s].join(':')
-	);
-}
 const getVersionSizes = function () {
 	let SIZES = {
 		VERSION: 4,
@@ -871,7 +852,7 @@ function encodeOutputs(client_session, amount) {
 	var tx = new Transaction();
 	let i = 0;
 	for (const address of client_session.generated_addresses) {
-		tx.to(address, amount);
+		tx.to(address.address, amount);
 	}
 	return tx;
 }
@@ -902,7 +883,7 @@ function dsi(
 	}
 	tx.from(utxos);
 	for (const address of client_session.generated_addresses) {
-		tx.to(address, denominatedAmount);
+		tx.to(address.address, denominatedAmount);
 	}
 
 	let userInputTxn = encodeInputs(client_session.mixing_inputs);
@@ -914,10 +895,10 @@ function dsi(
 		.substr(8)
 		.replace(/[0]{10}$/, '');
 
-	d({
-		collateral: args.collateralTxn,
-		serialized: args.collateralTxn.uncheckedSerialize(),
-	});
+	//d({
+	//	collateral: args.collateralTxn,
+	//	serialized: args.collateralTxn.uncheckedSerialize(),
+	//});
 	let collateralTxn = hexToBytes(args.collateralTxn.uncheckedSerialize());
 
 	// FIXME: very hacky
@@ -985,6 +966,11 @@ function dss(
 	//const USER_INPUT_SIZE = args.dsfPacket.transaction.inputCount;
 	let client_session = args.client_session;
 	const USER_INPUT_SIZE = client_session.mixing_inputs.length;
+	assert.equal(
+		client_session.mixing_inputs.length,
+		client_session.generated_addresses.length,
+		'mixing inputs must equal generated addresses'
+	);
 	/**
    * The input count byte
    */
@@ -992,52 +978,36 @@ function dss(
 	const TXID_LENGTH = 32;
 	const OUTPUT_INDEX_LENGTH = 4;
 	const SEQUENCE_NUMBER_LENGTH = 4;
-	fs.writeFileSync(
-		`/home/foobar/data/dss-outputs-${client_session.username}-${date()}.json`,
-		JSON.stringify(client_session.mixing_inputs, null, 2)
-	);
 	let privkeys = [];
-	let pubkeys = [];
 	for (const input of client_session.mixing_inputs) {
 		privkeys.push(new PrivateKey(input.privateKey));
 	}
-	//pubkeys = privkeys.map(PublicKey);
-	//d({ pubkeys, len: xt(pubkeys, 'length'), type: typeof pubkeys });
-	//let address = new Address(pubkeys, pubkeys.length);
 
 	for (let i = 0; i < USER_INPUT_SIZE; i++) {
-		let txid = client_session.mixing_inputs[i].txid;
 		TOTAL_SIZE += TXID_LENGTH + OUTPUT_INDEX_LENGTH;
-		/**
-     * Assumes that the length byte of signatures[txid].signature
-     * is present as the first byte
-     */
-		d({ txid });
 
-		let pk = PrivateKey.fromWIF(client_session.mixing_inputs[i].privateKey);
-		let pub = pk.publicKey;
+		let pk = PrivateKey.fromWIF(
+			client_session.generated_addresses[i].privateKey
+		);
 		let utxo = {
 			address: client_session.mixing_inputs[i].address,
 			txId: client_session.mixing_inputs[i].txid,
 			outputIndex: client_session.mixing_inputs[i].outputIndex,
-			//script: client_session.mixing_inputs[i].script,
-			scriptPubKey: Script.buildPublicKeyHashOut(pub),
+			scriptPubKey: Script.buildPublicKeyHashOut(
+				client_session.mixing_inputs[i].address
+			),
 			satoshis: client_session.mixing_inputs[i].satoshis,
 		};
 		let tx = new Transaction()
-			.from(utxo) //, pubkeys, pubkeys.length)
+			.from(utxo)
 			.to(
-				client_session.generated_addresses[i],
+				client_session.generated_addresses[i].address,
 				client_session.denominatedAmount
 			)
 			.sign(
-				[pk],
+				client_session.mixing_inputs[i].privateKey,
 				parseInt(Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY, 10)
 			);
-		//d({
-		//	ser: tx.uncheckedSerialize(),
-		//	gen_addr: client_session.generated_addresses[i],
-		//});
 		let sigScript = tx.inputs[0]._scriptBuffer;
 		let encodedScript = hexToBytes(sigScript.toString('hex'));
 		let len = encodedScript.length;
@@ -1049,14 +1019,6 @@ function dss(
 		TOTAL_SIZE += 1;
 		TOTAL_SIZE += client_session.mixing_inputs[i].script.len;
 		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
-
-		//d({
-		//	ser: tx.uncheckedSerialize(),
-		//	//sig,
-		//	tx,
-		//	mi: client_session.mixing_inputs[i],
-		//	i,
-		//});
 	}
 
 	/**

@@ -719,7 +719,7 @@ Bootstrap.create_wallets = async function (count = 10) {
 		//console.info(`[ok]: wallet "${wallet_name}" created`);
 
 		let w_addresses = [];
-		for (let actr = 0; actr < 2; actr++) {
+		for (let actr = 0; actr < 1; actr++) {
 			let buffer = await Bootstrap.wallet_exec(wallet_name, ['getnewaddress']);
 			let { out } = ps_extract(buffer, false);
 			if (out.length) {
@@ -732,8 +732,8 @@ Bootstrap.create_wallets = async function (count = 10) {
 	await Bootstrap.alias_users();
 	await Bootstrap.unlock_all_wallets();
 	await Bootstrap.dump_all_privkeys();
-	await Bootstrap.generate_dash_to_all();
-	await Bootstrap.create_denominations_to_all();
+	//await Bootstrap.generate_dash_to_all();
+	//await Bootstrap.create_denominations_to_all();
 };
 Bootstrap.grind = async function () {
 	for (let i = 0; i < 100; i++) {
@@ -1028,6 +1028,34 @@ Bootstrap.generate_dash_to_all = async function (iterations = 1) {
 	}
 };
 
+Bootstrap.generate_dash_to = async function (username, iterations = 1) {
+	username = Bootstrap.alias_check(username);
+	await Bootstrap.unlock_all_wallets();
+	await Bootstrap.user_addresses(username, async function (addresses) {
+		console.info(`${username} has ${addresses.length} addresses...`);
+		let ctr = 3;
+		for (const address of addresses) {
+			--ctr;
+			if (ctr < 0) {
+				return false;
+			}
+			let ps = await _bs.wallet_exec(username, [
+				'generatetoaddress',
+				'10',
+				address,
+			]);
+			let { err, out } = ps_extract(ps, false);
+			if (err.length) {
+				console.error(`ERROR: ${username}: "${err}"`);
+				++ctr;
+				process.stdout.write('x');
+				return true;
+			} else {
+				process.stdout.write('.');
+			}
+		}
+	});
+};
 Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
 	await Bootstrap.unlock_all_wallets();
@@ -1073,6 +1101,7 @@ function usage() {
 	console.log('--generate-to=N    Generates DASH to the user named N');
 	console.log('--dash-for-all     Generates DASH to EVERY user');
 	console.log('--create-wallets   Creates wallets, addresses, and UTXO\'s');
+	console.log('--create-n-wallet=N  Creates N wallets');
 	console.log(
 		'--denom-amt=N      Search through user\'s UTXO\'s for denominated amounts matching N'
 	);
@@ -1426,6 +1455,15 @@ Bootstrap.run_cli_program = async function () {
 		console.log('[DONE]');
 		process.exit(0);
 		return;
+	}
+	let count = extractOption('create-n-wallets', true);
+	if (count !== null) {
+		if (isNaN(parseInt(count, 10))) {
+			d('usage: --create-n-wallets=N where N is a number');
+			process.exit(1);
+		}
+		d(await Bootstrap.create_wallets(count));
+		process.exit(0);
 	}
 	if (config.create_wallets ?? false) {
 		d(await Bootstrap.create_wallets());
