@@ -1001,8 +1001,8 @@ function dss(
 	for (const input of client_session.mixing_inputs) {
 		privkeys.push(new PrivateKey(input.privateKey));
 	}
-	pubkeys = privkeys.map(PublicKey);
-	d({ pubkeys, len: xt(pubkeys, 'length'), type: typeof pubkeys });
+	//pubkeys = privkeys.map(PublicKey);
+	//d({ pubkeys, len: xt(pubkeys, 'length'), type: typeof pubkeys });
 	//let address = new Address(pubkeys, pubkeys.length);
 
 	for (let i = 0; i < USER_INPUT_SIZE; i++) {
@@ -1012,7 +1012,7 @@ function dss(
      * Assumes that the length byte of signatures[txid].signature
      * is present as the first byte
      */
-		console.debug({ txid });
+		d({ txid });
 
 		let pk = PrivateKey.fromWIF(client_session.mixing_inputs[i].privateKey);
 		let pub = pk.publicKey;
@@ -1026,14 +1026,18 @@ function dss(
 		};
 		let tx = new Transaction()
 			.from(utxo) //, pubkeys, pubkeys.length)
-		//.to(
-		//	client_session.generated_addresses[i],
-		//	client_session.denominatedAmount
-		//)
+			.to(
+				client_session.generated_addresses[i],
+				client_session.denominatedAmount
+			)
 			.sign(
-				pk,
+				[pk],
 				parseInt(Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY, 10)
 			);
+		//d({
+		//	ser: tx.uncheckedSerialize(),
+		//	gen_addr: client_session.generated_addresses[i],
+		//});
 		let sigScript = tx.inputs[0]._scriptBuffer;
 		let encodedScript = hexToBytes(sigScript.toString('hex'));
 		let len = encodedScript.length;
@@ -1046,13 +1050,13 @@ function dss(
 		TOTAL_SIZE += client_session.mixing_inputs[i].script.len;
 		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
 
-		d({
-			ser: tx.uncheckedSerialize(),
-			//sig,
-			tx,
-			mi: client_session.mixing_inputs[i],
-			i,
-		});
+		//d({
+		//	ser: tx.uncheckedSerialize(),
+		//	//sig,
+		//	tx,
+		//	mi: client_session.mixing_inputs[i],
+		//	i,
+		//});
 	}
 
 	/**

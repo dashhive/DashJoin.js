@@ -117,7 +117,7 @@ module.exports = {
 					'--senddsi=true',
 				]);
 				m.stdout.on('data', (data) => {
-					console.log('[ok]: ', data.toString());
+					console.log(data.toString());
 				});
 				m.stderr.on('data', (data) => {
 					console.error('error', data.toString());

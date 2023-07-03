@@ -8,7 +8,7 @@ function setNickname(n) {
 }
 
 function debug(...args) {
-	console.debug(`${nickName}[DBG]:`, ...args);
+	console.debug(`${nickName}:`, ...args);
 }
 function info(...args) {
 	console.info(`${nickName}[INFO]:`, ...args);

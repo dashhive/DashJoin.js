@@ -13,6 +13,7 @@ const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
 const Signature = DashCore.crypto.Signature;
 const fs = require('fs');
+const { bigint_safe_json_stringify } = require('./array-utils.js');
 
 let client_session;
 function setClientSession(c) {
@@ -70,7 +71,7 @@ async function createDSIPacket(masterNode, username, denominatedAmount, count) {
 		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 		await fs.writeFileSync(
 			`${Util.getDataDir()}/dsf-mixing-inputs-${username}-${lmdb_counter}.json`,
-			JSON.stringify(client_session, null, 2)
+			bigint_safe_json_stringify(client_session, null, 2)
 		);
 	}
 	return Network.packet.coinjoin.dsi({

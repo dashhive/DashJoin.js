@@ -64,6 +64,7 @@ async function onDSFMessage(parsed, masterNode) {
 	debug(client_session.get_inputs());
 
 	//let tx = new Transaction().from(utxos);
+	debug('DSS broadcast');
 	masterNode.client.write(
 		Network.packet.coinjoin.dss({
 			chosen_network: masterNode.network,
@@ -72,6 +73,7 @@ async function onDSFMessage(parsed, masterNode) {
 			client_session,
 		})
 	);
+	debug('DSS sent');
 }
 async function onDSSUChanged(parsed, masterNode) {
 	let msgId = parsed.message_id[1];
@@ -212,15 +214,15 @@ async function preInit(
 	network = config.network;
 	let ourIP = config.ourIP;
 	let startBlockHeight = config.startBlockHeight;
-	//if (_in_count) {
-	//	INPUTS = parseInt(_in_count, 10);
-	//}
-	//if (isNaN(INPUTS)) {
-	//	throw new Error('--count must be a positive integer');
-	//}
-	//if (INPUTS >= 253) {
-	//	throw new Error('--count currently only supports a max of 252');
-	//}
+	if (_in_count) {
+		INPUTS = parseInt(_in_count, 10);
+	}
+	if (isNaN(INPUTS)) {
+		throw new Error('--count must be a positive integer');
+	}
+	if (INPUTS >= 253) {
+		throw new Error('--count currently only supports a max of 252');
+	}
 	let instanceName = _in_instanceName;
 	username = _in_username;
 	dboot = await dashboot.load_instance(instanceName);
