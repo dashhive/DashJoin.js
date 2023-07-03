@@ -33,12 +33,13 @@ async function extractSigScript(
 	}
 	let outputIndex = parseInt(utxoInfo.outputIndex, 10);
 	let seq = 0xffffffff;
-	let address = utxoInfo.address;
+	let pk = PrivateKey.fromWIF(utxoInfo.privateKey);
+	let pub = pk.publicKey;
 	let utxos = {
 		txId: txid,
 		outputIndex,
 		sequenceNumber: seq,
-		scriptPubKey: Script.buildPublicKeyHashOut(address),
+		scriptPubKey: Script.buildPublicKeyHashOut(pub),
 		satoshis: denominatedAmount,
 	};
 	if (verbose()) {
@@ -46,11 +47,9 @@ async function extractSigScript(
 		d.d({ utxoInfo, pk: utxoInfo.privateKey });
 	}
 
-	let pk = PrivateKey.fromWIF(utxoInfo.privateKey);
-
 	let tx = new Transaction()
 		.from(utxos)
-		.to(address, denominatedAmount)
+	//.to(address, denominatedAmount)
 		.sign([pk], Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
 	d.d(tx.verify());
 	if (onlyTx) {

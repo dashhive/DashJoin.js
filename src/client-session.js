@@ -17,7 +17,7 @@ function ClientSession() {
 	self.add_inputs = function (chosenInputTxns) {
 		self.add_txids(ArrayUtils.extract(chosenInputTxns, 'txid'));
 		self.add_addresses(ArrayUtils.extract(chosenInputTxns, 'address'));
-		self.mixing_inputs = chosenInputTxns;
+		self.mixing_inputs = [...self.mixing_inputs, ...chosenInputTxns];
 	};
 	self.add_generated_addresses = function (list) {
 		self.generated = [...self.generated, ...list];

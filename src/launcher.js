@@ -78,7 +78,7 @@ function nickname(user) {
 	}
 	return names[ctr++];
 }
-const CONCURRENT_USERS = 3;
+const CONCURRENT_USERS = 2;
 module.exports = {
 	run_cli_program: function () {
 		(async function (instanceName) {
@@ -87,9 +87,12 @@ module.exports = {
        */
 			console.info(`[status]: loading "${instanceName}" instance...`);
 			dboot = await dashboot.load_instance(instanceName);
-			let uniqueUsers = await dboot.extract_unique_users(CONCURRENT_USERS, {
-				filterByDenoms: getDemoDenomination(),
-			});
+			let except = [];
+			let uniqueUsers = await dboot.extract_unique_users(
+				CONCURRENT_USERS,
+				getDemoDenomination(),
+				except
+			);
 
 			/**
        * Pass choices[N] to a different process.
@@ -103,7 +106,7 @@ module.exports = {
          * Have them each submit to the same masternode
          *
          */
-				d({ user: choice.user, node: node() });
+				//d({ user: choice.user, node: node() });
 				let m = cproc.spawn('node', [
 					`${CURDIR}/demo.js`,
 					`--instance=${instanceName}`,
@@ -114,7 +117,7 @@ module.exports = {
 					'--senddsi=true',
 				]);
 				m.stdout.on('data', (data) => {
-					console.log('[ok]: ', data.toString());
+					console.log(data.toString());
 				});
 				m.stderr.on('data', (data) => {
 					console.error('error', data.toString());

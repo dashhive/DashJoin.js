@@ -31,7 +31,8 @@ async function getPrivateKey(username, address) {
 	}
 	return privateKey;
 }
-async function getUserInputs(username, denominatedAmount, count) {
+async function getUserInputs(client_session, denominatedAmount, count) {
+	//username, denominatedAmount, count, txids) {
 	count = parseInt(count, 10);
 	if (count <= 0 || isNaN(count)) {
 		throw new Error('count must be a valid positive integer');
@@ -40,10 +41,14 @@ async function getUserInputs(username, denominatedAmount, count) {
 	if (denominatedAmount <= 0 || isNaN(denominatedAmount)) {
 		throw new Error('denominatedAmount must be a valid positive integer');
 	}
-	let utxos = await dboot.get_denominated_utxos(username, denominatedAmount);
+	let utxos = await dboot.get_denominated_utxos(
+		client_session.username,
+		denominatedAmount
+	);
 	let selected = [];
 	let txids = {};
 	let i = 0;
+	//let utxos = client_session.mainUser.utxos;
 	while (selected.length < count) {
 		if (typeof txids[utxos[i].txid] !== 'undefined') {
 			++i;
@@ -51,9 +56,10 @@ async function getUserInputs(username, denominatedAmount, count) {
 		}
 		txids[utxos[i].txid] = 1;
 		selected.push(utxos[i]);
-		await dboot.mark_txid_used(username, utxos[i].txid);
+		await dboot.mark_txid_used(client_session.username, utxos[i].txid);
 		++i;
 	}
+	client_session.selected_user_inputs = selected;
 	return selected;
 }
 

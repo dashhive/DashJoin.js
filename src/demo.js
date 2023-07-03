@@ -20,9 +20,10 @@ let dboot;
 let network;
 let sendDsi;
 let username;
-let INPUTS;
+let INPUTS = 1;
 let client_session;
 let mainUser;
+let masterNodeConnection;
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
 }
@@ -47,68 +48,78 @@ function date() {
 	);
 }
 async function onDSFMessage(parsed, masterNode) {
-	if (extractOption('verbose') && (await Util.dataDirExists())) {
+	client_session.dsf_parsed = parsed;
+	if (await Util.dataDirExists()) {
 		const fs = require('fs');
 		debug('onDSFMessage hit');
 		debug(masterNode.dsfOrig);
 		await fs.writeFileSync(
 			`${Util.getDataDir()}/dsf-${client_session.username}-${date()}.json`,
-			ArrayUtils.bigint_safe_json_stringify(parsed, 2) + '\n'
+			ArrayUtils.bigint_safe_json_stringify(client_session, 2) + '\n'
 		);
 	}
 	let amount = getDemoDenomination();
 	let sigScripts = {};
 	debug(`submitted transactions: ${client_session.get_inputs().length}`);
 	debug(client_session.get_inputs());
-	for (const submission of client_session.get_inputs()) {
-		d({ submission });
-		let sig = await SigScript.extractSigScript(
-			dboot,
-			client_session.username,
-			{
-				needs_hash_byte_order: true,
-				txid: submission.txid,
-				address: submission.address,
-				outputIndex: submission.outputIndex,
-				privateKey: submission.privateKey,
-				parsed,
-			},
-			amount
-		);
-		debug({ txid: submission.txid, outputIndex: submission.outputIndex });
-		debug({
-			parsed,
-			t: parsed.transaction,
-			out: parsed.transaction.outputs,
-			in: parsed.transaction.inputs,
-		});
-		sigScripts[submission.txid] = {
-			signature: sig,
-			outputIndex: submission.outputIndex,
-		};
-	}
+
+	//let tx = new Transaction().from(utxos);
+	debug('DSS broadcast');
 	masterNode.client.write(
 		Network.packet.coinjoin.dss({
 			chosen_network: masterNode.network,
 			dsfPacket: parsed,
 			signatures: sigScripts,
+			client_session,
 		})
 	);
+	debug('DSS sent');
 }
-async function onDSSUChanged(parsed) {
+async function onDSSUChanged(parsed, masterNode) {
 	let msgId = parsed.message_id[1];
 	let state = parsed.state[1];
 	let update = parsed.status_update[1];
-	d({ msgId, state, update });
+	if (msgId === 'MSG_NOERR') {
+		msgId = 'OKAY';
+	}
+	d({
+		username: masterNode.client_session.username,
+		nick: masterNode.nickName,
+		msgId,
+		state,
+		update,
+	});
+	if (update === 'REJECTED') {
+		for (const input of client_session.mixing_inputs) {
+			await dboot.mark_txid_used(client_session.username, input.txid);
+			debug(`marked ${input.txid} as used`);
+		}
+		if (msgId === 'ERR_QUEUE_FULL') {
+			await masterNodeConnection.disconnect(function () {
+				done = true;
+				console.log('Closed connection');
+				process.exit(0);
+			});
+		}
+	}
 	if (msgId === 'ERR_INVALID_COLLATERAL') {
-		client_session.used_txids.push(mainUser.utxos[0].txid);
-		await dboot.mark_txid_used(username, mainUser.utxos[0].txid);
-		debug('marked collateral inputs as used');
+		client_session.used_txids.push(masterNode.collateralTx.txid);
+		await dboot.mark_txid_used(
+			client_session.username,
+			masterNode.collateralTx.txid
+		);
+		debug(`marked collateral input: ${masterNode.collateralTx.txid} as used`);
+		debug('input: ', masterNode.collateralTx);
+		await masterNodeConnection.disconnect(function () {
+			done = true;
+			console.log('Closed connection');
+			process.exit(0);
+		});
 	}
 }
 async function onCollateralTxCreated(tx, masterNode) {
 	debug(`onCollateralTxCreated via masterNode: ${masterNode.id()}`);
-	await dboot.mark_txid_used(tx.user, tx.txid);
+	await dboot.mark_txid_used(tx.user, tx.tx.txid);
 }
 async function stateChanged(obj) {
 	let dsaSent = false;
@@ -164,7 +175,7 @@ async function stateChanged(obj) {
 		break;
 	}
 }
-(async function preInit(
+async function preInit(
 	_in_instanceName,
 	_in_username,
 	_in_nickname,
@@ -179,7 +190,6 @@ async function stateChanged(obj) {
 		SigScript.setVerbosity(false);
 	}
 	client_session = new ClientSession();
-	INPUTS = 3;
 	sendDsi = _in_send_dsi;
 
 	let id = {};
@@ -215,18 +225,16 @@ async function stateChanged(obj) {
 	}
 	let instanceName = _in_instanceName;
 	username = _in_username;
-	d('before load');
 	dboot = await dashboot.load_instance(instanceName);
-	d('after load');
-	d({ username });
 	mainUser = await UserDetails.extractUserDetails(username);
-	dd({ mainUser });
+	mainUser.user = username;
+	//dd({ mainUser });
 	d('user details fetched');
 	let randomPayeeName = await dboot.get_random_payee(username);
 	d('random payee fetched');
 	let payee = await UserDetails.extractUserDetails(randomPayeeName);
+	d('payee fetched');
 
-	dd({ payee });
 	client_session.nickName = nickName;
 	client_session.instanceName = instanceName;
 	client_session.username = _in_username;
@@ -234,6 +242,7 @@ async function stateChanged(obj) {
 	client_session.mainUser = mainUser;
 	client_session.randomPayeeName = randomPayeeName;
 	client_session.payee = payee;
+	client_session.denominatedAmount = getDemoDenomination();
 
 	LibInput.initialize({
 		dboot,
@@ -254,7 +263,7 @@ async function stateChanged(obj) {
 		payee
 	);
 
-	let masterNodeConnection = new MasterNodeConnection({
+	masterNodeConnection = new MasterNodeConnection({
 		ip: masterNodeIP,
 		port: masterNodePort,
 		network,
@@ -271,6 +280,7 @@ async function stateChanged(obj) {
 		payee,
 		changeAddresses: mainUser.changeAddresses,
 		nickName,
+		client_session,
 	});
 	debug('Connecting...');
 	await masterNodeConnection.connect();
@@ -279,7 +289,8 @@ async function stateChanged(obj) {
 		await Util.sleep_ms(1500);
 	}
 	debug('exiting main function');
-})(
+}
+preInit(
 	extractOption('instance', true),
 	extractOption('username', true),
 	extractOption('nickname', true),
