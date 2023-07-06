@@ -10,8 +10,7 @@ const MetaDB = require('./metadb.js');
 const ArrayUtils = require('../array-utils.js');
 const DebugLib = require('../debug.js');
 const Sanitizers = require('../sanitizers.js');
-const { unique, bigint_safe_json_stringify, uniqueByKey, ps_extract } =
-  ArrayUtils;
+const { unique, bigint_safe_json_stringify, ps_extract } = ArrayUtils;
 const { dd, d } = DebugLib;
 const { sanitize_txid, sanitize_address, sanitize_addresses } = Sanitizers;
 const { extractOption } = require('../argv.js');
@@ -40,6 +39,8 @@ function cli_args(list) {
 		...list,
 	];
 }
+Bootstrap.save_exec = false;
+Bootstrap.verbose = false;
 Bootstrap.list_unspent = async function (username) {
 	username = Bootstrap.alias_check(username);
 	let output = await Bootstrap.wallet_exec(username, ['listunspent']);
@@ -67,7 +68,6 @@ Bootstrap.get_denominated_utxos = async function (
 			//d('is used');
 			continue;
 		}
-		let satoshis = parseInt(u.satoshis, 10);
 		if (u.satoshis === denominatedAmount) {
 			list.push(u);
 		} else {
@@ -81,6 +81,9 @@ Bootstrap.get_denominated_utxos = async function (
 	return list;
 };
 Bootstrap.save_denominated_tx = async function (rows) {
+	if (Bootstrap.verbose) {
+		console.info('save_denominated_tx no longer does anything', rows);
+	}
 	//let to = xt(rows, '0.to');
 	//await mdb.paged_store(to, 'denomtx', rows);
 	//d('saved');
@@ -118,7 +121,6 @@ Bootstrap.user_by_alias = async function (alias) {
 };
 Bootstrap.ring_buffer_init = async function (key_name, values) {
 	db_cj_ns('ring_buffer');
-	let ctr = await db_get(key_name);
 	await db_put(
 		key_name,
 		JSON.stringify({
@@ -361,8 +363,13 @@ Bootstrap.run = async function (cli_arguments) {
 };
 
 Bootstrap.__error = null;
+Bootstrap.saved_exec_list = [];
 
-Bootstrap.load_instance = async function (instance_name) {
+Bootstrap.load_instance = async function (instance_name, options = {}) {
+	if (xt(options, 'save_exec') !== null) {
+		Bootstrap.save_exec = options.save_exec;
+	}
+	Bootstrap.saved_exec_list = [];
 	Bootstrap.DASH_CLI = [process.env.HOME, 'bin', 'dash-cli'].join('/');
 	Bootstrap.DB = require('../lmdb/lmdb.js');
 	Bootstrap.__data.instance.name = instance_name;
@@ -563,7 +570,15 @@ Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
 	wallet_name = await Bootstrap.alias_check(wallet_name);
 	if (['1', 'true'].indexOf(String(extractOption('verbose', true))) !== -1) {
 		let args = cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments]);
-		//console.info(`wallet_exec: "${Bootstrap.DASH_CLI} ${args}`);
+		if (Bootstrap.verbose || Bootstrap.save_exec) {
+			console.info(`wallet_exec: "${Bootstrap.DASH_CLI} ${args}`);
+		}
+	}
+	if (Bootstrap.save_exec) {
+		Bootstrap.saved_exec_list.push([
+			Bootstrap.DASH_CLI,
+			cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments]),
+		]);
 	}
 	return await cproc.spawnSync(
 		Bootstrap.DASH_CLI,
@@ -856,7 +871,6 @@ Bootstrap.create_denominations_to_all = async function (iterations = 1) {
 		}
 	}
 };
-const LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 const LOW_COLLATERAL_AMOUNT = 0.0007;
 Bootstrap.collateral_amount = {
 	amount: LOW_COLLATERAL_AMOUNT,
@@ -1075,7 +1089,7 @@ Bootstrap.generate_dash_to_all = async function (iterations = 1) {
 	}
 };
 
-Bootstrap.generate_dash_to = async function (username, iterations = 1) {
+Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
 	await Bootstrap.unlock_all_wallets();
 	await Bootstrap.user_addresses(username, async function (addresses) {
@@ -1086,12 +1100,15 @@ Bootstrap.generate_dash_to = async function (username, iterations = 1) {
 			if (ctr < 0) {
 				return false;
 			}
-			let ps = await _bs.wallet_exec(username, [
+			let ps = await Bootstrap.wallet_exec(username, [
 				'generatetoaddress',
 				'10',
 				address,
 			]);
 			let { err, out } = ps_extract(ps, false);
+			if (Bootstrap.verbose) {
+				console.info(out);
+			}
 			if (err.length) {
 				console.error(`ERROR: ${username}: "${err}"`);
 				++ctr;
@@ -1224,14 +1241,6 @@ function usage() {
 		console.log('                                                       ');
 	}
 }
-function report(stats) {
-	let buffer = [];
-	for (const key in stats) {
-		buffer.push(`[${key}: ${stats[key]}]`);
-	}
-	process.stdout.write('\r' + buffer.join(' '));
-}
-
 Bootstrap.run_cli_program = async function () {
 	let help = false;
 	let config = {
@@ -1338,51 +1347,7 @@ Bootstrap.run_cli_program = async function () {
 	}
 	{
 		if (extractOption('sync-all')) {
-			let stats = {
-				skipped: 0,
-				good: 0,
-				addresses: 0,
-				utxos: 0,
-				users: 0,
-				empty_utxos: 0,
-			};
-
 			let users = await Bootstrap.user_list();
-			//d(users);
-			//for (const user of users) {
-			//	await Bootstrap.user_addresses(user, async function (addresses) {
-			//		stats.addresses += addresses.length;
-			//		let utxos = await Bootstrap.user_utxos_from_cli(user, addresses);
-			//		stats.utxos += utxos.length;
-			//		stats.users += 1;
-			//		report(stats);
-			//		for (let batch of utxos) {
-			//			if (Array.isArray(batch) === false) {
-			//				if (xt(batch, 'address')) {
-			//					batch = [batch];
-			//				} else {
-			//					d(batch);
-			//					continue;
-			//				}
-			//			}
-			//			let txids = [];
-			//			for (const utxo of batch) {
-			//				if (Bootstrap.is_txid_used(utxo.txid)) {
-			//					stats.skipped += 1;
-			//					report(stats);
-			//					continue;
-			//				}
-			//				txids.push(utxo.txid);
-			//				stats.good += 1;
-			//				report(stats);
-			//			}
-			//			if (txids.length) {
-			//				await mdb.paged_store(user, 'utxos', txids);
-			//			}
-			//		}
-			//	});
-			//}
-
 			for (const user of users) {
 				await Bootstrap.import_user_addresses_from_cli(user);
 			}

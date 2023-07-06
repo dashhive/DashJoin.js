@@ -30,8 +30,9 @@ function build_pk_sig(pk) {
 	s += ']';
 	return s;
 }
-async function signTransaction(dboot, username, txid) {
+async function signTransaction(dboot, client_session, txid) {
 	await dboot.unlock_all_wallets();
+	let username = client_session.username;
 	username = sanitize_username(username);
 	let txns = await dboot.list_unspent(username);
 	let choice = null;
@@ -59,6 +60,9 @@ async function signTransaction(dboot, username, txid) {
 		username,
 		sanitize_address(utxos.address)
 	);
+	if (!Array.isArray(pk)) {
+		pk = [pk];
+	}
 	let payeeAddress = await dboot.generate_new_addresses(username, 1);
 	payeeAddress = sanitize_address(payeeAddress[0]);
 	pk.push(
@@ -74,18 +78,30 @@ async function signTransaction(dboot, username, txid) {
 	]);
 	let out = ps_extract(output).out;
 	let scriptPubKey = bytesToString(utxos.scriptPubKey.toBuffer());
+	let tx_format = out;
 	output = await dboot.wallet_exec(username, [
 		'signrawtransactionwithkey',
-		sanitize_tx_format(out),
+		sanitize_tx_format(tx_format),
 		build_pk_sig(pk),
 		`[{"txid":"${utxos.txId}","vout":${utxos.outputIndex},"scriptPubKey":"${scriptPubKey}","amount":${utxos.satoshis}}]`,
 		'ALL|ANYONECANPAY',
 	]);
 	out = ps_extract(output).out;
-	out = JSON.parse(out);
-	out = out.hex;
+	let json = JSON.parse(out);
+	out = json.hex;
 	let tx = new Transaction(out);
 	let signature = tx.inputs[0]._scriptBuffer;
+	client_session.dss = {
+		tx,
+		signature,
+		tx_inputs: tx.inputs[0]._scriptBuffer,
+		pk_sig: build_pk_sig(pk),
+		tx_format: sanitize_tx_format(tx_format),
+		hex: json.hex,
+		json,
+		chosen_txid: txid,
+	};
+	await client_session.write('cli-sign');
 	return signature;
 }
 

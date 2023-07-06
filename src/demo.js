@@ -6,12 +6,12 @@ const { ClientSession } = require('./client-session.js');
 const Util = require('./util.js');
 const SigScript = require('./sigscript.js');
 const DsiFactory = require('./dsi-factory.js');
-const { debug, info, d, dd } = require('./debug.js');
+const { debug, info, d } = require('./debug.js');
 const LibInput = require('./choose-inputs.js');
 const extractOption = require('./argv.js').extractOption;
 const UserDetails = require('./bootstrap/user-details.js');
 const dashboot = require('./bootstrap/index.js');
-const ArrayUtils = require('./array-utils.js');
+//const ArrayUtils = require('./array-utils.js');
 const FileLib = require('./file.js');
 const MasterNodeConnection =
   require('./masternode-connection.js').MasterNodeConnection;
@@ -27,26 +27,6 @@ let mainUser;
 let masterNodeConnection;
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
-}
-function date() {
-	const d = new Date();
-	let h = d.getHours();
-	if (String(h).length === 1) {
-		h = `0${h}`;
-	}
-	let m = d.getMinutes();
-	if (String(m).length === 1) {
-		m = `0${m}`;
-	}
-	let s = d.getSeconds();
-	if (String(s).length === 1) {
-		s = `0${s}`;
-	}
-	return (
-		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
-    ' ' +
-    [h, m, s].join(':')
-	);
 }
 async function onDSFMessage(parsed, masterNode) {
 	d('DSF message received');
@@ -203,8 +183,8 @@ async function preInit(
 		config = require('./.mn2-config.json');
 		id.mn = 2;
 	}
-	for (const i in Array.from(Array(10).keys())) {
-		console.log(`masternode chosen: ${id.mn}`);
+	for (const i of Array.from(Array(10).keys())) {
+		console.log(`masternode chosen: ${id.mn} [${i}]`);
 	}
 
 	let masterNodeIP = config.masterNodeIP;
@@ -223,7 +203,9 @@ async function preInit(
 	}
 	let instanceName = _in_instanceName;
 	username = _in_username;
-	dboot = await dashboot.load_instance(instanceName);
+	dboot = await dashboot.load_instance(instanceName, {
+		save_exec: true,
+	});
 	mainUser = await UserDetails.extractUserDetails(username);
 	mainUser.user = username;
 	//dd({ mainUser });

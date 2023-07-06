@@ -926,7 +926,7 @@ async function dss(
 		});
 		let signature = await LibCliSign.signTransaction(
 			dboot,
-			client_session.username,
+			client_session,
 			input.txid
 		);
 		TOTAL_SIZE += signature.length;
