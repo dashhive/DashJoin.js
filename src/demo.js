@@ -50,25 +50,20 @@ function date() {
 }
 async function onDSFMessage(parsed, masterNode) {
 	d('DSF message received');
+
 	client_session.dsf_parsed = parsed;
-	if (await Util.dataDirExists()) {
-		const fs = require('fs');
-		await fs.writeFileSync(
-			`${Util.getDataDir()}/dsf-${client_session.username}-${date()}.json`,
-			ArrayUtils.bigint_safe_json_stringify(client_session, 2) + '\n'
-		);
-	}
 	d(`submitted transactions: ${client_session.get_inputs().length}`);
 	d('Submitting DSS packet');
-	FileLib.write_json(
+	await FileLib.write_json(
 		`dss-outputs-${client_session.username}-#DATE#`,
-		client_session.mixing_inputs
+		client_session
 	);
 	masterNode.client.write(
-		Network.packet.coinjoin.dss({
+		await Network.packet.coinjoin.dss({
 			chosen_network: masterNode.network,
 			dsfPacket: parsed,
 			client_session,
+			dboot,
 		})
 	);
 	d('DSS sent');

@@ -26,7 +26,7 @@ const path = require('path');
 const dashboot = require('./bootstrap/index.js');
 const DashCore = require('@dashevo/dashcore-lib');
 
-const INPUTS = 3;
+const INPUTS = 1;
 const CURDIR = path.resolve(__dirname);
 let dboot = null;
 

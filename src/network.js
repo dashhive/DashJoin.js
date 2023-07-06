@@ -6,22 +6,25 @@
  * IP address, with the exception that it can be a "IPv4-mapped IPv6 address".
  * See: http://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
  */
+const LibCliSign = require('./cli-sign.js');
 const net = require('net');
 const crypto = require('crypto');
 const { createHash } = crypto;
 const NetUtil = require('./network-util.js');
 const COIN = require('./coin-join-constants.js').COIN;
-const { xt } = require('@mentoc/xtract');
+//const { xt } = require('@mentoc/xtract');
 const hashByteOrder = NetUtil.hashByteOrder;
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
-const Address = DashCore.Address;
+//const Address = DashCore.Address;
 const PrivateKey = DashCore.PrivateKey;
-const PublicKey = DashCore.PublicKey;
+//const PublicKey = DashCore.PublicKey;
 const Signature = DashCore.crypto.Signature;
 const assert = require('assert');
-const fs = require('node:fs');
+const ArrayUtils = require('./array-utils.js');
+const { ps_extract } = ArrayUtils;
+const FileLib = require('./file.js');
 
 const Lib = { packet: { parse: {} } };
 module.exports = Lib;
@@ -945,11 +948,12 @@ function dsi(
 	return wrap_packet(args.chosen_network, 'dsi', packet, TOTAL_SIZE);
 }
 
-function dss(
+async function dss(
 	args = {
 		chosen_network,
 		dsfPacket,
 		client_session,
+		dboot,
 	}
 ) {
 	/**
@@ -957,94 +961,52 @@ function dss(
    * -----------
    * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
    */
-	const dsfPacket = args.dsfPacket;
-	assert.equal(
-		dsfPacket.transaction.inputCount < 253,
-		true,
-		'Can only support up to 252 inputs currently'
-	);
-	//const USER_INPUT_SIZE = args.dsfPacket.transaction.inputCount;
+	let dboot = args.dboot;
 	let client_session = args.client_session;
-	const USER_INPUT_SIZE = client_session.mixing_inputs.length;
-	assert.equal(
-		client_session.mixing_inputs.length,
-		client_session.generated_addresses.length,
-		'mixing inputs must equal generated addresses'
-	);
-	/**
-   * The input count byte
-   */
-	let TOTAL_SIZE = 1; // TODO: support compactSize
-	const TXID_LENGTH = 32;
-	const OUTPUT_INDEX_LENGTH = 4;
-	const SEQUENCE_NUMBER_LENGTH = 4;
-	let privkeys = [];
+	let prev_tx = [];
+	let TOTAL_SIZE = 0;
+	TOTAL_SIZE += 1; // input size length
+	client_session.signatures = {};
 	for (const input of client_session.mixing_inputs) {
-		privkeys.push(new PrivateKey(input.privateKey));
-	}
-
-	for (let i = 0; i < USER_INPUT_SIZE; i++) {
-		TOTAL_SIZE += TXID_LENGTH + OUTPUT_INDEX_LENGTH;
-
-		let pk = PrivateKey.fromWIF(
-			client_session.generated_addresses[i].privateKey
+		TOTAL_SIZE += 32;
+		TOTAL_SIZE += 4;
+		TOTAL_SIZE += 1; // script length
+		prev_tx.push({
+			txid: input.txid,
+			vout: input.outputIndex,
+			scriptPubKey: input.script,
+			amount: input.satoshis,
+		});
+		let signature = await LibCliSign.signTransaction(
+			dboot,
+			client_session.username,
+			input.txid
 		);
-		let utxo = {
-			address: client_session.mixing_inputs[i].address,
-			txId: client_session.mixing_inputs[i].txid,
-			outputIndex: client_session.mixing_inputs[i].outputIndex,
-			scriptPubKey: Script.buildPublicKeyHashOut(
-				client_session.mixing_inputs[i].address
-			),
-			satoshis: client_session.mixing_inputs[i].satoshis,
-		};
-		let tx = new Transaction()
-			.from(utxo)
-			.to(
-				client_session.generated_addresses[i].address,
-				client_session.denominatedAmount
-			)
-			.sign(
-				client_session.mixing_inputs[i].privateKey,
-				parseInt(Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY, 10)
-			);
-		let sigScript = tx.inputs[0]._scriptBuffer;
-		let encodedScript = hexToBytes(sigScript.toString('hex'));
-		let len = encodedScript.length;
-		client_session.mixing_inputs[i].script = {
-			value: sigScript,
-			buffer: encodedScript,
-			len,
-		};
-		TOTAL_SIZE += 1;
-		TOTAL_SIZE += client_session.mixing_inputs[i].script.len;
-		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
+		TOTAL_SIZE += signature.length;
+
+		client_session.signatures[input.txid] = signature;
+		TOTAL_SIZE += 4;
 	}
+	let rel_path = `dss-${client_session.username}-#DATE#`;
+	await FileLib.write_json(rel_path, client_session);
 
-	/**
-   * Packet payload
-   */
-	let offset = 0;
 	let packet = new Uint8Array(TOTAL_SIZE);
-	packet.set([USER_INPUT_SIZE], 0);
-	offset += 1; // TODO: compactSize
+	let offset = 0;
+	packet.set([client_session.mixing_inputs.length], offset);
+	offset += 1;
 
-	/**
-   * Add each input
-   */
 	for (const input of client_session.mixing_inputs) {
 		packet.set(hexToBytes(hashByteOrder(input.txid)), offset);
 		offset += 32;
-		packet.set([input.outputIndex], offset);
+		packet.set(hexToBytes(input.outputIndex), offset);
 		offset += 4;
-		packet.set([input.script.buffer.length], offset);
+		packet.set([client_session.signatures[input.txid].length], offset);
 		offset += 1;
-		packet.set(input.script.buffer, offset);
-		offset += input.script.buffer.length;
-		packet.set(hexToBytes('ffffffff'), offset);
+		packet.set(client_session.signatures[input.txid], offset);
+		offset += client_session.signatures[input.txid].length;
+		packet.set([0xffffffff], offset);
 		offset += 4;
 	}
-
 	return wrap_packet(args.chosen_network, 'dss', packet, TOTAL_SIZE);
 }
 

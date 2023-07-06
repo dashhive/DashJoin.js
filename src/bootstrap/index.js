@@ -16,7 +16,8 @@ const { dd, d } = DebugLib;
 const { sanitize_txid, sanitize_address, sanitize_addresses } = Sanitizers;
 const { extractOption } = require('../argv.js');
 const COIN = require('../coin-join-constants.js').COIN;
-//const hashByteOrder = NetworkUtil.hashByteOrder;
+const NetworkUtil = require('../network-util.js');
+const hashByteOrder = NetworkUtil.hashByteOrder;
 let db_cj, db_cj_ns, db_put, db_get, db_append;
 let mdb;
 
@@ -29,7 +30,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 
 async function LogUtxos(user, utxos) {
-	console.log(`LogUtxos: ${user}`);
+	//console.log(`LogUtxos: ${user}`);
 	let fn = `${process.env.HOME}/data/${user}-utxos.json`;
 	await require('fs/promises').appendFile(fn, JSON.stringify(utxos) + '\n');
 }
@@ -39,6 +40,15 @@ function cli_args(list) {
 		...list,
 	];
 }
+Bootstrap.list_unspent = async function (username) {
+	username = Bootstrap.alias_check(username);
+	let output = await Bootstrap.wallet_exec(username, ['listunspent']);
+	let { out, err } = ps_extract(output);
+	if (err) {
+		throw new Error(err);
+	}
+	return JSON.parse(out);
+};
 Bootstrap.get_denominated_utxos = async function (
 	username,
 	denominatedAmount,
@@ -436,7 +446,7 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 			}
 			if (keep.length) {
 				await Bootstrap.set_addresses(username, keep);
-				console.info(`${keep.length} addresses imported for user: ${username}`);
+				//console.info(`${keep.length} addresses imported for user: ${username}`);
 				return true;
 			} else {
 				//console.warn(`No addresses for user: ${username}`);
@@ -514,6 +524,7 @@ Bootstrap.user_create = async function (username) {
 };
 
 Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
+	wallet_name = await Bootstrap.alias_check(wallet_name);
 	if (['1', 'true'].indexOf(String(extractOption('verbose', true))) !== -1) {
 		let args = cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments]);
 		//console.info(`wallet_exec: "${Bootstrap.DASH_CLI} ${args}`);
@@ -1144,6 +1155,7 @@ function usage() {
 	console.log(
 		'--grind            Calls generate dash and create denoms in a loop'
 	);
+	console.log('--hash-byte-order=N  Convert the string N into hash byte order');
 	if (extractOption('helpinstances')) {
 		console.log('');
 		console.log('# What are instances?');
@@ -1213,6 +1225,11 @@ Bootstrap.run_cli_program = async function () {
 	if (iname) {
 		config.instance = iname;
 		help = false;
+	}
+	let hbo = extractOption('hash-byte-order', true);
+	if (hbo) {
+		process.stdout.write(hashByteOrder(hbo));
+		process.exit(0);
 	}
 	await Bootstrap.load_instance(config.instance);
 	{
@@ -1545,7 +1562,7 @@ Bootstrap.is_txid_used = function (username, txid) {
 };
 Bootstrap.used_txids = [];
 Bootstrap.load_used_txid_ram_slots = async function () {
-	console.info('[ ] Loading used txids into ram....');
+	//console.info('[ ] Loading used txids into ram....');
 	Bootstrap.used_txids = [];
 	let map = {};
 	for (const user of await Bootstrap.user_list()) {
@@ -1572,20 +1589,20 @@ Bootstrap.load_used_txid_ram_slots = async function () {
 			}
 		}
 	}
-	console.info(`[+] ${Bootstrap.used_txids.length} used txids loaded into ram`);
+	//console.info(`[+] ${Bootstrap.used_txids.length} used txids loaded into ram`);
 };
 Bootstrap.user_aliases = {};
 Bootstrap.load_alias_ram_slots = async function () {
-	console.info('[ ] Loading user aliases into ram....');
+	//console.info('[ ] Loading user aliases into ram....');
 	Bootstrap.user_aliases = {};
 	for (const user of await Bootstrap.user_list({ with: 'alias' })) {
 		Bootstrap.user_aliases[user.alias] = user.user;
 	}
-	console.info(
-		`[+] ${
-			Object.keys(Bootstrap.user_aliases).length
-		} user aliases loaded into ram`
-	);
+	//console.info(
+	//	`[+] ${
+	//		Object.keys(Bootstrap.user_aliases).length
+	//	} user aliases loaded into ram`
+	//);
 };
 Bootstrap.mark_txid_used = async function (username, txid) {
 	username = Bootstrap.alias_check(username);
