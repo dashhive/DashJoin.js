@@ -50,7 +50,11 @@ function sanitize_vout(str) {
 	if (typeof str === 'undefined') {
 		throw new Error('vout is undefined');
 	}
-	return String(str).replace(/[^0-9]+/gi, '');
+	let tmp = parseInt(String(str).replace(/[^0-9]+/gi, ''), 10);
+	if (isNaN(tmp)) {
+		throw new Error('after sanitization, vout is not an integer');
+	}
+	return tmp;
 }
 function sanitize_hex(str) {
 	if (str === null) {

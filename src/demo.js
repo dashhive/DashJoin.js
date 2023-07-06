@@ -3,18 +3,24 @@
 const COIN = require('./coin-join-constants.js').COIN;
 const Network = require('./network.js');
 const { ClientSession } = require('./client-session.js');
+const { xt } = require('@mentoc/xtract');
 const Util = require('./util.js');
 const SigScript = require('./sigscript.js');
 const DsiFactory = require('./dsi-factory.js');
-const { debug, info, d } = require('./debug.js');
+const DebugLib = require('./debug.js');
+const { debug, info, d } = DebugLib;
+const { dd } = DebugLib;
 const LibInput = require('./choose-inputs.js');
 const extractOption = require('./argv.js').extractOption;
 const UserDetails = require('./bootstrap/user-details.js');
 const dashboot = require('./bootstrap/index.js');
-//const ArrayUtils = require('./array-utils.js');
 const FileLib = require('./file.js');
 const MasterNodeConnection =
   require('./masternode-connection.js').MasterNodeConnection;
+const DashCore = require('@dashevo/dashcore-lib');
+const Transaction = DashCore.Transaction;
+const Script = DashCore.Script;
+const Address = DashCore.Address;
 
 let done = false;
 let dboot;
@@ -27,6 +33,17 @@ let mainUser;
 let masterNodeConnection;
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
+}
+function getDenominatedOutput(txn, amount) {
+	let vout = 0;
+	for (let output of txn.outputs) {
+		if (output._satoshis === parseInt(amount * COIN, 10)) {
+			output.vout = vout;
+			return output;
+		}
+		++vout;
+	}
+	return null;
 }
 async function onDSFMessage(parsed, masterNode) {
 	d('DSF message received');
@@ -63,10 +80,6 @@ async function onDSSUChanged(parsed, masterNode) {
 		update,
 	});
 	if (update === 'REJECTED') {
-		for (const input of client_session.mixing_inputs) {
-			await dboot.mark_txid_used(client_session.username, input.txid);
-			debug(`marked ${input.txid} as used`);
-		}
 		if (msgId === 'ERR_QUEUE_FULL') {
 			await masterNodeConnection.disconnect(function () {
 				done = true;
@@ -158,16 +171,7 @@ async function preInit(
 	_in_mn_choice
 ) {
 	let nickName = _in_nickname;
-	if (String(_in_verbose).toLowerCase() === 'true') {
-		SigScript.setVerbosity(true);
-	} else {
-		SigScript.setVerbosity(false);
-	}
-	client_session = new ClientSession();
-	sendDsi = _in_send_dsi;
-
 	let id = {};
-
 	let config = require('./.mn0-config.json');
 	switch (_in_mn_choice) {
 	default:
@@ -183,6 +187,16 @@ async function preInit(
 		config = require('./.mn2-config.json');
 		id.mn = 2;
 	}
+	nickName += `(${_in_mn_choice})`;
+	DebugLib.setNickname(nickName);
+	if (String(_in_verbose).toLowerCase() === 'true') {
+		SigScript.setVerbosity(true);
+	} else {
+		SigScript.setVerbosity(false);
+	}
+	client_session = new ClientSession();
+	sendDsi = _in_send_dsi;
+
 	for (const i of Array.from(Array(10).keys())) {
 		console.log(`masternode chosen: ${id.mn} [${i}]`);
 	}
@@ -203,9 +217,52 @@ async function preInit(
 	}
 	let instanceName = _in_instanceName;
 	username = _in_username;
-	dboot = await dashboot.load_instance(instanceName, {
-		save_exec: true,
-	});
+	dboot = await dashboot.load_instance(instanceName);
+
+	/**
+   * Grab all unspent utxos
+   */
+	let keep = [];
+	let utxos = await dboot.list_unspent(username);
+	const SATOSHIS = 0.00100001;
+	for (const u of utxos) {
+		if (u.amount === SATOSHIS) {
+			let payeeAddress = await dboot.generate_address(username, 1);
+			let tx = await dboot.get_transaction(username, u.txid);
+			process.stdout.write('.');
+			if (xt(tx, `${u.txid}.details.0.category`) === 'receive') {
+				process.stdout.write('o');
+				let fed = new Transaction(tx[u.txid].hex);
+				let output = getDenominatedOutput(fed, SATOSHIS);
+				let address = Address.fromString(xt(tx, `${u.txid}.details.0.address`));
+				let utxo = {
+					txId: u.txid,
+					outputIndex: output.vout,
+					satoshis: parseInt(SATOSHIS * COIN, 10),
+					scriptPubKey: Script.buildPublicKeyHashOut(address),
+				};
+				let txn = new Transaction().from(utxo);
+				let pk = await dboot.get_private_key(
+					username,
+					xt(tx, `${u.txid}.details.0.address`)
+				);
+				txn.to(payeeAddress[0], parseInt(SATOSHIS * COIN, 10));
+				txn.sign(pk);
+				keep.push({
+					signed: txn,
+					private_key: pk,
+					from_get_transaction: tx,
+					payee: payeeAddress[0],
+					utxo,
+				});
+			}
+		}
+		if (keep.length === INPUTS) {
+			break;
+		}
+	}
+	client_session.mixing_inputs = keep;
+
 	mainUser = await UserDetails.extractUserDetails(username);
 	mainUser.user = username;
 	//dd({ mainUser });
@@ -233,7 +290,7 @@ async function preInit(
 	DsiFactory.initialize(
 		dboot,
 		_in_username,
-		_in_nickname,
+		nickName,
 		_in_count,
 		_in_send_dsi,
 		getDemoDenomination(),

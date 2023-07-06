@@ -1,13 +1,22 @@
+#!/usr/bin/env node
 'use strict';
 const NetUtil = require('./network-util.js');
+const { COIN } = require('./coin-join-constants.js');
+const { hashByteOrder } = NetUtil;
+const { hexToBytes } = NetUtil;
 const bytesToString = NetUtil.bytesToString;
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
 const ArrayUtils = require('./array-utils.js');
 const Signature = DashCore.crypto.Signature;
+const Bootstrap = require('./bootstrap/index.js');
+const fs = require('fs');
+const { ClientSession } = require('./client-session.js');
 const { d } = require('./debug.js');
+const { dd } = require('./debug.js');
 const { ps_extract } = ArrayUtils;
+const { xt } = require('@mentoc/xtract');
 const {
 	sanitize_vout,
 	sanitize_txid,
@@ -50,59 +59,48 @@ async function signTransaction(dboot, client_session, txid) {
 		outputIndex: sanitize_vout(choice.vout),
 		address: sanitize_address(choice.address),
 		sequenceNumber: 0xffffffff,
-		satoshis: parseFloat(choice.amount, 10),
+		satoshis: parseInt(choice.amount * COIN, 10),
 		scriptPubKey: Script.buildPublicKeyHashOut(
-			sanitize_address(choice.address),
-			Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+			sanitize_address(choice.address)
 		),
 	};
-	let pk = await dboot.get_private_key(
-		username,
-		sanitize_address(utxos.address)
+	let pk = await dboot.get_private_key(username, choice.address);
+	let payeeAddress = await dboot.generate_new_addresses(
+		client_session.username,
+		1
 	);
-	if (!Array.isArray(pk)) {
-		pk = [pk];
-	}
-	let payeeAddress = await dboot.generate_new_addresses(username, 1);
-	payeeAddress = sanitize_address(payeeAddress[0]);
-	pk.push(
-		await dboot.get_private_key(username, sanitize_address(payeeAddress))
-	);
+	payeeAddress = payeeAddress[0];
+	//for (let input of client_session.mixing_inputs) {
+	//	let transaction = await dboot.get_transaction(username, utxos.txId);
+	//	input.gettransaction = transaction;
+	//	pk.push(
+	//		await dboot.get_private_key(
+	//			username,
+	//			xt(transaction, 'details.0.address')
+	//		)
+	//	);
+	//	d(input.txid, 'gettransaction:', input.gettransaction, pk);
+	//}
 
-	let fee = 0.00000191;
-	d({ pk });
-	let output = await dboot.wallet_exec(username, [
-		'createrawtransaction',
-		`[{"txid":"${utxos.txId}","vout":${utxos.outputIndex}}]`,
-		`[{"${payeeAddress}":${utxos.satoshis - fee}}]`,
-	]);
-	let out = ps_extract(output).out;
-	let scriptPubKey = bytesToString(utxos.scriptPubKey.toBuffer());
-	let tx_format = out;
-	output = await dboot.wallet_exec(username, [
-		'signrawtransactionwithkey',
-		sanitize_tx_format(tx_format),
-		build_pk_sig(pk),
-		`[{"txid":"${utxos.txId}","vout":${utxos.outputIndex},"scriptPubKey":"${scriptPubKey}","amount":${utxos.satoshis}}]`,
-		'ALL|ANYONECANPAY',
-	]);
-	out = ps_extract(output).out;
-	let json = JSON.parse(out);
-	out = json.hex;
-	let tx = new Transaction(out);
-	let signature = tx.inputs[0]._scriptBuffer;
-	client_session.dss = {
+	let fee = 200;
+	let tx = new Transaction()
+		.from(utxos)
+		.fee(fee)
+		.to(payeeAddress, utxos.satoshis - fee)
+		.sign(pk, Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
+	let signature = tx.inputs[0]._script.toHex();
+	let encodedScript = hexToBytes(signature);
+	let len = encodedScript.length;
+	client_session.cli_sign = {
+		_script: tx.inputs[0]._script,
+		_hex: tx.inputs[0]._script.toHex(),
+		utxos,
+		choice,
+		pk,
 		tx,
-		signature,
-		tx_inputs: tx.inputs[0]._scriptBuffer,
-		pk_sig: build_pk_sig(pk),
-		tx_format: sanitize_tx_format(tx_format),
-		hex: json.hex,
-		json,
-		chosen_txid: txid,
 	};
-	await client_session.write('cli-sign');
-	return signature;
+	await client_session.write('clisign');
+	return [len, ...encodedScript];
 }
 
 let Lib = {};

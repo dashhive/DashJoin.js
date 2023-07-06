@@ -14,6 +14,7 @@ const COIN = require('./coin-join-constants.js').COIN;
 const hashByteOrder = NetUtil.hashByteOrder;
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
+const Address = DashCore.Address;
 const assert = require('assert');
 const FileLib = require('./file.js');
 
@@ -774,27 +775,8 @@ function dsc() {}
 function dsf() {}
 function encodeInputs(inputs) {
 	let utxos = [];
-	let satoshis = 0;
-	for (let input of inputs) {
-		satoshis = 0;
-		if (typeof input.amount !== 'undefined') {
-			satoshis = parseInt(input.amount * COIN, 10);
-		} else {
-			satoshis = parseInt(input.satoshis, 10);
-		}
-		let vout = 0;
-		if (typeof input.outputIndex !== 'undefined') {
-			vout = parseInt(input.outputIndex, 10);
-		} else {
-			vout = parseInt(input.vout, 10);
-		}
-		utxos.push({
-			txId: input.txid,
-			outputIndex: vout,
-			sequenceNumber: 0xffffffff,
-			scriptPubKey: [],
-			satoshis,
-		});
+	for (const input of inputs) {
+		utxos.push(input.utxo);
 	}
 	return new Transaction().from(utxos);
 }
@@ -802,7 +784,7 @@ function encodeInputs(inputs) {
 function encodeOutputs(client_session, amount) {
 	var tx = new Transaction();
 	for (const address of client_session.generated_addresses) {
-		tx.to(address.address, amount);
+		tx.to(Address.fromString(address.address), amount);
 	}
 	return tx;
 }
@@ -820,22 +802,6 @@ function dsi(
 	if (!(args.collateralTxn instanceof Transaction)) {
 		throw new Error('collateralTxn must be Transaction');
 	}
-	let utxos = [];
-	var tx = new Transaction();
-	for (const input of client_session.mixing_inputs) {
-		utxos.push({
-			txId: input.txid,
-			outputIndex: input.outputIndex,
-			satoshis: input.satoshis,
-			scriptPubKey: [],
-			sequenceNumber: 0xffffffff,
-		});
-	}
-	tx.from(utxos);
-	for (const address of client_session.generated_addresses) {
-		tx.to(address.address, denominatedAmount);
-	}
-
 	let userInputTxn = encodeInputs(client_session.mixing_inputs);
 	let userOutputTxn = encodeOutputs(client_session, denominatedAmount);
 
@@ -917,7 +883,8 @@ async function dss(
 	for (const input of client_session.mixing_inputs) {
 		TOTAL_SIZE += 32;
 		TOTAL_SIZE += 4;
-		TOTAL_SIZE += 1; // script length
+		// Signature length will be part of signature
+		//TOTAL_SIZE += 1; // script length
 		prev_tx.push({
 			txid: input.txid,
 			vout: input.outputIndex,
@@ -947,8 +914,9 @@ async function dss(
 		offset += 32;
 		packet.set(hexToBytes(input.outputIndex), offset);
 		offset += 4;
-		packet.set([client_session.signatures[input.txid].length], offset);
-		offset += 1;
+		// Signature length will be part of signature
+		//packet.set([client_session.signatures[input.txid].length], offset);
+		//offset += 1;
 		packet.set(client_session.signatures[input.txid], offset);
 		offset += client_session.signatures[input.txid].length;
 		packet.set([0xffffffff], offset);

@@ -39,6 +39,65 @@ function cli_args(list) {
 		...list,
 	];
 }
+Bootstrap.get_transaction = async function (
+	username,
+	txid_list,
+	keep_errors = false
+) {
+	if (keep_errors) {
+		Bootstrap.get_transaction_errors = [];
+	}
+	username = Bootstrap.alias_check(username);
+	if (Array.isArray(txid_list) === false) {
+		txid_list = [txid_list];
+	}
+	let mappings = {};
+	for (const txid of txid_list) {
+		let output = await Bootstrap.wallet_exec(username, [
+			'gettransaction',
+			sanitize_txid(txid),
+		]);
+		let { out, err } = ps_extract(output);
+		if (err.length) {
+			if (keep_errors) {
+				Bootstrap.get_transaction_errors.push(err);
+			}
+		}
+		try {
+			mappings[txid] = JSON.parse(out);
+		} catch (e) {
+			if (keep_errors) {
+				Bootstrap.get_transaction_errors.push(e);
+			}
+			mappings[txid] = null;
+		}
+	}
+	return mappings;
+};
+Bootstrap.get_address_from_txid = async function (username, txid_list) {
+	username = Bootstrap.alias_check(username);
+	if (Array.isArray(txid_list) === false) {
+		txid_list = [txid_list];
+	}
+	let mappings = {};
+	for (const txid of txid_list) {
+		let output = await Bootstrap.wallet_exec(username, [
+			'gettransaction',
+			sanitize_txid(txid),
+		]);
+		let { out, err } = ps_extract(output);
+		if (err.length) {
+			throw new Error(err);
+		}
+		try {
+			out = JSON.parse(out);
+			mappings[txid] = xt(out, 'details.0.address');
+		} catch (e) {
+			throw new Error(e);
+		}
+	}
+	return mappings;
+};
 Bootstrap.save_exec = false;
 Bootstrap.verbose = false;
 Bootstrap.list_unspent = async function (username) {
@@ -168,31 +227,6 @@ Bootstrap.increment_key = async function (username, key_name) {
 	++ctr;
 	await db_put(key_name, String(ctr));
 	return ctr;
-};
-Bootstrap.get_address_from_txid = async function (username, txid) {
-	username = Bootstrap.alias_check(username);
-	await Bootstrap.unlock_all_wallets();
-	let addresses = await Bootstrap.user_addresses(username);
-	for (const address of addresses) {
-		let ps = await Bootstrap.wallet_exec(username, [
-			'getaddresstxids',
-			`"${sanitize_address(address)}"`,
-		]);
-		let { out, err } = ps_extract(ps);
-		if (err.length) {
-			console.error({ err });
-			throw new Error(err);
-		}
-		out = out.split('\n').map(function (c) {
-			return String(c)
-				.replace(/^\s*["]{1}/, '')
-				.replace(/[",]{1,2}.*$/, '');
-		});
-		if (out.indexOf(txid) !== -1) {
-			return address;
-		}
-	}
-	throw new Error('none found');
 };
 Bootstrap.decode_raw_transaction = async function (username, rawTx) {
 	username = Bootstrap.alias_check(username);
@@ -366,7 +400,12 @@ Bootstrap.__error = null;
 Bootstrap.saved_exec_list = [];
 
 Bootstrap.load_instance = async function (instance_name, options = {}) {
-	if (xt(options, 'save_exec') !== null) {
+	if (instance_name === null) {
+		let file = `${process.env.HOME}/.dashjoinjs/current`;
+		instance_name = await fs.readFileSync(file);
+		instance_name = instance_name.toString().replace(/[^a-z0-9]+/gi, '');
+	}
+	if ([true, false].includes(xt(options, 'save_exec'))) {
 		Bootstrap.save_exec = options.save_exec;
 	}
 	Bootstrap.saved_exec_list = [];
