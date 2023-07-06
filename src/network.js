@@ -7,23 +7,14 @@
  * See: http://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
  */
 const LibCliSign = require('./cli-sign.js');
-const net = require('net');
 const crypto = require('crypto');
 const { createHash } = crypto;
 const NetUtil = require('./network-util.js');
 const COIN = require('./coin-join-constants.js').COIN;
-//const { xt } = require('@mentoc/xtract');
 const hashByteOrder = NetUtil.hashByteOrder;
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
-const Script = DashCore.Script;
-//const Address = DashCore.Address;
-const PrivateKey = DashCore.PrivateKey;
-//const PublicKey = DashCore.PublicKey;
-const Signature = DashCore.crypto.Signature;
 const assert = require('assert');
-const ArrayUtils = require('./array-utils.js');
-const { ps_extract } = ArrayUtils;
 const FileLib = require('./file.js');
 
 const Lib = { packet: { parse: {} } };
@@ -413,19 +404,19 @@ function version(
      *
      * Must be one of the values in NETWORKS constant above.
      */
-		chosen_network,
+		chosen_network: null,
 		/**
      * Required.
      */
-		protocol_version,
+		protocol_version: null,
 		/**
      * Required.
      */
-		services,
+		services: null,
 		/**
      * Required.
      */
-		addr_recv_services,
+		addr_recv_services: null,
 		/**
      * Required.
      *
@@ -433,7 +424,7 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_recv_ip,
+		addr_recv_ip: null,
 		/**
      * Required.
      *
@@ -443,7 +434,7 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_recv_port,
+		addr_recv_port: null,
 
 		/**
      * Required.
@@ -453,7 +444,7 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_trans_ip,
+		addr_trans_ip: null,
 		/**
      * Required.
      *
@@ -463,14 +454,14 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_trans_port,
+		addr_trans_port: null,
 
 		/**
      * Required.
      *
      * Start height of your best block chain.
      */
-		start_height,
+		start_height: null,
 
 		/**
      * Optional.
@@ -512,8 +503,6 @@ function version(
 		mnauth_challenge: null,
 	}
 ) {
-	const cmd = 'version';
-
 	let SIZES = getVersionSizes();
 
 	if (!VALID_NETS.includes(args.chosen_network)) {
@@ -535,7 +524,7 @@ function version(
     'undefined' !== typeof args.mnauth_challenge
 	) {
 		throw new Error(
-			`"mnauth_challenge" field is not supported in protocol versions prior to ${MNAUTH_CHALLENGE_OFFSET}`
+			'"mnauth_challenge" field is not supported in protocol versions prior to MNAUTH_CHALLENGE_OFFSET'
 		);
 	}
 	if ('undefined' !== typeof args.mnauth_challenge) {
@@ -620,7 +609,6 @@ function version(
 		let ipBytes = dot2num(transmittingIP.split(':').reverse()[0]);
 		let inv = htonl(ipBytes);
 		packet = setUint32(packet, inv, ADDR_TRANS_IP_OFFSET + 12);
-		let encodedIP = [0xff, 0xff];
 		packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
 	} else {
 		/** TODO: */
@@ -694,50 +682,10 @@ function getaddr() {
 	return packet;
 }
 
-const ping_message = function () {
-	/**
-   * FIXME: add network and adjust magic bytes accordingly
-   */
-	const NONCE = '12340000';
-	const cmd = 'ping';
-	const MAGIC_BYTES_SIZE = 4;
-	const COMMAND_SIZE = 12;
-	const PAYLOAD_SIZE = 4;
-	const CHECKSUM_SIZE = 4;
-	const NONCE_SIZE = 8;
-	const TOTAL_SIZE =
-    MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE + CHECKSUM_SIZE + NONCE_SIZE;
-	let packet = new Uint8Array(TOTAL_SIZE);
-	// TESTNET magic bytes
-	packet[0] = 0xce;
-	packet[1] = 0xe2;
-	packet[2] = 0xca;
-	packet[3] = 0xff;
-	packet.set(NETWORKS[net].magic, 0);
-	// point us to the beginning of the command name char[12]
-	let cmdArray = str2uint8(cmd);
-	packet.set(cmdArray, MAGIC_BYTES_SIZE);
-	// fill the payload
-	packet.set([0, 0, 0, 0x08], MAGIC_BYTES_SIZE + COMMAND_SIZE);
-
-	//// fill the checksum
-	let hash = createHash('sha256').update(NONCE).digest();
-	let hashOfHash = createHash('sha256').update(hash).digest();
-	let arr = hashOfHash.slice(0, 4);
-	packet.set(arr, MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE);
-
-	let nonceArray = str2uint8(NONCE);
-	// fill the nonce
-	packet.set(
-		nonceArray,
-		MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE + CHECKSUM_SIZE
-	);
-	return packet;
-};
 function pong(
 	args = {
-		chosen_network,
-		nonce,
+		chosen_network: null,
+		nonce: null,
 	}
 ) {
 	let nonceBuffer = new Uint8Array(PING_NONCE_SIZE);
@@ -746,15 +694,15 @@ function pong(
 }
 function verack(
 	args = {
-		chosen_network,
+		chosen_network: null,
 	}
 ) {
 	return wrap_packet(args.chosen_network, 'verack', null, 0);
 }
 function senddsq(
 	args = {
-		chosen_network,
-		fSendDSQueue,
+		chosen_network: null,
+		fSendDSQueue: null,
 	}
 ) {
 	let buffer = new Uint8Array([args.fSendDSQueue ? 1 : 0]);
@@ -762,14 +710,14 @@ function senddsq(
 }
 function sendaddrv2(
 	args = {
-		chosen_network,
+		chosen_network: null,
 	}
 ) {
 	return wrap_packet(args.chosen_network, 'sendaddrv2', null, 0);
 }
 function sendaddr(
 	args = {
-		chosen_network,
+		chosen_network: null,
 	}
 ) {
 	return wrap_packet(args.chosen_network, 'sendaddr', null, 0);
@@ -784,9 +732,9 @@ function isStandardDenomination(d) {
 
 function dsa(
 	args = {
-		chosen_network, // 'testnet'
-		denomination, // COIN / 1000 + 1
-		collateral, // see: ctransaction.js
+		chosen_network: null, // 'testnet'
+		denomination: null, // COIN / 1000 + 1
+		collateral: null, // see: ctransaction.js
 	}
 ) {
 	if (!isStandardDenomination(args.denomination)) {
@@ -853,7 +801,6 @@ function encodeInputs(inputs) {
 
 function encodeOutputs(client_session, amount) {
 	var tx = new Transaction();
-	let i = 0;
 	for (const address of client_session.generated_addresses) {
 		tx.to(address.address, amount);
 	}
@@ -862,10 +809,10 @@ function encodeOutputs(client_session, amount) {
 
 function dsi(
 	args = {
-		chosen_network, // 'testnet'
-		collateralTxn,
-		denominatedAmount,
-		client_session,
+		chosen_network: null, // 'testnet'
+		collateralTxn: null,
+		denominatedAmount: null,
+		client_session: null,
 	}
 ) {
 	let client_session = args.client_session;
@@ -950,10 +897,10 @@ function dsi(
 
 async function dss(
 	args = {
-		chosen_network,
-		dsfPacket,
-		client_session,
-		dboot,
+		chosen_network: null,
+		dsfPacket: null,
+		client_session: null,
+		dboot: null,
 	}
 ) {
 	/**
@@ -1088,8 +1035,6 @@ Lib.packet.parse.magicBytes = function (buffer) {
 };
 
 Lib.packet.parse.identifyMagicBytes = function (buffer) {
-	let bytes = Lib.packet.parse.magicBytes(buffer);
-
 	for (let key in NETWORKS) {
 		let bytesMatched = 0;
 		for (let i = 0; i < 4; i++) {
@@ -1188,9 +1133,6 @@ Lib.packet.parse.dsq = function (buffer) {
    */
 	let offset = MESSAGE_HEADER_SIZE;
 
-	let dsqPacket = extractChunk(buffer, offset, buffer.length);
-	//console.debug("packet details (minus header):", dsqPacket);
-
 	/**
    * Grab the denomination
    */
@@ -1254,9 +1196,6 @@ Lib.packet.parse.dssu = function (buffer) {
    * order to get to the dssu packet details.
    */
 	let offset = MESSAGE_HEADER_SIZE;
-
-	let dssuPacket = extractChunk(buffer, offset, buffer.length);
-	//console.debug("packet details (minus header):", dssuPacket);
 
 	/**
    * Grab the session id
@@ -1350,7 +1289,6 @@ Lib.packet.parse.dsf = function (buffer) {
 	parsed.sessionID = extractUint32(buffer, offset);
 	offset += SIZES.SESSIONID;
 
-	let tx = extractChunk(buffer, offset, buffer.length);
 	/**
    * Grab the VERSION
    */
@@ -1421,9 +1359,6 @@ Lib.packet.parse.dsf = function (buffer) {
 	parsed.raw_buffer = buffer;
 	return parsed;
 };
-function d(...args) {
-	console.debug(...args);
-}
 function dd(...args) {
 	console.debug(...args);
 	process.exit();

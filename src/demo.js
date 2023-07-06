@@ -174,7 +174,8 @@ async function preInit(
 	_in_nickname,
 	_in_count,
 	_in_send_dsi,
-	_in_verbose
+	_in_verbose,
+	_in_mn_choice
 ) {
 	let nickName = _in_nickname;
 	if (String(_in_verbose).toLowerCase() === 'true') {
@@ -188,18 +189,22 @@ async function preInit(
 	let id = {};
 
 	let config = require('./.mn0-config.json');
-	id.mn = 0;
-	if (extractOption('mn0')) {
+	switch (_in_mn_choice) {
+	default:
+	case 'local_1':
 		config = require('./.mn0-config.json');
 		id.mn = 0;
-	}
-	if (extractOption('mn1')) {
+		break;
+	case 'local_2':
 		config = require('./.mn1-config.json');
 		id.mn = 1;
-	}
-	if (extractOption('mn2')) {
+		break;
+	case 'local_3':
 		config = require('./.mn2-config.json');
 		id.mn = 2;
+	}
+	for (const i in Array.from(Array(10).keys())) {
+		console.log(`masternode chosen: ${id.mn}`);
 	}
 
 	let masterNodeIP = config.masterNodeIP;
@@ -289,5 +294,6 @@ preInit(
 	extractOption('nickname', true),
 	extractOption('count', true),
 	extractOption('senddsi', true),
-	extractOption('verbose', true)
+	extractOption('verbose', true),
+	extractOption('mn', true)
 );

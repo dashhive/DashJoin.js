@@ -116,6 +116,42 @@ Bootstrap.user_by_alias = async function (alias) {
 	}
 	return null;
 };
+Bootstrap.ring_buffer_init = async function (key_name, values) {
+	db_cj_ns('ring_buffer');
+	let ctr = await db_get(key_name);
+	await db_put(
+		key_name,
+		JSON.stringify({
+			value: values[0],
+			values,
+		})
+	);
+};
+Bootstrap.ring_buffer_next = async function (key_name) {
+	db_cj_ns('ring_buffer');
+	let val = await db_get(key_name);
+	try {
+		val = JSON.parse(val);
+	} catch (e) {
+		throw new Error(e);
+	}
+	let values = val.values;
+	let current = val.value;
+	let index = values.indexOf(current);
+	if (index + 1 >= values.length) {
+		val.value = values[0];
+	} else {
+		val.value = values[index + 1];
+	}
+	await db_put(
+		key_name,
+		JSON.stringify({
+			value: val.value,
+			values: val.values,
+		})
+	);
+	return val.value;
+};
 Bootstrap.increment_key = async function (username, key_name) {
 	username = Bootstrap.alias_check(username);
 	db_cj_ns([username, 'counters']);

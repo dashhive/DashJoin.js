@@ -88,6 +88,15 @@ module.exports = {
        */
 			console.info(`[status]: loading "${instanceName}" instance...`);
 			dboot = await dashboot.load_instance(instanceName);
+			let mnRingBuffer = await dboot.ring_buffer_next('masternodes');
+			if (typeof mnRingBuffer === 'undefined' || mnRingBuffer === null) {
+				await dboot.ring_buffer_init('masternodes', [
+					'local_1',
+					'local_2',
+					'local_3',
+				]);
+				mnRingBuffer = await dboot.ring_buffer_next('masternodes');
+			}
 			let except = [];
 			let uniqueUsers = await dboot.extract_unique_users(
 				CONCURRENT_USERS,
@@ -114,6 +123,7 @@ module.exports = {
 					`--username=${choice.user}`,
 					`--nickname=${nickname(choice.user)}`,
 					'--verbose=true',
+					`--mn=${mnRingBuffer}`,
 					`--count=${INPUTS}`,
 					'--senddsi=true',
 				]);
