@@ -2,6 +2,8 @@
 'use strict';
 const COIN = require('./coin-join-constants.js').COIN;
 const Network = require('./network.js');
+const NetworkUtil = require('./network-util.js');
+const { hashByteOrder } = NetworkUtil;
 const { ClientSession } = require('./client-session.js');
 const { xt } = require('@mentoc/xtract');
 const Util = require('./util.js');
@@ -21,6 +23,7 @@ const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
 const Address = DashCore.Address;
+const Signature = DashCore.crypto.Signature;
 
 let done = false;
 let dboot;
@@ -234,20 +237,27 @@ async function preInit(
 				process.stdout.write('o');
 				let fed = new Transaction(tx[u.txid].hex);
 				let output = getDenominatedOutput(fed, SATOSHIS);
+				let details = xt(tx, `${u.txid}.details`);
 				let address = Address.fromString(xt(tx, `${u.txid}.details.0.address`));
 				let utxo = {
 					txId: u.txid,
-					outputIndex: output.vout,
+					outputIndex: details[0].vout,
 					satoshis: parseInt(SATOSHIS * COIN, 10),
-					scriptPubKey: Script.buildPublicKeyHashOut(address),
+					scriptPubKey: Script.buildPublicKeyHashOut(
+						address,
+						Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+					),
+					sequence: 0xffffffff,
 				};
 				let txn = new Transaction().from(utxo);
 				let pk = await dboot.get_private_key(
 					username,
 					xt(tx, `${u.txid}.details.0.address`)
 				);
-				txn.to(payeeAddress[0], parseInt(SATOSHIS * COIN, 10));
-				txn.sign(pk);
+				//txn.to(payeeAddress[0], parseInt(SATOSHIS * COIN, 10));
+				txn.sign(pk, Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
+				//dd(txn);
+				d(txn.inputs[0]._script.toHex());
 				keep.push({
 					signed: txn,
 					private_key: pk,

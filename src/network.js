@@ -17,6 +17,8 @@ const Transaction = DashCore.Transaction;
 const Address = DashCore.Address;
 const assert = require('assert');
 const FileLib = require('./file.js');
+const DebugLib = require('./debug.js');
+const { d } = DebugLib;
 
 const Lib = { packet: { parse: {} } };
 module.exports = Lib;
@@ -874,31 +876,19 @@ async function dss(
    * -----------
    * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
    */
-	let dboot = args.dboot;
 	let client_session = args.client_session;
-	let prev_tx = [];
 	let TOTAL_SIZE = 0;
 	TOTAL_SIZE += 1; // input size length
 	client_session.signatures = {};
 	for (const input of client_session.mixing_inputs) {
 		TOTAL_SIZE += 32;
 		TOTAL_SIZE += 4;
-		// Signature length will be part of signature
-		//TOTAL_SIZE += 1; // script length
-		prev_tx.push({
-			txid: input.txid,
-			vout: input.outputIndex,
-			scriptPubKey: input.script,
-			amount: input.satoshis,
-		});
-		let signature = await LibCliSign.signTransaction(
-			dboot,
-			client_session,
-			input.txid
-		);
-		TOTAL_SIZE += signature.length;
-
-		client_session.signatures[input.txid] = signature;
+		TOTAL_SIZE += 1; // script length
+		let rawSig = input.signed.inputs[0]._script.toHex();
+		let encodedSignature = hexToBytes(rawSig);
+		let len = encodedSignature.length;
+		d({ len, rawSig, encodedSignature });
+		TOTAL_SIZE += len;
 		TOTAL_SIZE += 4;
 	}
 	let rel_path = `dss-${client_session.username}-#DATE#`;
@@ -910,16 +900,23 @@ async function dss(
 	offset += 1;
 
 	for (const input of client_session.mixing_inputs) {
-		packet.set(hexToBytes(hashByteOrder(input.txid)), offset);
+		packet.set(hexToBytes(hashByteOrder(input.utxo.txId)), offset);
+		assert.equal(
+			hexToBytes(input.utxo.txId).length,
+			32,
+			'txid should equal 32 bytes'
+		);
 		offset += 32;
-		packet.set(hexToBytes(input.outputIndex), offset);
+		packet = setUint32(packet, input.utxo.outputIndex, offset);
 		offset += 4;
-		// Signature length will be part of signature
-		//packet.set([client_session.signatures[input.txid].length], offset);
-		//offset += 1;
-		packet.set(client_session.signatures[input.txid], offset);
-		offset += client_session.signatures[input.txid].length;
-		packet.set([0xffffffff], offset);
+		let rawSig = input.signed.inputs[0]._script.toHex();
+		let encodedSignature = hexToBytes(rawSig);
+		let len = encodedSignature.length;
+		packet.set([len], offset);
+		offset += 1;
+		packet.set(encodedSignature, offset);
+		offset += len;
+		packet = setUint32(packet, 0xffffffff, offset);
 		offset += 4;
 	}
 	return wrap_packet(args.chosen_network, 'dss', packet, TOTAL_SIZE);
