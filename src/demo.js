@@ -359,15 +359,22 @@ preInit(
 );
 async function psbt_main(dboot, client_session) {
 	const quota = 3;
+	const SAT = 0.00109991;
 	let cs = client_session;
 	let wallet_exec = await dboot.auto.build_executor(cs);
 	/**
    * 1) Get unspent
    */
 	let addresses = {};
-	let unspent = await dboot.list_unspent(cs);
+	let address = await dboot.nth_address(cs, 1);
+	let unspent = await dboot.list_unspent_by_address(cs, address, {
+		minimumAmount: SAT,
+		maximumAmount: 0.002,
+	});
+	dd(unspent);
 	for (const tx of unspent) {
-		if (tx.amount === 0.00109991) {
+		d(tx.amount);
+		if (tx.amount === SAT) {
 			if (typeof addresses[tx.address] === 'undefined') {
 				addresses[tx.address] = [];
 			}

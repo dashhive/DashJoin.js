@@ -45,6 +45,7 @@ function cli_args(list) {
 Bootstrap.send_satoshis_to = async function (send_to, amt, times = 10) {
 	send_to = Bootstrap.alias_check(send_to);
 	let address = await Bootstrap.first_address(send_to);
+	d(`sending to ${address}`);
 	//await Bootstrap.wallet_exec(send_to, ['generatetoaddress', '200', address]);
 	//address = await Bootstrap.nth_address(send_to, 2);
 
@@ -163,8 +164,48 @@ Bootstrap.get_address_from_txid = async function (username, txid_list) {
 Bootstrap.save_exec = false;
 Bootstrap.verbose = false;
 Bootstrap.list_unspent = async function (username) {
+	await Bootstrap.unlock_all_wallets();
 	username = Bootstrap.alias_check(username);
 	let output = await Bootstrap.wallet_exec(username, ['listunspent']);
+	let { out, err } = ps_extract(output);
+	if (err) {
+		throw new Error(err);
+	}
+	return JSON.parse(out);
+};
+Bootstrap.list_unspent_by_address = async function (
+	username,
+	address,
+	query_opts = null
+) {
+	await Bootstrap.unlock_all_wallets();
+	username = Bootstrap.alias_check(username);
+	let params = [
+		'listunspent',
+		'1',
+		'99999',
+		`["${sanitize_address(address)}"]`,
+	];
+	let query = {};
+	if (query_opts !== null) {
+		if (xt(query_opts, 'minimumAmount')) {
+			query.minimumAmount = xt(query_opts, 'minimumAmount');
+		}
+		if (xt(query_opts, 'maximumAmount')) {
+			query.maximumAmount = xt(query_opts, 'maximumAmount');
+		}
+		if (xt(query_opts, 'maximumCount')) {
+			query.maximumCount = xt(query_opts, 'maximumCount');
+		}
+		if ([true, false].includes(xt(query_opts, 'include_unsafe'))) {
+			params.push(xt(query_opts, 'include_safe'));
+		} else {
+			params.push('false');
+		}
+		params.push(JSON.stringify(query));
+	}
+
+	let output = await Bootstrap.wallet_exec(username, params);
 	let { out, err } = ps_extract(output);
 	if (err) {
 		throw new Error(err);
