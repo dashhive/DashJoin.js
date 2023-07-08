@@ -3,6 +3,26 @@
 const xt = require('@mentoc/xtract').xt;
 const fs = require('fs');
 
+function date() {
+	const d = new Date();
+	let h = d.getHours();
+	if (String(h).length === 1) {
+		h = `0${h}`;
+	}
+	let m = d.getMinutes();
+	if (String(m).length === 1) {
+		m = `0${m}`;
+	}
+	let s = d.getSeconds();
+	if (String(s).length === 1) {
+		s = `0${s}`;
+	}
+	return (
+		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
+    ' ' +
+    [h, m, s].join(':')
+	);
+}
 function getDataDir() {
 	return `${process.env.HOME}/data`;
 }
@@ -35,4 +55,5 @@ module.exports = {
 	ps_extract,
 	xt,
 	sleep_ms,
+	date,
 };

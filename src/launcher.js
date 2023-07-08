@@ -16,41 +16,16 @@
  */
 
 const COIN = require('./coin-join-constants.js').COIN;
-const Network = require('./network.js');
-const NetworkUtil = require('./network-util.js');
-const hexToBytes = NetworkUtil.hexToBytes;
-const assert = require('assert');
 const cproc = require('child_process');
 const extractOption = require('./argv.js').extractOption;
 const path = require('path');
 const dashboot = require('./bootstrap/index.js');
-const DashCore = require('@dashevo/dashcore-lib');
 
+const INPUTS = 1;
 const CURDIR = path.resolve(__dirname);
 let dboot = null;
 
 let id = {};
-
-let config = require('./.mn0-config.json');
-id.mn = 0;
-if (process.argv.includes('--mn0')) {
-	config = require('./.mn0-config.json');
-	id.mn = 0;
-}
-if (process.argv.includes('--mn1')) {
-	config = require('./.mn1-config.json');
-	id.mn = 1;
-}
-if (process.argv.includes('--mn2')) {
-	config = require('./.mn2-config.json');
-	id.mn = 2;
-}
-
-let masterNodeIP = config.masterNodeIP;
-let masterNodePort = config.masterNodePort;
-let network = config.network;
-let ourIP = config.ourIP;
-let startBlockHeight = config.startBlockHeight;
 
 /**
  * Periodically print id information
@@ -61,7 +36,7 @@ if (process.argv.includes('--id')) {
 	}, 10000);
 }
 let ctr = 0;
-function nickname(user) {
+function nickname() {
 	const names = [
 		'luke',
 		'han',
@@ -78,7 +53,7 @@ function nickname(user) {
 	}
 	return names[ctr++];
 }
-const CONCURRENT_USERS = 2;
+const CONCURRENT_USERS = 0;
 module.exports = {
 	run_cli_program: function () {
 		(async function (instanceName) {
@@ -87,6 +62,15 @@ module.exports = {
        */
 			console.info(`[status]: loading "${instanceName}" instance...`);
 			dboot = await dashboot.load_instance(instanceName);
+			let mnRingBuffer = await dboot.ring_buffer_next('masternodes');
+			if (typeof mnRingBuffer === 'undefined' || mnRingBuffer === null) {
+				await dboot.ring_buffer_init('masternodes', [
+					'local_1',
+					'local_2',
+					'local_3',
+				]);
+				mnRingBuffer = await dboot.ring_buffer_next('masternodes');
+			}
 			let except = [];
 			let uniqueUsers = await dboot.extract_unique_users(
 				CONCURRENT_USERS,
@@ -98,7 +82,6 @@ module.exports = {
        * Pass choices[N] to a different process.
        */
 			let f = [];
-			let ctr = 0;
 			for (const choice of uniqueUsers) {
 				/**
          * Spawn CONCURRENT_USERS different processes.
@@ -112,8 +95,9 @@ module.exports = {
 					`--instance=${instanceName}`,
 					`--username=${choice.user}`,
 					`--nickname=${nickname(choice.user)}`,
-					'--verbose=true',
-					'--count=1',
+					'--verbose=false',
+					`--mn=${mnRingBuffer}`,
+					`--count=${INPUTS}`,
 					'--senddsi=true',
 				]);
 				m.stdout.on('data', (data) => {
@@ -124,14 +108,15 @@ module.exports = {
 				});
 				f.push(m);
 			}
-			while (1) {
+			let i = 0;
+			do {
 				await sleep(500);
-			}
+			} while (i < 100);
 		})(extractOption('instance', true));
 	},
 };
 async function sleep(ms) {
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve) => {
 		setTimeout(() => {
 			resolve();
 		}, ms);
@@ -140,15 +125,4 @@ async function sleep(ms) {
 /** FIXME: put in library */
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
-}
-function d(f) {
-	console.debug(f);
-}
-function dd(f) {
-	console.debug(f);
-	process.exit();
-}
-
-function node() {
-	return process.argv[0];
 }

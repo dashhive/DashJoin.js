@@ -2,19 +2,34 @@
 'use strict';
 const COIN = require('./coin-join-constants.js').COIN;
 const Network = require('./network.js');
+const NetworkUtil = require('./network-util.js');
+const { hashByteOrder } = NetworkUtil;
 const { ClientSession } = require('./client-session.js');
+const { xt } = require('@mentoc/xtract');
 const Util = require('./util.js');
 const SigScript = require('./sigscript.js');
 const DsiFactory = require('./dsi-factory.js');
-const { debug, info, d, dd } = require('./debug.js');
+const DebugLib = require('./debug.js');
+const { debug, info, d } = DebugLib;
+const { dd } = DebugLib;
 const LibInput = require('./choose-inputs.js');
 const extractOption = require('./argv.js').extractOption;
 const UserDetails = require('./bootstrap/user-details.js');
 const dashboot = require('./bootstrap/index.js');
-const ArrayUtils = require('./array-utils.js');
+const FileLib = require('./file.js');
 const MasterNodeConnection =
   require('./masternode-connection.js').MasterNodeConnection;
+const DashCore = require('@dashevo/dashcore-lib');
+const Transaction = DashCore.Transaction;
+const Script = DashCore.Script;
+const PrivateKey = DashCore.PrivateKey;
+const Address = DashCore.Address;
+const Signature = DashCore.crypto.Signature;
+const Sanitizers = require('./sanitizers.js');
+const { sanitize_txid, sanitize_vout } = Sanitizers;
 
+const ArrayUtils = require('./array-utils.js');
+const random = ArrayUtils.random;
 let done = false;
 let dboot;
 let network;
@@ -27,53 +42,36 @@ let masterNodeConnection;
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
 }
-function date() {
-	const d = new Date();
-	let h = d.getHours();
-	if (String(h).length === 1) {
-		h = `0${h}`;
+function getDenominatedOutput(txn, amount) {
+	let vout = 0;
+	for (let output of txn.outputs) {
+		if (output._satoshis === parseInt(amount * COIN, 10)) {
+			output.vout = vout;
+			return output;
+		}
+		++vout;
 	}
-	let m = d.getMinutes();
-	if (String(m).length === 1) {
-		m = `0${m}`;
-	}
-	let s = d.getSeconds();
-	if (String(s).length === 1) {
-		s = `0${s}`;
-	}
-	return (
-		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
-    ' ' +
-    [h, m, s].join(':')
-	);
+	return null;
 }
 async function onDSFMessage(parsed, masterNode) {
-	client_session.dsf_parsed = parsed;
-	if (await Util.dataDirExists()) {
-		const fs = require('fs');
-		debug('onDSFMessage hit');
-		debug(masterNode.dsfOrig);
-		await fs.writeFileSync(
-			`${Util.getDataDir()}/dsf-${client_session.username}-${date()}.json`,
-			ArrayUtils.bigint_safe_json_stringify(client_session, 2) + '\n'
-		);
-	}
-	let amount = getDemoDenomination();
-	let sigScripts = {};
-	debug(`submitted transactions: ${client_session.get_inputs().length}`);
-	debug(client_session.get_inputs());
+	d('DSF message received');
 
-	//let tx = new Transaction().from(utxos);
-	debug('DSS broadcast');
+	client_session.dsf_parsed = parsed;
+	d(`submitted transactions: ${client_session.get_inputs().length}`);
+	d('Submitting DSS packet');
+	await FileLib.write_json(
+		`dss-outputs-${client_session.username}-#DATE#`,
+		client_session
+	);
 	masterNode.client.write(
-		Network.packet.coinjoin.dss({
+		await Network.packet.coinjoin.dss({
 			chosen_network: masterNode.network,
 			dsfPacket: parsed,
-			signatures: sigScripts,
 			client_session,
+			dboot,
 		})
 	);
-	debug('DSS sent');
+	d('DSS sent');
 }
 async function onDSSUChanged(parsed, masterNode) {
 	let msgId = parsed.message_id[1];
@@ -90,10 +88,6 @@ async function onDSSUChanged(parsed, masterNode) {
 		update,
 	});
 	if (update === 'REJECTED') {
-		for (const input of client_session.mixing_inputs) {
-			await dboot.mark_txid_used(client_session.username, input.txid);
-			debug(`marked ${input.txid} as used`);
-		}
 		if (msgId === 'ERR_QUEUE_FULL') {
 			await masterNodeConnection.disconnect(function () {
 				done = true;
@@ -181,9 +175,28 @@ async function preInit(
 	_in_nickname,
 	_in_count,
 	_in_send_dsi,
-	_in_verbose
+	_in_verbose,
+	_in_mn_choice
 ) {
 	let nickName = _in_nickname;
+	let id = {};
+	let config = require('./.mn0-config.json');
+	switch (_in_mn_choice) {
+	default:
+	case 'local_1':
+		config = require('./.mn0-config.json');
+		id.mn = 0;
+		break;
+	case 'local_2':
+		config = require('./.mn1-config.json');
+		id.mn = 1;
+		break;
+	case 'local_3':
+		config = require('./.mn2-config.json');
+		id.mn = 2;
+	}
+	nickName += `(${_in_mn_choice})`;
+	DebugLib.setNickname(nickName);
 	if (String(_in_verbose).toLowerCase() === 'true') {
 		SigScript.setVerbosity(true);
 	} else {
@@ -192,21 +205,8 @@ async function preInit(
 	client_session = new ClientSession();
 	sendDsi = _in_send_dsi;
 
-	let id = {};
-
-	let config = require('./.mn0-config.json');
-	id.mn = 0;
-	if (extractOption('mn0')) {
-		config = require('./.mn0-config.json');
-		id.mn = 0;
-	}
-	if (extractOption('mn1')) {
-		config = require('./.mn1-config.json');
-		id.mn = 1;
-	}
-	if (extractOption('mn2')) {
-		config = require('./.mn2-config.json');
-		id.mn = 2;
+	for (const i of Array.from(Array(10).keys())) {
+		console.log(`masternode chosen: ${id.mn} [${i}]`);
 	}
 
 	let masterNodeIP = config.masterNodeIP;
@@ -226,6 +226,58 @@ async function preInit(
 	let instanceName = _in_instanceName;
 	username = _in_username;
 	dboot = await dashboot.load_instance(instanceName);
+
+	/**
+   * Grab all unspent utxos
+   */
+	let keep = [];
+	let utxos = await dboot.list_unspent(username);
+	const SATOSHIS = 0.00100001;
+	for (const u of utxos) {
+		if (u.amount === SATOSHIS) {
+			let payeeAddress = await dboot.generate_address(username, 1);
+			let tx = await dboot.get_transaction(username, u.txid);
+			process.stdout.write('.');
+			if (xt(tx, `${u.txid}.details.0.category`) === 'receive') {
+				process.stdout.write('o');
+				let fed = new Transaction(tx[u.txid].hex);
+				let output = getDenominatedOutput(fed, SATOSHIS);
+				let details = xt(tx, `${u.txid}.details`);
+				let address = Address.fromString(xt(tx, `${u.txid}.details.0.address`));
+				let utxo = {
+					txId: u.txid,
+					outputIndex: details[0].vout,
+					satoshis: parseInt(SATOSHIS * COIN, 10),
+					scriptPubKey: Script.buildPublicKeyHashOut(
+						address,
+						Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+					),
+					sequence: 0xffffffff,
+				};
+				let txn = new Transaction().from(utxo);
+				let pk = await dboot.get_private_key(
+					username,
+					xt(tx, `${u.txid}.details.0.address`)
+				);
+				//txn.to(payeeAddress[0], parseInt(SATOSHIS * COIN, 10));
+				txn.sign(pk, Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
+				//dd(txn);
+				d(txn.inputs[0]._script.toHex());
+				keep.push({
+					signed: txn,
+					private_key: pk,
+					from_get_transaction: tx,
+					payee: payeeAddress[0],
+					utxo,
+				});
+			}
+		}
+		if (keep.length === INPUTS) {
+			break;
+		}
+	}
+	client_session.mixing_inputs = keep;
+
 	mainUser = await UserDetails.extractUserDetails(username);
 	mainUser.user = username;
 	//dd({ mainUser });
@@ -253,7 +305,7 @@ async function preInit(
 	DsiFactory.initialize(
 		dboot,
 		_in_username,
-		_in_nickname,
+		nickName,
 		_in_count,
 		_in_send_dsi,
 		getDemoDenomination(),
@@ -263,6 +315,12 @@ async function preInit(
 		payee
 	);
 
+	{
+		/** FIXME
+     */
+		await psbt_main(dboot, client_session);
+		process.exit(0);
+	}
 	masterNodeConnection = new MasterNodeConnection({
 		ip: masterNodeIP,
 		port: masterNodePort,
@@ -296,5 +354,101 @@ preInit(
 	extractOption('nickname', true),
 	extractOption('count', true),
 	extractOption('senddsi', true),
-	extractOption('verbose', true)
+	extractOption('verbose', true),
+	extractOption('mn', true)
 );
+async function psbt_main(dboot, client_session) {
+	const quota = 3;
+	const SAT = 0.00109991;
+	let cs = client_session;
+	let wallet_exec = await dboot.auto.build_executor(cs);
+	/**
+   * 1) Get unspent
+   */
+	let addresses = {};
+	let address = await dboot.nth_address(cs, 1);
+	let unspent = await dboot.list_unspent_by_address(cs, address, {
+		minimumAmount: SAT,
+		maximumAmount: 0.002,
+	});
+	dd(unspent);
+	for (const tx of unspent) {
+		d(tx.amount);
+		if (tx.amount === SAT) {
+			if (typeof addresses[tx.address] === 'undefined') {
+				addresses[tx.address] = [];
+			}
+			addresses[tx.address].push(tx);
+		}
+	}
+	let chosen = [];
+	for (const address in addresses) {
+		if (addresses[address].length >= quota) {
+			for (let i = 0; i < quota; i++) {
+				chosen.push(addresses[address][i]);
+			}
+		}
+		if (chosen.length === quota) {
+			break;
+		}
+	}
+	if (chosen.length !== quota) {
+		throw new Error('unable to fill quota');
+	}
+	/**
+   * 2) Create quota inputs
+   */
+	let payee = await dboot.generate_address(cs, quota);
+	let json = [];
+	for (const tx of chosen) {
+		json.push({
+			txid: sanitize_txid(tx.txid),
+			vout: sanitize_vout(tx.vout),
+		});
+	}
+	cs.privateKey = await dboot.get_private_key(cs, chosen[0].address);
+	let inputs = JSON.stringify(json);
+	let out_json = [];
+	cs.payee = payee;
+	cs.payouts = [];
+	for (const address of payee) {
+		out_json.push({ [address]: 0.00100001 });
+		cs.payouts.push([address, 0.00100001]);
+	}
+	let outputs = JSON.stringify(out_json);
+	let { out, err } = await wallet_exec('createpsbt', inputs, outputs);
+	if (err.length) {
+		throw new Error(err);
+	}
+
+	let output = await wallet_exec(
+		'walletprocesspsbt',
+		out,
+		'true',
+		'ALL|ANYONECANPAY'
+	);
+	let hex = null;
+	try {
+		let decoded = JSON.parse(output.out);
+		if (xt(decoded, 'psbt')) {
+			let psbt = xt(decoded, 'psbt');
+			output = await dboot.finalize_psbt(cs, psbt);
+			if (xt(output, 'hex')) {
+				hex = output.hex;
+			}
+		}
+	} catch (e) {
+		throw new Error(e);
+	}
+	if (hex) {
+		output = await dboot.decode_raw_transaction(cs, hex);
+		d(output);
+		cs.mixing_inputs = output;
+		output = await dboot.send_raw_transaction(cs, hex);
+		dd(output);
+	}
+
+	/**
+   * 3) pass to cli
+   */
+}

@@ -206,7 +206,7 @@ function MasterNode({
 				scriptPubKey: Script.buildPublicKeyHashOut(sourceAddress),
 				satoshis,
 			};
-			d({ txid, utxos, amount, ch: unspent - fee, unspent, fee });
+			//d({ txid, utxos, amount, ch: unspent - fee, unspent, fee });
 			let tx = new Transaction();
 			tx.from(utxos);
 			tx.to(payeeAddress, amount - fee);
