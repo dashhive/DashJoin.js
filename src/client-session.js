@@ -5,6 +5,7 @@ const FileLib = require('./file.js');
 
 function ClientSession() {
 	let self = this;
+	self.clazz = 'ClientSession';
 	self.address_info = {};
 	self.username = null;
 	self.used_txids = [];

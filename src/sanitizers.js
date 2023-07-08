@@ -18,6 +18,12 @@ function sanitize_addresses(list) {
 	}
 	return flist;
 }
+function sanitize_psbt(str) {
+	if (typeof str === 'undefined' || str === null) {
+		return '';
+	}
+	return String(str).replace(/[^a-zA-Z0-9\+=\/]+/gi, '');
+}
 function sanitize_private_key(str) {
 	// example: privateKey": "cRhoitVgpq4svK5RraxYpBC7RwBBkUpDYAN3Yic6BGWwwb4BU1sp",
 	if (str === null) {
@@ -94,4 +100,5 @@ module.exports = {
 	sanitize_pubkey,
 	sanitize_satoshis,
 	sanitize_username,
+	sanitize_psbt,
 };

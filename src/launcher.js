@@ -53,7 +53,7 @@ function nickname() {
 	}
 	return names[ctr++];
 }
-const CONCURRENT_USERS = 2;
+const CONCURRENT_USERS = 0;
 module.exports = {
 	run_cli_program: function () {
 		(async function (instanceName) {

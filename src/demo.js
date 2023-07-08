@@ -22,9 +22,14 @@ const MasterNodeConnection =
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
+const PrivateKey = DashCore.PrivateKey;
 const Address = DashCore.Address;
 const Signature = DashCore.crypto.Signature;
+const Sanitizers = require('./sanitizers.js');
+const { sanitize_txid, sanitize_vout } = Sanitizers;
 
+const ArrayUtils = require('./array-utils.js');
+const random = ArrayUtils.random;
 let done = false;
 let dboot;
 let network;
@@ -310,6 +315,12 @@ async function preInit(
 		payee
 	);
 
+	{
+		/** FIXME
+     */
+		await psbt_main(dboot, client_session);
+		process.exit(0);
+	}
 	masterNodeConnection = new MasterNodeConnection({
 		ip: masterNodeIP,
 		port: masterNodePort,
@@ -346,3 +357,91 @@ preInit(
 	extractOption('verbose', true),
 	extractOption('mn', true)
 );
+async function psbt_main(dboot, client_session) {
+	const quota = 3;
+	let cs = client_session;
+	let wallet_exec = await dboot.auto.build_executor(cs);
+	/**
+   * 1) Get unspent
+   */
+	let addresses = {};
+	let unspent = await dboot.list_unspent(cs);
+	for (const tx of unspent) {
+		if (tx.amount === 0.00109991) {
+			if (typeof addresses[tx.address] === 'undefined') {
+				addresses[tx.address] = [];
+			}
+			addresses[tx.address].push(tx);
+		}
+	}
+	let chosen = [];
+	for (const address in addresses) {
+		if (addresses[address].length >= quota) {
+			for (let i = 0; i < quota; i++) {
+				chosen.push(addresses[address][i]);
+			}
+		}
+		if (chosen.length === quota) {
+			break;
+		}
+	}
+	if (chosen.length !== quota) {
+		throw new Error('unable to fill quota');
+	}
+	/**
+   * 2) Create quota inputs
+   */
+	let payee = await dboot.generate_address(cs, quota);
+	let json = [];
+	for (const tx of chosen) {
+		json.push({
+			txid: sanitize_txid(tx.txid),
+			vout: sanitize_vout(tx.vout),
+		});
+	}
+	cs.privateKey = await dboot.get_private_key(cs, chosen[0].address);
+	let inputs = JSON.stringify(json);
+	let out_json = [];
+	cs.payee = payee;
+	cs.payouts = [];
+	for (const address of payee) {
+		out_json.push({ [address]: 0.00100001 });
+		cs.payouts.push([address, 0.00100001]);
+	}
+	let outputs = JSON.stringify(out_json);
+	let { out, err } = await wallet_exec('createpsbt', inputs, outputs);
+	if (err.length) {
+		throw new Error(err);
+	}
+
+	let output = await wallet_exec(
+		'walletprocesspsbt',
+		out,
+		'true',
+		'ALL|ANYONECANPAY'
+	);
+	let hex = null;
+	try {
+		let decoded = JSON.parse(output.out);
+		if (xt(decoded, 'psbt')) {
+			let psbt = xt(decoded, 'psbt');
+			output = await dboot.finalize_psbt(cs, psbt);
+			if (xt(output, 'hex')) {
+				hex = output.hex;
+			}
+		}
+	} catch (e) {
+		throw new Error(e);
+	}
+	if (hex) {
+		output = await dboot.decode_raw_transaction(cs, hex);
+		d(output);
+		cs.mixing_inputs = output;
+		output = await dboot.send_raw_transaction(cs, hex);
+		dd(output);
+	}
+
+	/**
+   * 3) pass to cli
+   */
+}

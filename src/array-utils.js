@@ -1,7 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 const xt = require('@mentoc/xtract').xt;
+const crypto = require('crypto');
 
+function random(array) {
+	for (let i = 0; i < array.length; i++) {
+		if (crypto.rng(1) > crypto.rng(1)) {
+			continue;
+		} else {
+			return array[i];
+		}
+	}
+	return random(array);
+}
 function extract(array, key) {
 	let selected = [];
 	for (const ele of array) {
@@ -75,4 +86,5 @@ module.exports = {
 	unique,
 	ps_extract,
 	xt,
+  random,
 };
