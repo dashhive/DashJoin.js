@@ -27,13 +27,27 @@ let db_cj, db_cj_ns, db_put, db_get, db_append, db_del;
 let db_set_ns;
 const UserDB = require('./userdb.js');
 
+function RingBuffer(items) {
+	let self = this;
+	self.items = items;
+	self.i = 0;
+	self.next = function () {
+		if (self.i >= self.items.length) {
+			self.i = 0;
+		}
+		let item = self.items[self.i];
+		self.i += 1;
+		return item;
+	};
+}
+
 let Bootstrap = {};
 let db = Bootstrap;
 module.exports = Bootstrap;
 
 let cproc = require('child_process');
 
-const crypto = require('crypto');
+//const crypto = require('crypto');
 const fs = require('fs');
 
 async function LogUtxos(user, utxos) {
@@ -66,13 +80,95 @@ function mkudb(username) {
 }
 
 /**
+ * options is exactly like the man page says:
+ {
+		minimumAmount, //(numeric or string, optional, default=0) Minimum value of each UTXO in DASH
+		maximumAmount, //(numeric or string, optional, default=unlimited) Maximum value of each UTXO in DASH
+		maximumCount, //            (numeric, optional, default=unlimited) Maximum number of UTXOs
+		minimumSumAmount, //    (numeric or string, optional, default=unlimited) Minimum sum value of all UTXOs in DASH
+		coinType, //(numeric, optional, default=0) Filter coinTypes as follows:
+		//0=ALL_COINS, 1=ONLY_FULLY_MIXED, 2=ONLY_READY_TO_MIX, 3=ONLY_NONDENOMINATED,
+		//4=ONLY_MASTERNODE_COLLATERAL, 5=ONLY_COINJOIN_COLLATERAL
+	};
+ ----
+ If addresses is a string or an array, it'll be used.
+ If not set, then the `main-address` will be used
+
+*/
+
+Bootstrap.list_unspent_advanced = async function (
+	username,
+	options,
+	addresses = null
+) {
+	username = Bootstrap.alias_check(username);
+	let udb = mkudb(username);
+	let main_address = await udb.main_address();
+
+	let addr_json = JSON.stringify([main_address]);
+	if (Array.isArray(addresses)) {
+		let addr = unique(sanitize_addresses(addresses));
+		addr_json = JSON.stringify(addr);
+	} else if (typeof addresses === 'string') {
+		addr_json = JSON.stringify(sanitize_addresses([addresses]));
+	}
+	let minimumAmount = null;
+	let maximumAmount = null;
+	let maximumCount = null;
+	let minimumSumAmount = null;
+	let coinType = 0;
+
+	if (xt(options, 'minimumAmount') !== null) {
+		minimumAmount = options.minimumAmount;
+	}
+	if (xt(options, 'maximumAmount') !== null) {
+		maximumAmount = options.maximumAmount;
+	}
+	if (xt(options, 'maximumCount') !== null) {
+		maximumCount = options.maximumCount;
+	}
+	if (xt(options, 'minimumSumAmount') !== null) {
+		minimumSumAmount = options.minimumSumAmount;
+	}
+	if (xt(options, 'coinType') !== null) {
+		coinType = options.coinType;
+	}
+
+	let query_options = {};
+	if (minimumAmount !== null) {
+		query_options.minimumAmount = minimumAmount;
+	}
+	if (maximumAmount !== null) {
+		query_options.maximumAmount = maximumAmount;
+	}
+	if (maximumCount !== null) {
+		query_options.maximumCount = maximumCount;
+	}
+	if (minimumSumAmount !== null) {
+		query_options.minimumSumAmount = minimumSumAmount;
+	}
+	if (coinType !== null) {
+		query_options.coinType = coinType;
+	}
+	query_options = JSON.stringify(query_options);
+	let unspent_options = [
+		'1', // 1. minconf (numeric, optional, default=1) The minimum confirmations to filter
+		'9999999', // 2. maxconf (numeric, optional, default=9999999) The maximum confirmations to filter
+		addr_json, // 3. addresses (json array, optional, default=empty array) The dash addresses to filter
+		'true', // (boolean, optional, default=true) Include outputs that are not safe to spend
+		query_options, // 5. query_options (json object, optional) JSON with query options
+	];
+	return await Bootstrap.list_unspent(username, unspent_options);
+};
+/**
  * Take a single UTXO and split it up into as many denominated inputs
  * as possible.
  */
 Bootstrap.split_utxo = async function (username) {
-	//, //denomination) {
+	const AMOUNT = '0.00100001';
+	const SATOSHIS = parseInt(parseFloat(AMOUNT, 10) * COIN, 10);
 	username = Bootstrap.alias_check(username);
-	let udb = mkudb(username);
+	const udb = mkudb(username);
 	let main_address = await udb.main_address();
 	if (main_address === null || main_address.length === 0) {
 		let ps = await Bootstrap.wallet_exec(username, ['listaddressbalances']);
@@ -85,85 +181,82 @@ Bootstrap.split_utxo = async function (username) {
 		await udb.set_main_address(main_address);
 		main_address = await udb.main_address();
 	}
-	let extra_addresses = await udb.get_array('extra-addresses');
-	dd({ extra_addresses, main_address });
 
-	//let list = [];
-	let addr = [];
-	let utxos = await Bootstrap.list_unspent(username, '1', '99999');
-	if (extra_addresses.length < 3) {
-		let new_address = await Bootstrap.generate_new_addresses(username, 2);
-		let addy = new_address[0];
-		let change = new_address[1];
-		addr.push(addy);
-		addr.push(change);
+	let query_options = {
+		minimumAmount: 10, //(numeric or string, optional, default=0) Minimum value of each UTXO in DASH
+		//maximumAmount: AMOUNT, //(numeric or string, optional, default=unlimited) Maximum value of each UTXO in DASH
+		maximumCount: 10, //            (numeric, optional, default=unlimited) Maximum number of UTXOs
+		//"minimumSumAmount": amount,    (numeric or string, optional, default=unlimited) Minimum sum value of all UTXOs in DASH
+		coinType: 0, //(numeric, optional, default=0) Filter coinTypes as follows:
+		//0=ALL_COINS, 1=ONLY_FULLY_MIXED, 2=ONLY_READY_TO_MIX, 3=ONLY_NONDENOMINATED,
+		//4=ONLY_MASTERNODE_COLLATERAL, 5=ONLY_COINJOIN_COLLATERAL
+	};
+	let utxos = await Bootstrap.list_unspent_advanced(username, query_options);
+	if (utxos.length === 0) {
+		throw new Error('no utxos matching the criteria could be found');
 	}
-	while (utxos.length === 0) {
-		await Bootstrap.generate_dash_to_all(101);
-		utxos = await Bootstrap.list_unspent(username);
+	let created = await Bootstrap.generate_new_addresses(username, 2);
+	await Bootstrap.store_denominated_addresses(username, created);
+	let change_address = await Bootstrap.get_multi_change_address_from_cli(
+		username,
+		1
+	);
+	let rb_address = new RingBuffer(created);
+	if (Array.isArray(change_address)) {
+		change_address = change_address[0];
 	}
-	let choice = null;
-	for (const u of utxos) {
-		if (u.amount > 10) {
-			choice = u;
-			let tx = new Transaction();
-			tx.from({
-				txId: choice.txid,
-				outputIndex: choice.vout,
-				scriptPubKey: Script.buildPublicKeyHashOut(choice.address),
-				satoshis: parseInt(choice.amount * COIN, 10),
-			});
-			let pk = await Bootstrap.get_private_key(username, choice.address);
-			pk = PrivateKey.fromWIF(pk);
-			let choice_address = addr[0];
-			let i = 0;
-			while (choice_address === choice.address) {
-				choice_address = addr[i++];
-				if (addr.length < i) {
-					throw new Error('couldnt get a decent address');
-				}
-			}
-			i = 0;
-			while (choice_address === addr[i]) {
-				i++;
-			}
-			let change = addr[i];
-			for (let i = 0; i < 200; i++) {
-				tx.to(choice_address, parseInt(0.00100001 * COIN, 10));
-			}
-			tx.change(change);
-			tx.sign(pk);
-			let ser = tx.serialize();
-			let output = await Bootstrap.wallet_exec(username, [
-				'sendrawtransaction',
-				ser,
-			]);
-			let { out, err } = ps_extract(output);
-			console.log({ out, err });
+	for (const choice of utxos) {
+		let tx = new Transaction();
+		tx.from({
+			txId: choice.txid,
+			outputIndex: choice.vout,
+			scriptPubKey: Script.buildPublicKeyHashOut(choice.address),
+			amount: choice.amount,
+		});
+		let pk = await Bootstrap.get_private_key(username, choice.address);
+		pk = PrivateKey.fromWIF(pk);
+		for (let i = 0; i < 200; i++) {
+			tx.to(rb_address.next(), SATOSHIS);
 		}
+		tx.change(change_address);
+		tx.sign(pk);
+		let ser = tx.serialize();
+		let output = await Bootstrap.wallet_exec(username, [
+			'sendrawtransaction',
+			ser,
+		]);
+		let { out, err } = ps_extract(output);
+		if (err.length) {
+			throw new Error(err);
+		}
+		d(out);
+		await Bootstrap.save_denominated_tx(username, out);
 	}
 };
-db.grind_junk_user = async function () {
-	await db.load_alias_ram_slots();
-	await db.unlock_all_wallets();
-	for (const key in db.user_aliases) {
-		if (db.user_aliases[key].match(/^junk/)) {
-			for (let i = 0; i < 100; i++) {
-				await db.generate_dash_to(db.user_aliases[key]);
-			}
-			return;
+Bootstrap.get_junk_username = function () {
+	for (const key in Bootstrap.user_aliases) {
+		if (Bootstrap.user_aliases[key].match(/^junk/)) {
+			return Bootstrap.user_aliases[key];
 		}
+	}
+	return null;
+};
+Bootstrap.grind_junk_user = async function () {
+	await Bootstrap.load_alias_ram_slots();
+	await Bootstrap.unlock_all_wallets();
+	for (let i = 0; i < 100; i++) {
+		await Bootstrap.generate_dash_to('junk');
 	}
 };
 db.junk_name = function () {
-	return `junk${crypto.randomBytes(3).toString('hex')}`;
+	return 'junk';
 };
 db.make_junk_wallet = async function () {
 	let wallet_name = await db.junk_name();
 	await db.user_create(wallet_name).catch(function (error) {
 		console.error('ERROR: ', error);
 	});
-	//console.info(`[ok]: user "${wallet_name}" created`);
+	console.info(`[ok]: user "${wallet_name}" created`);
 	await db.run([
 		'createwallet',
 		wallet_name,
@@ -185,7 +278,23 @@ db.make_junk_wallet = async function () {
 	await Bootstrap.alias_users();
 	await Bootstrap.unlock_all_wallets();
 };
+function sanitize_txid_list(out) {
+	for (let i = 0; i < out.length; i++) {
+		out[i] = sanitize_txid(out[i]);
+	}
+	return out;
+}
 
+Bootstrap.save_denominated_tx = async function (username, out) {
+	username = Bootstrap.alias_check(username);
+	if (Array.isArray(out)) {
+		out = sanitize_txid_list(out);
+		return await mkudb(username).append_array('denom-txids', out);
+	} else {
+		out = sanitize_txid(out);
+		return await mkudb(username).append_array('denom-txids', [out]);
+	}
+};
 Bootstrap.send_satoshis_to = async function (send_to, amt, times = 10) {
 	send_to = Bootstrap.alias_check(send_to);
 	let address = await Bootstrap.first_address(send_to);
@@ -360,22 +469,20 @@ Bootstrap.list_unspent_by_address = async function (
 };
 Bootstrap.get_denominated_utxos = async function (
 	username,
-	denominatedAmount,
+	denominatedAmount = null,
 	count = 5250,
 	filter_used = true
 ) {
 	username = Bootstrap.alias_check(username);
 	let list = [];
 	let utxos = await Bootstrap.user_utxos_from_cli(username);
-	d(await LogUtxos(username, utxos));
-	denominatedAmount = parseInt(denominatedAmount, 10);
 	for (const u of utxos) {
 		if (filter_used && Bootstrap.is_txid_used(u.txid)) {
 			continue;
 		}
-		if (u.satoshis === denominatedAmount) {
+		if (denominatedAmount === null) {
 			list.push(u);
-		} else {
+		} else if (u.satoshis === denominatedAmount) {
 			list.push(u);
 		}
 		if (list.length === count) {
@@ -383,11 +490,6 @@ Bootstrap.get_denominated_utxos = async function (
 		}
 	}
 	return list;
-};
-Bootstrap.save_denominated_tx = async function (rows) {
-	if (Bootstrap.verbose) {
-		console.info('save_denominated_tx no longer does anything', rows);
-	}
 };
 Bootstrap.alias_users = async function () {
 	let users = await Bootstrap.user_list();
@@ -397,12 +499,17 @@ Bootstrap.alias_users = async function () {
 	}
 };
 Bootstrap.alias_check = function (user) {
+	if (user === 'junk') {
+		user = Bootstrap.get_junk_username();
+	}
 	if (xt(user, 'clazz') === 'ClientSession') {
 		user = user.username;
 	}
 	if (user.match(/^user[\d]+$/)) {
+		DebugLib.setNickname(user);
 		return Bootstrap.user_aliases[user];
 	}
+	DebugLib.setNickname(user);
 	return user;
 };
 Bootstrap.alias_ctr = 0;
@@ -1026,6 +1133,29 @@ Bootstrap.set_addresses = async function (username, w_addresses) {
 	);
 };
 
+Bootstrap.store_denominated_addresses = async function (username, addresses) {
+	username = Bootstrap.alias_check(username);
+	return await Bootstrap.store_addresses(
+		username,
+		addresses,
+		'denominated-addresses'
+	);
+};
+Bootstrap.get_denominated_addresses = async function (username) {
+	username = Bootstrap.alias_check(username);
+	return await Bootstrap.get_addresses(username, 'denominated-addresses');
+};
+
+Bootstrap.get_addresses = async function (username, key = 'addresses') {
+	username = Bootstrap.alias_check(username);
+	let udb = mkudb(username);
+	let addresses = await udb.get_array(key);
+	if (Array.isArray(addresses)) {
+		return unique(sanitize_addresses(addresses));
+	}
+	return [];
+};
+
 Bootstrap.store_addresses = async function (
 	username,
 	w_addresses,
@@ -1305,6 +1435,11 @@ Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
 	await Bootstrap.unlock_all_wallets();
 	let address = await mkudb(username).main_address();
+	if (address === null) {
+		address = await Bootstrap.generate_new_addresses(username, 1);
+		await mkudb(username).set_main_address(address[0]);
+		return await Bootstrap.generate_dash_to(username);
+	}
 	let ps = await Bootstrap.wallet_exec(username, [
 		'generatetoaddress',
 		'10',
@@ -1452,10 +1587,18 @@ Bootstrap.run_cli_program = async function () {
 		process.exit(0);
 	}
 	await Bootstrap.load_instance(config.instance);
+	await Bootstrap.load_alias_ram_slots();
 	{
 		let user = extractOption('split-utxos', true);
+		let count = extractOption('count', true);
 		if (user) {
-			d(await Bootstrap.split_utxo(user, 0.00100001));
+			count = parseInt(count, 10);
+			if (isNaN(count)) {
+				count = 1;
+			}
+			for (let i = 0; i < count; i++) {
+				d(await Bootstrap.split_utxo(user));
+			}
 			process.exit(0);
 		}
 	}
@@ -1579,12 +1722,15 @@ Bootstrap.run_cli_program = async function () {
 	if (denom) {
 		let username = extractOption('username', true);
 		if (!username) {
-			console.error(
-				'Error: --username must be passed with --denominated-amout'
-			);
+			console.error('Error: --username must be passed with --denom-amt');
 			process.exit(1);
 		}
-		d(await Bootstrap.get_denominated_utxos(username, denom));
+		let utxos = await Bootstrap.get_denominated_utxos(
+			username,
+			parseInt(denom, 10)
+		);
+		await LogUtxos(username, utxos);
+		d(utxos);
 		process.exit(0);
 	}
 	let userDenoms = extractOption('user-denom', true);
@@ -1773,6 +1919,7 @@ Bootstrap.load_alias_ram_slots = async function () {
 	for (const user of await Bootstrap.user_list({ with: 'alias' })) {
 		Bootstrap.user_aliases[user.alias] = user.user;
 	}
+	//console.info(Bootstrap.user_aliases);
 	//console.info(
 	//	`[+] ${
 	//		Object.keys(Bootstrap.user_aliases).length
@@ -1864,6 +2011,10 @@ Bootstrap.helpers = function () {
 		conversion: {
 			arbuf_to_hexstr,
 			bigint_safe_json_stringify,
+		},
+		debug: {
+			dd,
+			d,
 		},
 	};
 };
