@@ -25,10 +25,8 @@ const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
 const PrivateKey = DashCore.PrivateKey;
 let db_cj, db_cj_ns, db_put, db_get, db_append, db_del;
-let mdb;
 let db_set_ns;
 const UserDB = require('./userdb.js');
-let udb;
 
 let Bootstrap = {};
 let db = Bootstrap;
@@ -51,13 +49,30 @@ function cli_args(list) {
 	];
 }
 
+function mkudb(username) {
+	return new UserDB(
+		{
+			db_cj,
+			db_cj_ns,
+			db_put,
+			db_get,
+			db_append,
+			db_del,
+			db_set_ns,
+			db_make_key: Bootstrap.MetaDB.DB.make_key,
+		},
+		username,
+		'cj'
+	);
+}
+
 /**
  * Take a single UTXO and split it up into as many denominated inputs
  * as possible.
  */
 Bootstrap.split_utxo = async function (username, denomination) {
 	username = Bootstrap.alias_check(username);
-	udb.u(username);
+	let udb = mkudb(username);
 	let main_address = await udb.main_address();
 	if (main_address === null || main_address.length === 0) {
 		let ps = await Bootstrap.wallet_exec(username, ['listaddressbalances']);
@@ -168,7 +183,6 @@ db.make_junk_wallet = async function () {
 	await Bootstrap.unlock_wallet(wallet_name);
 	await Bootstrap.alias_users();
 	await Bootstrap.unlock_all_wallets();
-	await Bootstrap.dump_all_privkeys();
 };
 
 Bootstrap.send_satoshis_to = async function (send_to, amt, times = 10) {
@@ -480,7 +494,6 @@ Bootstrap.store_dsf = async function (data) {
 		data = data.toString();
 	}
 	throw new Error('stub');
-	//return await mdb.paged_store('example', 'dsf', data);
 };
 function arbuf_to_hexstr(buffer) {
 	// buffer is an ArrayBuffer
@@ -676,22 +689,9 @@ Bootstrap.load_instance = async function (instance_name, options = {}) {
 	db_put = Bootstrap.MetaDB.db_put;
 	db_append = Bootstrap.MetaDB.db_append;
 	db_del = Bootstrap.MetaDB.db_del;
-	mdb = Bootstrap.MetaDB;
 	db_cj();
-	mdb.before_tx = db_cj;
 	await Bootstrap.load_used_txid_ram_slots();
 	await Bootstrap.load_alias_ram_slots();
-	udb = new UserDB({
-		db_cj,
-		db_cj_ns,
-		db_put,
-		db_get,
-		db_append,
-		db_del,
-		db_set_ns,
-		db_make_key: Bootstrap.MetaDB.DB.make_key,
-	});
-	udb.set_ns('cj');
 	return Bootstrap;
 };
 Bootstrap.initialize = Bootstrap.load_instance;
@@ -738,31 +738,11 @@ Bootstrap.get_addresses = async function (username, max = 250) {
 	username = Bootstrap.alias_check(username);
 	let list = [];
 	let addr_map = {};
-	await mdb.paged_for_each(username, 'addresses', {}, function (addresses) {
-		if (!Array.isArray(addresses)) {
-			return true;
-		}
-		for (const a of addresses) {
-			if (typeof addr_map[a] !== 'undefined') {
-				continue;
-			}
-			addr_map[a] = 1;
-			list.push(a);
-			if (max !== null && list.length === max) {
-				return false;
-			}
-		}
-	});
-	return list;
+	return await mkudb(username).get_array('addresses');
 };
 Bootstrap.user_addresses = async function (username, cb, context = {}) {
 	username = Bootstrap.alias_check(username);
-	await mdb.paged_for_each(
-		username,
-		'addresses',
-		{ include_meta: true, context },
-		cb
-	);
+	await mkudb(username).page_array('addresses', cb);
 };
 Bootstrap.sanitize_address = sanitize_address;
 
@@ -936,12 +916,7 @@ Bootstrap.get_change_address_from_cli = async function (username, save = true) {
 };
 Bootstrap.get_change_addresses = async function (username, cb) {
 	username = Bootstrap.alias_check(username);
-	return await mdb.paged_for_each(
-		username,
-		'change',
-		{ include_meta: true },
-		cb
-	);
+	return await mkudb(username).page_array('change', cb);
 };
 Bootstrap.decode = function (in_ps_extracted) {
 	if (in_ps_extracted.err.length) {
@@ -990,8 +965,7 @@ Bootstrap.generate_address = async function (username, count = 10) {
 };
 Bootstrap.store_change_addresses = async function (username, w_addresses) {
 	username = Bootstrap.alias_check(username);
-	return await mdb.paged_store(
-		username,
+	return await mkudb(username).append_array(
 		'change',
 		sanitize_addresses(w_addresses)
 	);
@@ -1021,11 +995,9 @@ Bootstrap.set_addresses = async function (
 	items_per_page = 30
 ) {
 	username = Bootstrap.alias_check(username);
-	return await mdb.paged_set(
-		username,
+	return await mkudb(username).set_array(
 		'addresses',
-		sanitize_addresses(w_addresses),
-		items_per_page
+		sanitize_addresses(w_addresses)
 	);
 };
 
@@ -1035,11 +1007,9 @@ Bootstrap.store_addresses = async function (
 	items_per_page = 30
 ) {
 	username = Bootstrap.alias_check(username);
-	return await mdb.paged_store(
-		username,
+	return await mkudb(username).append_array(
 		'addresses',
-		sanitize_addresses(w_addresses),
-		items_per_page
+		sanitize_addresses(w_addresses)
 	);
 };
 
@@ -1078,11 +1048,9 @@ Bootstrap.random_payee_address = async function (forUser) {
 Bootstrap.filter_address = async function (username, except) {
 	username = Bootstrap.alias_check(username);
 	let keep = [];
-	await mdb.paged_for_each(username, 'addresses', {}, function (addresses) {
-		for (const address of addresses) {
-			if (except.indexOf(address) === -1) {
-				keep.push(address);
-			}
+	await mkudb(username).page_array('addresses', function (address) {
+		if (except.indexOf(address) === -1) {
+			keep.push(address);
 		}
 	});
 	return keep;
@@ -1132,7 +1100,6 @@ Bootstrap.create_wallets = async function (count = 3) {
 	}
 	await Bootstrap.alias_users();
 	await Bootstrap.unlock_all_wallets();
-	await Bootstrap.dump_all_privkeys();
 	//await Bootstrap.generate_dash_to_all();
 	//await Bootstrap.create_denominations_to_all();
 };
@@ -1158,54 +1125,18 @@ Bootstrap.create_denominations_to_all = async function (iterations = 1) {
 				if (otherUser === user) {
 					continue;
 				}
-				let pmt_context = {
-					from: user,
-					to: otherUser,
-					amount: parseInt(parseFloat(AMOUNT, 10) * COIN, 10),
-				};
-				await (async function (_in_otherUser, _in_bs, _in_pmt_context) {
-					let _otherUser = _in_otherUser;
-					let _bs = _in_bs;
-					let _pmt_context = _in_pmt_context;
-					await _bs.user_addresses(
-						_otherUser,
-						async function (addresses, meta, context) {
-							let txid_list = [];
-							for (const address of addresses) {
-								//d({ user, address });
-								let ps = await _bs.wallet_exec(user, [
-									'sendtoaddress',
-									address,
-									AMOUNT,
-								]);
-								let { out, err } = ps_extract(ps);
-								if (out.length) {
-									let txid = sanitize_txid(out);
-									txid_list.push({
-										from: context.from,
-										to: context.to,
-										txid,
-										amount: context.amount,
-										address,
-									});
-									console.log(
-										`Saved ${txid} from: ${context.from} for user: ${context.to}`
-									);
-								}
-								if (err.length) {
-									console.error(err);
-								}
-							}
-							if (txid_list.length) {
-								//console.log('saving', txid_list);
-								await _bs.save_denominated_tx(txid_list);
-								txid_list = [];
-							}
-							return false;
-						},
-						_pmt_context
-					);
-				})(otherUser, Bootstrap, pmt_context);
+				await mkudb(otherUser).page_array(
+					'addresses',
+					async function (address) {
+						for (const address of addresses) {
+							let ps = await Bootstrap.wallet_exec(user, [
+								'sendtoaddress',
+								address,
+								AMOUNT,
+							]);
+						}
+					}
+				);
 			}
 		}
 	}
@@ -1346,84 +1277,23 @@ Bootstrap.dump_private_key = async function (username, address) {
 	throw new Error(`dumpprivkey failed: "${err}"`);
 };
 
-Bootstrap.dump_all_privkeys = async function () {
-	const users = await Bootstrap.user_list();
-	for (const user of users) {
-		(async function (_in_user, _in_bs, _in_mdb) {
-			let _mdb = _in_mdb;
-			let _bs = _in_bs;
-			let _user = _in_user;
-			await _bs.user_addresses(_user, async function (addresses) {
-				let keep = [];
-				for (const address of addresses) {
-					let privateKey = await _bs
-						.dump_private_key(user, address)
-						.catch(function (error) {
-							console.error(error);
-							return null;
-						});
-					if (privateKey === null) {
-						continue;
-					}
-					keep.push({ user, privateKey, address });
-				}
-				if (keep.length) {
-					for (const pair of keep) {
-						await _mdb.paged_store(
-							pair.user,
-							['privatekey', pair.address].join('|'),
-							pair.privateKey
-						);
-					}
-				}
-			});
-		})(user, Bootstrap, mdb);
-	}
-};
 Bootstrap.generate_dash_to_all = async function (iterations = 1) {
 	for (let i = 0; i < iterations; i++) {
 		await Bootstrap.unlock_all_wallets();
 		const users = await Bootstrap.user_list();
 		for (const user of users) {
-			await (async function (_in_user, _in_bs, _in_mdb) {
-				let _user = _in_user;
-				let _bs = _in_bs;
-				let _mdb = _in_mdb;
-				await _bs.user_addresses(_user, async function (addresses) {
-					console.info(`${_user} has ${addresses.length} addresses...`);
-					let ctr = 10;
-					for (const address of addresses) {
-						--ctr;
-						if (ctr < 0) {
-							return false;
-						}
-						//console.info('Running wallet_exec..');
-						let ps = await _bs.wallet_exec(_user, [
-							'generatetoaddress',
-							'2',
-							address,
-						]);
-						let { err, out } = ps_extract(ps, false);
-						if (err.length) {
-							console.error(`ERROR: ${_user}: "${err}"`);
-						} else {
-							//console.log({ out });
-							try {
-								let txns = JSON.parse(out);
-								if (txns.length === 0) {
-									//console.info(`${_user} skipping empty output`);
-									continue;
-								}
-								await _mdb.paged_store(_user, 'utxos', txns);
-								//d({ [_user]: address, utxos: out, txns });
-								process.stdout.write('.');
-							} catch (e) {
-								console.error(e);
-							}
-						}
-					}
-				});
-			})(user, Bootstrap, mdb);
+			let address = await mkudb(user).main_address();
+			let ps = await Bootstrap.wallet_exec(user, [
+				'generatetoaddress',
+				'2',
+				address,
+			]);
+			let { err, out } = ps_extract(ps, false);
+			if (err.length) {
+				console.error(`ERROR: ${_user}: "${err}"`);
+			} else {
+				console.log(out);
+			}
 		}
 	}
 };
@@ -1431,63 +1301,18 @@ Bootstrap.generate_dash_to_all = async function (iterations = 1) {
 Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
 	await Bootstrap.unlock_all_wallets();
-	await Bootstrap.user_addresses(username, async function (addresses) {
-		console.info(`${username} has ${addresses.length} addresses...`);
-		let ctr = 3;
-		for (const address of addresses) {
-			--ctr;
-			if (ctr < 0) {
-				return false;
-			}
-			let ps = await Bootstrap.wallet_exec(username, [
-				'generatetoaddress',
-				'10',
-				address,
-			]);
-			let { err, out } = ps_extract(ps, false);
-			if (Bootstrap.verbose) {
-				console.info(out);
-			}
-			if (err.length) {
-				console.error(`ERROR: ${username}: "${err}"`);
-				++ctr;
-				process.stdout.write('x');
-				return true;
-			} else {
-				process.stdout.write('.');
-			}
-		}
-	});
-};
-Bootstrap.generate_dash_to = async function (username) {
-	username = Bootstrap.alias_check(username);
-	await Bootstrap.unlock_all_wallets();
-	await Bootstrap.user_addresses(username, async function (addresses) {
-		for (const address of addresses) {
-			let ps = await Bootstrap.wallet_exec(username, [
-				'generatetoaddress',
-				'10',
-				address,
-			]);
-			let { err, out } = ps_extract(ps);
-			if (err.length) {
-				console.error(err);
-			} else {
-				console.log({ out });
-				try {
-					let txns = JSON.parse(out);
-					if (txns.length === 0) {
-						continue;
-					}
-					console.info(`storing ${txns.length} txns at ${username}.utxos`);
-					await mdb.paged_store(username, 'utxos', txns);
-					//d({ [username]: address, utxos: out, txns });
-				} catch (e) {
-					console.error(e);
-				}
-			}
-		}
-	});
+	let address = await mkudb(username).main_address();
+	let ps = await Bootstrap.wallet_exec(user, [
+		'generatetoaddress',
+		'10',
+		address,
+	]);
+	let { err, out } = ps_extract(ps, false);
+	if (err.length) {
+		console.error(`ERROR: ${_user}: "${err}"`);
+	} else {
+		console.log(out);
+	}
 };
 
 function usage() {
@@ -1883,16 +1708,11 @@ Bootstrap.run_cli_program = async function () {
 		process.exit(0);
 	}
 	if (config.list_addr) {
-		d('config.list_addr: ' + config.list_addr);
-		await Bootstrap.user_addresses(
-			config.list_addr,
-			async function (addresses) {
-				d({ addresses });
-				for (const address of addresses) {
-					d(address);
-				}
-			}
-		);
+		config.list_addr = Bootstrap.alias_check(config.list_addr);
+		d({ 'main-address': await mkudb(config.list_addr).main_address() });
+		await Bootstrap.user_addresses(config.list_addr, async function (address) {
+			d(address);
+		});
 		process.exit(0);
 	}
 	if (config.list_utxos) {
@@ -1990,20 +1810,12 @@ Bootstrap.mark_txid_used = async function (username, txid) {
 	existing.push(txid);
 	existing = unique(existing);
 	Bootstrap.used_txids.push(txid);
-	return await mdb.paged_store(username, 'usedtxids', existing);
+	return await mkudb(username).append_array('usedtxids', existing);
 };
 Bootstrap.get_used_txids = async function (username) {
 	username = Bootstrap.alias_check(username);
 	let list = [];
-	await mdb.paged_for_each(username, 'usedtxids', {}, function (txids) {
-		if (!Array.isArray(txids)) {
-			return true;
-		}
-		for (const tx of txids) {
-			list.push(tx);
-		}
-	});
-	return list;
+	return await mkudb(username).get_array('usedtxids');
 };
 Bootstrap.ram_txid_used = function (txid) {
 	return Bootstrap.used_txids.indexOf(txid) !== -1;

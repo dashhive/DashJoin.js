@@ -1,6 +1,6 @@
 'use strict';
 
-function UserDB(globs, u = null) {
+function UserDB(globs, u = null, ns = 'cj') {
 	let db_put = globs.db_put;
 	let db_get = globs.db_get;
 	let db_del = globs.db_del;
@@ -8,7 +8,7 @@ function UserDB(globs, u = null) {
 	let db_make_key = globs.db_make_key;
 	let self = this;
 	self.user = u;
-	self.ns = null;
+	self.ns = ns;
 	self.set_ns = function (s) {
 		self.ns = s;
 	};
