@@ -23,6 +23,9 @@ module.exports = function (_DB) {
 	Lib.get_debug = function () {
 		return Lib.debug;
 	};
+	Lib.set_namespaces = function (n) {
+		Lib.DB.set_namespaces(n);
+	};
 	Lib.db_cj = function db_cj() {
 		Lib.DB.set_namespaces(['coinjoin']);
 	};
@@ -34,6 +37,12 @@ module.exports = function (_DB) {
 			d({ db_put: { key, val } });
 		}
 		await Lib.DB.ns.put(key, val);
+	};
+	Lib.db_del = async function db_del(key) {
+		if (Lib.debug) {
+			d({ db_del: key });
+		}
+		return await Lib.DB.ns.del(key);
 	};
 	Lib.db_get = async function db_get(key) {
 		if (Lib.debug) {

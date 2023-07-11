@@ -371,9 +371,7 @@ async function psbt_main(dboot, client_session) {
 		minimumAmount: SAT,
 		maximumAmount: 0.002,
 	});
-	dd(unspent);
 	for (const tx of unspent) {
-		d(tx.amount);
 		if (tx.amount === SAT) {
 			if (typeof addresses[tx.address] === 'undefined') {
 				addresses[tx.address] = [];

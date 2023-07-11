@@ -20,10 +20,18 @@ const COIN = require('../coin-join-constants.js').COIN;
 const NetworkUtil = require('../network-util.js');
 const hashByteOrder = NetworkUtil.hashByteOrder;
 const ClientSession = require('../client-session.js');
-let db_cj, db_cj_ns, db_put, db_get, db_append;
+const DashCore = require('@dashevo/dashcore-lib');
+const Transaction = DashCore.Transaction;
+const Script = DashCore.Script;
+const PrivateKey = DashCore.PrivateKey;
+let db_cj, db_cj_ns, db_put, db_get, db_append, db_del;
 let mdb;
+let db_set_ns;
+const UserDB = require('./userdb.js');
+let udb;
 
 let Bootstrap = {};
+let db = Bootstrap;
 module.exports = Bootstrap;
 
 let cproc = require('child_process');
@@ -42,6 +50,127 @@ function cli_args(list) {
 		...list,
 	];
 }
+
+/**
+ * Take a single UTXO and split it up into as many denominated inputs
+ * as possible.
+ */
+Bootstrap.split_utxo = async function (username, denomination) {
+	username = Bootstrap.alias_check(username);
+	udb.u(username);
+	let main_address = await udb.main_address();
+	if (main_address === null || main_address.length === 0) {
+		let ps = await Bootstrap.wallet_exec(username, ['listaddressbalances']);
+		let { err, out } = ps_extract(ps);
+		if (err) {
+			throw new Error(err);
+		}
+		out = JSON.parse(out);
+		main_address = Object.keys(out)[0];
+		await udb.set_main_address(main_address);
+		main_address = await udb.main_address();
+	}
+	let extra_addresses = await udb.get_array('extra-addresses');
+	dd({ extra_addresses, main_address });
+
+	let list = [];
+	let utxos = await Bootstrap.list_unspent(username, '1', '99999');
+	if (extra_addresses.length < 3) {
+		let new_address = await Bootstrap.generate_new_addresses(username, 2);
+		let addy = new_address[0];
+		let change = new_address[1];
+		addr.push(addy);
+		addr.push(change);
+	}
+	while (utxos.length === 0) {
+		await Bootstrap.generate_dash_to_all(101);
+		utxos = await Bootstrap.list_unspent(username);
+	}
+	let choice = null;
+	for (const u of utxos) {
+		if (u.amount > 10) {
+			choice = u;
+			let tx = new Transaction();
+			tx.from({
+				txId: choice.txid,
+				outputIndex: choice.vout,
+				scriptPubKey: Script.buildPublicKeyHashOut(choice.address),
+				satoshis: parseInt(choice.amount * COIN, 10),
+			});
+			let pk = await Bootstrap.get_private_key(username, choice.address);
+			pk = PrivateKey.fromWIF(pk);
+			let choice_address = addr[0];
+			let i = 0;
+			while (choice_address === choice.address) {
+				choice_address = addr[i++];
+				if (addr.length < i) {
+					throw new Error('couldnt get a decent address');
+				}
+			}
+			i = 0;
+			while (choice_address === addr[i]) {
+				i++;
+			}
+			let change = addr[i];
+			for (let i = 0; i < 200; i++) {
+				tx.to(choice_address, parseInt(0.00100001 * COIN, 10));
+			}
+			tx.change(change);
+			tx.sign(pk);
+			let ser = tx.serialize();
+			let output = await Bootstrap.wallet_exec(username, [
+				'sendrawtransaction',
+				ser,
+			]);
+			let { out, err } = ps_extract(output);
+			console.log({ out, err });
+		}
+	}
+};
+db.grind_junk_user = async function () {
+	await db.load_alias_ram_slots();
+	await db.unlock_all_wallets();
+	for (const key in db.user_aliases) {
+		if (db.user_aliases[key].match(/^junk/)) {
+			for (let i = 0; i < 100; i++) {
+				await db.generate_dash_to(db.user_aliases[key]);
+			}
+			return;
+		}
+	}
+};
+db.junk_name = function () {
+	return `junk${crypto.randomBytes(3).toString('hex')}`;
+};
+db.make_junk_wallet = async function () {
+	let wallet_name = await db.junk_name();
+	await db.user_create(wallet_name).catch(function (error) {
+		console.error('ERROR: ', error);
+	});
+	//console.info(`[ok]: user "${wallet_name}" created`);
+	await db.run([
+		'createwallet',
+		wallet_name,
+		'false',
+		'false',
+		'foobar',
+		'false',
+		'true',
+	]);
+
+	let w_addresses = [];
+	let buffer = await db.wallet_exec(wallet_name, ['getnewaddress']);
+	let { out } = ps_extract(buffer, false);
+	if (out.length) {
+		w_addresses.push(out);
+	}
+	await Bootstrap.set_addresses(wallet_name, sanitize_addresses(w_addresses));
+	await Bootstrap.unlock_wallet(wallet_name);
+	await Bootstrap.alias_users();
+	await Bootstrap.unlock_all_wallets();
+	await Bootstrap.dump_all_privkeys();
+};
+
 Bootstrap.send_satoshis_to = async function (send_to, amt, times = 10) {
 	send_to = Bootstrap.alias_check(send_to);
 	let address = await Bootstrap.first_address(send_to);
@@ -82,11 +211,7 @@ Bootstrap.send_raw_transaction = async function (username, str) {
 	if (output.err.length) {
 		throw new Error(output.err);
 	}
-	try {
-		return JSON.parse(output.out);
-	} catch (e) {
-		throw new Error(e);
-	}
+	return output.out;
 };
 Bootstrap.decode_raw_transaction = async function (username, decode) {
 	let output = await Bootstrap.auto.wallet_exec(username, [
@@ -163,10 +288,16 @@ Bootstrap.get_address_from_txid = async function (username, txid_list) {
 };
 Bootstrap.save_exec = false;
 Bootstrap.verbose = false;
-Bootstrap.list_unspent = async function (username) {
+Bootstrap.list_unspent = async function (username, opts = []) {
 	await Bootstrap.unlock_all_wallets();
 	username = Bootstrap.alias_check(username);
-	let output = await Bootstrap.wallet_exec(username, ['listunspent']);
+	let params = ['listunspent'];
+	if (Array.isArray(opts)) {
+		for (const p of opts) {
+			params.push(p);
+		}
+	}
+	let output = await Bootstrap.wallet_exec(username, params);
 	let { out, err } = ps_extract(output);
 	if (err) {
 		throw new Error(err);
@@ -222,7 +353,6 @@ Bootstrap.get_denominated_utxos = async function (
 	username = Bootstrap.alias_check(username);
 	//d({ username });
 	let list = [];
-	//mdb.debug = true;
 	let utxos = await Bootstrap.user_utxos_from_cli(username);
 	denominatedAmount = parseInt(denominatedAmount, 10);
 	for (const u of utxos) {
@@ -246,9 +376,6 @@ Bootstrap.save_denominated_tx = async function (rows) {
 	if (Bootstrap.verbose) {
 		console.info('save_denominated_tx no longer does anything', rows);
 	}
-	//let to = xt(rows, '0.to');
-	//await mdb.paged_store(to, 'denomtx', rows);
-	//d('saved');
 };
 Bootstrap.alias_users = async function () {
 	let users = await Bootstrap.user_list();
@@ -352,7 +479,8 @@ Bootstrap.store_dsf = async function (data) {
 	if (data instanceof Uint8Array) {
 		data = data.toString();
 	}
-	return await mdb.paged_store('example', 'dsf', data);
+	throw new Error('stub');
+	//return await mdb.paged_store('example', 'dsf', data);
 };
 function arbuf_to_hexstr(buffer) {
 	// buffer is an ArrayBuffer
@@ -479,9 +607,29 @@ Bootstrap.random_change_address = async function (username, except) {
 Bootstrap.mkpath = async function (path) {
 	await cproc.spawnSync('mkdir', ['-p', path]);
 };
+Bootstrap._data = {
+	user_names: [
+		'luke',
+		'han',
+		'chewie',
+		'vader',
+		'padme',
+		'wedge',
+		'tobias',
+		'obi',
+		'jarjar',
+		'lando',
+		'boba',
+		'jango',
+		'finn',
+		'kit',
+	],
+	un_index: -1,
+};
 
 Bootstrap.random_name = async function () {
-	return crypto.randomUUID().replace(/-/gi, '');
+	Bootstrap._data.un_index += 1;
+	return Bootstrap._data.user_names[Bootstrap._data.un_index];
 };
 
 Bootstrap.run = async function (cli_arguments) {
@@ -521,16 +669,29 @@ Bootstrap.load_instance = async function (instance_name, options = {}) {
 		mapSize: 32 * 1024 * 1024,
 	});
 	Bootstrap.MetaDB = new MetaDB(Bootstrap.DB);
+	db_set_ns = Bootstrap.MetaDB.set_namespaces;
 	db_cj = Bootstrap.MetaDB.db_cj;
 	db_cj_ns = Bootstrap.MetaDB.db_cj_ns;
 	db_get = Bootstrap.MetaDB.db_get;
 	db_put = Bootstrap.MetaDB.db_put;
 	db_append = Bootstrap.MetaDB.db_append;
+	db_del = Bootstrap.MetaDB.db_del;
 	mdb = Bootstrap.MetaDB;
 	db_cj();
 	mdb.before_tx = db_cj;
 	await Bootstrap.load_used_txid_ram_slots();
 	await Bootstrap.load_alias_ram_slots();
+	udb = new UserDB({
+		db_cj,
+		db_cj_ns,
+		db_put,
+		db_get,
+		db_append,
+		db_del,
+		db_set_ns,
+		db_make_key: Bootstrap.MetaDB.DB.make_key,
+	});
+	udb.set_ns('cj');
 	return Bootstrap;
 };
 Bootstrap.initialize = Bootstrap.load_instance;
@@ -940,7 +1101,7 @@ Bootstrap.get_users_with_denominated_utxos = async function (userDenoms) {
 	}
 	return unique(usersWithDenoms);
 };
-Bootstrap.create_wallets = async function (count = 10) {
+Bootstrap.create_wallets = async function (count = 3) {
 	for (let ctr = 0; ctr < count; ctr++) {
 		let wallet_name = await Bootstrap.random_name();
 		await Bootstrap.user_create(wallet_name).catch(function (error) {
@@ -1390,6 +1551,11 @@ function usage() {
 		'--grind            Calls generate dash and create denoms in a loop'
 	);
 	console.log('--hash-byte-order=N  Convert the string N into hash byte order');
+	console.log('--split-utxos=USER   Split one big transaction into 0.00100001');
+	console.log('--make-junk-user     Create a junk user');
+	console.log(
+		'--grind-junk-user    Send a ton of dash to this junk user to give the more important users confirmations'
+	);
 	if (extractOption('helpinstances')) {
 		console.log('');
 		console.log('# What are instances?');
@@ -1458,6 +1624,25 @@ Bootstrap.run_cli_program = async function () {
 		process.exit(0);
 	}
 	await Bootstrap.load_instance(config.instance);
+	{
+		let user = extractOption('split-utxos', true);
+		if (user) {
+			d(await Bootstrap.split_utxo(user, 0.00100001));
+			process.exit(0);
+		}
+	}
+	{
+		if (extractOption('make-junk-user')) {
+			d(await db.make_junk_wallet());
+			process.exit(0);
+		}
+	}
+	{
+		if (extractOption('grind-junk-user')) {
+			d(await Bootstrap.grind_junk_user());
+			process.exit(0);
+		}
+	}
 	{
 		if (extractOption('grind')) {
 			d(await Bootstrap.grind());
@@ -1682,7 +1867,7 @@ Bootstrap.run_cli_program = async function () {
 		process.exit(0);
 	}
 	if (config.dash_for_all) {
-		d(await Bootstrap.generate_dash_to_all());
+		d(await Bootstrap.generate_dash_to_all(100));
 		process.exit(0);
 	}
 	if (config.create_collaterals) {
