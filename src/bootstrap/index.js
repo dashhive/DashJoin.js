@@ -19,7 +19,6 @@ const { extractOption } = require('../argv.js');
 const COIN = require('../coin-join-constants.js').COIN;
 const NetworkUtil = require('../network-util.js');
 const hashByteOrder = NetworkUtil.hashByteOrder;
-const ClientSession = require('../client-session.js');
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
@@ -38,9 +37,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 
 async function LogUtxos(user, utxos) {
-	//console.log(`LogUtxos: ${user}`);
+	console.log(`LogUtxos: ${user}`);
 	let fn = `${process.env.HOME}/data/${user}-utxos.json`;
-	await require('fs/promises').appendFile(fn, JSON.stringify(utxos) + '\n');
+	await require('node:fs').promises.writeFile(fn, JSON.stringify(utxos));
 }
 function cli_args(list) {
 	return [
@@ -70,7 +69,8 @@ function mkudb(username) {
  * Take a single UTXO and split it up into as many denominated inputs
  * as possible.
  */
-Bootstrap.split_utxo = async function (username, denomination) {
+Bootstrap.split_utxo = async function (username) {
+	//, //denomination) {
 	username = Bootstrap.alias_check(username);
 	let udb = mkudb(username);
 	let main_address = await udb.main_address();
@@ -88,7 +88,8 @@ Bootstrap.split_utxo = async function (username, denomination) {
 	let extra_addresses = await udb.get_array('extra-addresses');
 	dd({ extra_addresses, main_address });
 
-	let list = [];
+	//let list = [];
+	let addr = [];
 	let utxos = await Bootstrap.list_unspent(username, '1', '99999');
 	if (extra_addresses.length < 3) {
 		let new_address = await Bootstrap.generate_new_addresses(username, 2);
@@ -363,14 +364,13 @@ Bootstrap.get_denominated_utxos = async function (
 	count = 5250,
 	filter_used = true
 ) {
-	//console.debug('get_denominated_utxos');
 	username = Bootstrap.alias_check(username);
 	let list = [];
 	let utxos = await Bootstrap.user_utxos_from_cli(username);
+	d(await LogUtxos(username, utxos));
 	denominatedAmount = parseInt(denominatedAmount, 10);
 	for (const u of utxos) {
 		if (filter_used && Bootstrap.is_txid_used(u.txid)) {
-			//d('is used');
 			continue;
 		}
 		if (u.satoshis === denominatedAmount) {
@@ -382,7 +382,6 @@ Bootstrap.get_denominated_utxos = async function (
 			return list;
 		}
 	}
-	//dd({ list, denominatedAmount });
 	return list;
 };
 Bootstrap.save_denominated_tx = async function (rows) {
@@ -733,17 +732,37 @@ Bootstrap.user_list = async function (options = {}) {
 	}
 };
 
-Bootstrap.get_addresses = async function (username, max = 250) {
+/**
+ * opts can be:
+ * {
+     change: true/false, // to get change addresses as well
+     only_change: true, // will return only change addresses and not combined with addresses
+     main_only: true, // will return main address
+     include_all: true, // will give main, change, and addresses
+   }
+ */
+Bootstrap.get_addresses = async function (username, opts = {}) {
 	username = Bootstrap.alias_check(username);
 	let udb = mkudb(username);
-	let list = await udb.get_array('addresses');
-	if (Array.isArray(list) === false) {
-		list = [];
-	}
+	let change = xt(opts, 'change');
+	let only_change = xt(opts, 'only_change');
+	let main_only = xt(opts, 'main_only');
+	let include_all = xt(opts, 'include_all');
 	let main = await udb.main_address();
-	if (main !== null) {
-		list.push(main);
+	if (main_only === true) {
+		return main;
 	}
+	if (only_change === true) {
+		return unique(await udb.get_array('change'));
+	}
+	let list = await udb.get_array('addresses');
+	if (change === true) {
+		list = unique([...list, ...(await udb.get_array('change'))]);
+	}
+	if (include_all === true) {
+		return unique([...list, ...(await udb.get_array('change')), main]);
+	}
+
 	return list;
 };
 Bootstrap.user_addresses = async function (username) {
@@ -776,7 +795,6 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 			console.error(e);
 		}
 	}
-	d({ keep });
 	return false;
 };
 
@@ -1000,11 +1018,7 @@ Bootstrap.get_private_key = async function (username, address) {
 		return out;
 	}
 };
-Bootstrap.set_addresses = async function (
-	username,
-	w_addresses,
-	items_per_page = 30
-) {
+Bootstrap.set_addresses = async function (username, w_addresses) {
 	username = Bootstrap.alias_check(username);
 	return await mkudb(username).set_array(
 		'addresses',
@@ -1279,7 +1293,7 @@ Bootstrap.generate_dash_to_all = async function (iterations = 1) {
 			]);
 			let { err, out } = ps_extract(ps, false);
 			if (err.length) {
-				console.error(`ERROR: ${_user}: "${err}"`);
+				console.error(`ERROR: ${user}: "${err}"`);
 			} else {
 				console.log(out);
 			}
@@ -1291,14 +1305,14 @@ Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
 	await Bootstrap.unlock_all_wallets();
 	let address = await mkudb(username).main_address();
-	let ps = await Bootstrap.wallet_exec(user, [
+	let ps = await Bootstrap.wallet_exec(username, [
 		'generatetoaddress',
 		'10',
 		address,
 	]);
 	let { err, out } = ps_extract(ps, false);
 	if (err.length) {
-		console.error(`ERROR: ${_user}: "${err}"`);
+		console.error(`ERROR: ${username}: "${err}"`);
 	} else {
 		console.log(out);
 	}
@@ -1503,7 +1517,6 @@ Bootstrap.run_cli_program = async function () {
 	}
 	{
 		if (extractOption('all-utxos')) {
-			let blob = [];
 			let users = await Bootstrap.user_list();
 			for (const user of users) {
 				line();
@@ -1776,7 +1789,6 @@ Bootstrap.mark_txid_used = async function (username, txid) {
 };
 Bootstrap.get_used_txids = async function (username) {
 	username = Bootstrap.alias_check(username);
-	let list = [];
 	return await mkudb(username).get_array('usedtxids');
 };
 Bootstrap.ram_txid_used = function (txid) {
