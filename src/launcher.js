@@ -20,6 +20,8 @@ const cproc = require('child_process');
 const extractOption = require('./argv.js').extractOption;
 const path = require('path');
 const dashboot = require('./bootstrap/index.js');
+const DebugLib = require('./debug.js');
+const { dd } = DebugLib;
 
 const INPUTS = 1;
 const CURDIR = path.resolve(__dirname);
@@ -35,25 +37,7 @@ if (process.argv.includes('--id')) {
 		console.info(id);
 	}, 10000);
 }
-let ctr = 0;
-function nickname() {
-	const names = [
-		'luke',
-		'han',
-		'chewie',
-		'r2',
-		'c3p0',
-		'leia',
-		'vader',
-		'jabba',
-		'obiwan',
-	];
-	if (ctr === names.length) {
-		ctr = 0;
-	}
-	return names[ctr++];
-}
-const CONCURRENT_USERS = 0;
+const CONCURRENT_USERS = 3;
 module.exports = {
 	run_cli_program: function () {
 		(async function (instanceName) {
@@ -62,15 +46,19 @@ module.exports = {
        */
 			console.info(`[status]: loading "${instanceName}" instance...`);
 			dboot = await dashboot.load_instance(instanceName);
-			let mnRingBuffer = await dboot.ring_buffer_next('masternodes');
-			if (typeof mnRingBuffer === 'undefined' || mnRingBuffer === null) {
-				await dboot.ring_buffer_init('masternodes', [
-					'local_1',
-					'local_2',
-					'local_3',
-				]);
+			let mnRingBuffer = null;
+			try {
 				mnRingBuffer = await dboot.ring_buffer_next('masternodes');
+			} catch (e) {
+				if (e.message === 'needs-init') {
+					await dboot.ring_buffer_init('masternodes', [
+						'local_1',
+						'local_2',
+						'local_3',
+					]);
+				}
 			}
+			mnRingBuffer = await dboot.ring_buffer_next('masternodes');
 			let except = [];
 			let uniqueUsers = await dboot.extract_unique_users(
 				CONCURRENT_USERS,
@@ -89,12 +77,12 @@ module.exports = {
          * Have them each submit to the same masternode
          *
          */
-				//d({ user: choice.user, node: node() });
+				//dd({ user: choice.user });
 				let m = cproc.spawn('node', [
 					`${CURDIR}/demo.js`,
 					`--instance=${instanceName}`,
 					`--username=${choice.user}`,
-					`--nickname=${nickname(choice.user)}`,
+					`--nickname=${choice.user}`,
 					'--verbose=false',
 					`--mn=${mnRingBuffer}`,
 					`--count=${INPUTS}`,

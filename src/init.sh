@@ -30,7 +30,13 @@ $DB --grind-junk-user
 
 LOOP=yes
 GEN=no
+CTR=0
 while  [[ "$LOOP" == "yes" ]]; do
+  CTR=$(( CTR + 1 ))
+  if [[ $CTR -eq 10 ]]; then
+    LOOP="no"
+    break
+  fi
   for ID in $(seq 1 3); do
     $DB --split-utxos=user$ID
     if [[ $? -ne 0 ]]; then

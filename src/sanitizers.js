@@ -8,12 +8,18 @@ function sanitize_txid(txid) {
 	return txid.replace(/[^a-f0-9]+/gi, '').replace(/[\n]+$/, '');
 }
 function sanitize_address(address) {
+	if (address === null || typeof address === 'undefined') {
+		throw new Error('empty address');
+	}
 	return address.replace(/[^a-zA-Z0-9]+/gi, '').replace(/[\n]+$/, '');
 }
 
 function sanitize_addresses(list) {
 	let flist = [];
 	for (const row of list) {
+		if (row === null || typeof row === 'undefined') {
+			continue;
+		}
 		flist.push(row.replace(/[^a-zA-Z0-9]+/gi, ''));
 	}
 	return flist;

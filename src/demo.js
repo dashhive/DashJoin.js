@@ -2,8 +2,8 @@
 'use strict';
 const COIN = require('./coin-join-constants.js').COIN;
 const Network = require('./network.js');
-const NetworkUtil = require('./network-util.js');
-const { hashByteOrder } = NetworkUtil;
+//const NetworkUtil = require('./network-util.js');
+//const { hashByteOrder } = NetworkUtil;
 const { ClientSession } = require('./client-session.js');
 const { xt } = require('@mentoc/xtract');
 const Util = require('./util.js');
@@ -22,14 +22,14 @@ const MasterNodeConnection =
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
-const PrivateKey = DashCore.PrivateKey;
+//const PrivateKey = DashCore.PrivateKey;
 const Address = DashCore.Address;
 const Signature = DashCore.crypto.Signature;
 const Sanitizers = require('./sanitizers.js');
 const { sanitize_txid, sanitize_vout } = Sanitizers;
 
-const ArrayUtils = require('./array-utils.js');
-const random = ArrayUtils.random;
+//const ArrayUtils = require('./array-utils.js');
+//const random = ArrayUtils.random;
 let done = false;
 let dboot;
 let network;
@@ -42,17 +42,17 @@ let masterNodeConnection;
 function getDemoDenomination() {
 	return parseInt(COIN / 1000 + 1, 10);
 }
-function getDenominatedOutput(txn, amount) {
-	let vout = 0;
-	for (let output of txn.outputs) {
-		if (output._satoshis === parseInt(amount * COIN, 10)) {
-			output.vout = vout;
-			return output;
-		}
-		++vout;
-	}
-	return null;
-}
+//function getDenominatedOutput(txn, amount) {
+//	let vout = 0;
+//	for (let output of txn.outputs) {
+//		if (output._satoshis === parseInt(amount * COIN, 10)) {
+//			output.vout = vout;
+//			return output;
+//		}
+//		++vout;
+//	}
+//	return null;
+//}
 async function onDSFMessage(parsed, masterNode) {
 	d('DSF message received');
 
@@ -169,6 +169,8 @@ async function stateChanged(obj) {
 		break;
 	}
 }
+const AMOUNT = 0.00100001;
+const SATOSHIS = parseInt(COIN * parseFloat(AMOUNT, 10), 10);
 async function preInit(
 	_in_instanceName,
 	_in_username,
@@ -178,7 +180,7 @@ async function preInit(
 	_in_verbose,
 	_in_mn_choice
 ) {
-	let nickName = _in_nickname;
+	let nickName = _in_username;
 	let id = {};
 	let config = require('./.mn0-config.json');
 	switch (_in_mn_choice) {
@@ -231,23 +233,35 @@ async function preInit(
    * Grab all unspent utxos
    */
 	let keep = [];
-	let utxos = await dboot.list_unspent(username);
-	const SATOSHIS = 0.00100001;
+	let utxos = await dboot.get_denominated_utxos(username, SATOSHIS);
+	let payeeAddress = await dboot.get_change_addresses(username);
+	let good = 0;
+	let bad = 0;
 	for (const u of utxos) {
-		if (u.amount === SATOSHIS) {
-			let payeeAddress = await dboot.generate_address(username, 1);
-			let tx = await dboot.get_transaction(username, u.txid);
-			process.stdout.write('.');
-			if (xt(tx, `${u.txid}.details.0.category`) === 'receive') {
-				process.stdout.write('o');
-				let fed = new Transaction(tx[u.txid].hex);
-				let output = getDenominatedOutput(fed, SATOSHIS);
-				let details = xt(tx, `${u.txid}.details`);
-				let address = Address.fromString(xt(tx, `${u.txid}.details.0.address`));
+		/**
+     * 'u' looks like this:
+	address: 'yRFXBhHDkzZ7NM44tC8ZgbgP2Hm1dR4Li9',
+  txid: '010cef7befeb498eeac48080cf6263f76a9a8837ee4603c79aa9b01f4cc95638',
+  outputIndex: 156,
+  script: '76a914361a95ab2dd6be825e9aca6a54b6ccb2c6a09ee088ac',
+  satoshis: 100001,
+  height: 1846
+
+		*/
+		if (u.satoshis !== SATOSHIS) {
+			throw new Error('got weird satoshi value');
+		}
+		let tx = await dboot.get_transaction(username, u.txid);
+		for (const detail of tx[u.txid].details) {
+			if (detail.category === 'receive') {
+				++good;
+				d({ good });
+				d({ address: detail.address });
+				let address = Address.fromString(detail.address);
 				let utxo = {
 					txId: u.txid,
-					outputIndex: details[0].vout,
-					satoshis: parseInt(SATOSHIS * COIN, 10),
+					outputIndex: detail.vout,
+					satoshis: parseInt(parseFloat(detail.amount, 10) * COIN, 10),
 					scriptPubKey: Script.buildPublicKeyHashOut(
 						address,
 						Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
@@ -255,13 +269,8 @@ async function preInit(
 					sequence: 0xffffffff,
 				};
 				let txn = new Transaction().from(utxo);
-				let pk = await dboot.get_private_key(
-					username,
-					xt(tx, `${u.txid}.details.0.address`)
-				);
-				//txn.to(payeeAddress[0], parseInt(SATOSHIS * COIN, 10));
+				let pk = await dboot.get_private_key(username, detail.address);
 				txn.sign(pk, Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
-				//dd(txn);
 				d(txn.inputs[0]._script.toHex());
 				keep.push({
 					signed: txn,
@@ -270,12 +279,15 @@ async function preInit(
 					payee: payeeAddress[0],
 					utxo,
 				});
+			} else {
+				++bad;
+			}
+			if (keep.length === INPUTS) {
+				break;
 			}
 		}
-		if (keep.length === INPUTS) {
-			break;
-		}
 	}
+	d({ good, bad, done: true });
 	client_session.mixing_inputs = keep;
 
 	mainUser = await UserDetails.extractUserDetails(username);
@@ -315,12 +327,12 @@ async function preInit(
 		payee
 	);
 
-	{
-		/** FIXME
-     */
-		await psbt_main(dboot, client_session);
-		process.exit(0);
-	}
+	//{
+	//	/** FIXME
+	//   */
+	//	await psbt_main(dboot, client_session);
+	//	process.exit(0);
+	//}
 	masterNodeConnection = new MasterNodeConnection({
 		ip: masterNodeIP,
 		port: masterNodePort,

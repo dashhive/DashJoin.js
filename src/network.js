@@ -775,22 +775,6 @@ function dsa(
 }
 function dsc() {}
 function dsf() {}
-function encodeInputs(inputs) {
-	let utxos = [];
-	for (const input of inputs) {
-		utxos.push(input.utxo);
-	}
-	return new Transaction().from(utxos);
-}
-
-function encodeOutputs(client_session, amount) {
-	var tx = new Transaction();
-	for (const address of client_session.generated_addresses) {
-		tx.to(Address.fromString(address.address), amount);
-	}
-	return tx;
-}
-
 function dsi(
 	args = {
 		chosen_network: null, // 'testnet'
@@ -804,8 +788,15 @@ function dsi(
 	if (!(args.collateralTxn instanceof Transaction)) {
 		throw new Error('collateralTxn must be Transaction');
 	}
-	let userInputTxn = encodeInputs(client_session.mixing_inputs);
-	let userOutputTxn = encodeOutputs(client_session, denominatedAmount);
+	let utxos = [];
+	for (const input of client_session.mixing_inputs) {
+		utxos.push(input.utxo);
+	}
+	let userInputTxn = new Transaction().from(utxos);
+	let userOutputTxn = new Transaction();
+	for (const address of client_session.generated_addresses) {
+		userOutputTxn.to(Address.fromString(address.address), denominatedAmount);
+	}
 
 	// FIXME: very hacky
 	let trimmedUserInput = userInputTxn
