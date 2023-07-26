@@ -58,12 +58,18 @@ Lib.get = (str) => {
 
 Lib.put = (k, val) => {
 	let { txn, dbi } = Lib._data;
-	return txn.putString(dbi, k, val);
+	try {
+		return txn.putString(dbi, k, String(val));
+	} catch (e) {
+		return null;
+	}
 };
 
 Lib.del = (k) => {
 	let { txn, dbi } = Lib._data;
-	txn.del(dbi, k);
+	try {
+		txn.del(dbi, k);
+	} catch (e) {}
 };
 
 Lib.commit = () => {
@@ -99,7 +105,10 @@ Lib.get_namespaces = function () {
 	return Lib._ns;
 };
 Lib.make_key = function (key) {
-	return Lib._ns.join('|') + key;
+	if (Array.isArray(key)) {
+		return Lib._ns.join('|') + key.join('|') + '|';
+	}
+	return Lib._ns.join('|') + key + '|';
 };
 
 Lib.ns.get = function (key) {
@@ -135,6 +144,11 @@ Lib.ns.mput = function (items) {
 			Lib.put(Lib.make_key(key), row[key]);
 		}
 	}
+	Lib.commit();
+};
+Lib.ns.del = function (key) {
+	Lib.txn();
+	Lib.del(Lib.make_key(key));
 	Lib.commit();
 };
 

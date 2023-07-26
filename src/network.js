@@ -6,22 +6,19 @@
  * IP address, with the exception that it can be a "IPv4-mapped IPv6 address".
  * See: http://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses
  */
-const net = require('net');
+const LibCliSign = require('./cli-sign.js');
 const crypto = require('crypto');
 const { createHash } = crypto;
 const NetUtil = require('./network-util.js');
 const COIN = require('./coin-join-constants.js').COIN;
-const { xt } = require('@mentoc/xtract');
 const hashByteOrder = NetUtil.hashByteOrder;
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
-const Script = DashCore.Script;
 const Address = DashCore.Address;
-const PrivateKey = DashCore.PrivateKey;
-const PublicKey = DashCore.PublicKey;
-const Signature = DashCore.crypto.Signature;
 const assert = require('assert');
-const fs = require('node:fs');
+const FileLib = require('./file.js');
+const DebugLib = require('./debug.js');
+const { d } = DebugLib;
 
 const Lib = { packet: { parse: {} } };
 module.exports = Lib;
@@ -131,25 +128,6 @@ const SENDCMPCT_PAYLOAD_SIZE = 9;
 const SENDDSQ_PAYLOAD_SIZE = 1;
 const PING_PAYLOAD_SIZE = 8;
 
-function date() {
-	const d = new Date();
-	let h = d.getHours();
-	if (String(h).length === 1) {
-		h = `0${h}`;
-	}
-	let m = d.getMinutes();
-	if (String(m).length === 1) {
-		m = `0${m}`;
-	}
-	let s = d.getSeconds();
-	if (String(s).length === 1) {
-		s = `0${s}`;
-	}
-	return (
-		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
-    [h, m, s].join(':')
-	);
-}
 const getVersionSizes = function () {
 	let SIZES = {
 		VERSION: 4,
@@ -429,19 +407,19 @@ function version(
      *
      * Must be one of the values in NETWORKS constant above.
      */
-		chosen_network,
+		chosen_network: null,
 		/**
      * Required.
      */
-		protocol_version,
+		protocol_version: null,
 		/**
      * Required.
      */
-		services,
+		services: null,
 		/**
      * Required.
      */
-		addr_recv_services,
+		addr_recv_services: null,
 		/**
      * Required.
      *
@@ -449,7 +427,7 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_recv_ip,
+		addr_recv_ip: null,
 		/**
      * Required.
      *
@@ -459,7 +437,7 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_recv_port,
+		addr_recv_port: null,
 
 		/**
      * Required.
@@ -469,7 +447,7 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_trans_ip,
+		addr_trans_ip: null,
 		/**
      * Required.
      *
@@ -479,14 +457,14 @@ function version(
      *
      * DO NOT convert to big endian!
      */
-		addr_trans_port,
+		addr_trans_port: null,
 
 		/**
      * Required.
      *
      * Start height of your best block chain.
      */
-		start_height,
+		start_height: null,
 
 		/**
      * Optional.
@@ -528,8 +506,6 @@ function version(
 		mnauth_challenge: null,
 	}
 ) {
-	const cmd = 'version';
-
 	let SIZES = getVersionSizes();
 
 	if (!VALID_NETS.includes(args.chosen_network)) {
@@ -551,7 +527,7 @@ function version(
     'undefined' !== typeof args.mnauth_challenge
 	) {
 		throw new Error(
-			`"mnauth_challenge" field is not supported in protocol versions prior to ${MNAUTH_CHALLENGE_OFFSET}`
+			'"mnauth_challenge" field is not supported in protocol versions prior to MNAUTH_CHALLENGE_OFFSET'
 		);
 	}
 	if ('undefined' !== typeof args.mnauth_challenge) {
@@ -636,7 +612,6 @@ function version(
 		let ipBytes = dot2num(transmittingIP.split(':').reverse()[0]);
 		let inv = htonl(ipBytes);
 		packet = setUint32(packet, inv, ADDR_TRANS_IP_OFFSET + 12);
-		let encodedIP = [0xff, 0xff];
 		packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
 	} else {
 		/** TODO: */
@@ -710,50 +685,10 @@ function getaddr() {
 	return packet;
 }
 
-const ping_message = function () {
-	/**
-   * FIXME: add network and adjust magic bytes accordingly
-   */
-	const NONCE = '12340000';
-	const cmd = 'ping';
-	const MAGIC_BYTES_SIZE = 4;
-	const COMMAND_SIZE = 12;
-	const PAYLOAD_SIZE = 4;
-	const CHECKSUM_SIZE = 4;
-	const NONCE_SIZE = 8;
-	const TOTAL_SIZE =
-    MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE + CHECKSUM_SIZE + NONCE_SIZE;
-	let packet = new Uint8Array(TOTAL_SIZE);
-	// TESTNET magic bytes
-	packet[0] = 0xce;
-	packet[1] = 0xe2;
-	packet[2] = 0xca;
-	packet[3] = 0xff;
-	packet.set(NETWORKS[net].magic, 0);
-	// point us to the beginning of the command name char[12]
-	let cmdArray = str2uint8(cmd);
-	packet.set(cmdArray, MAGIC_BYTES_SIZE);
-	// fill the payload
-	packet.set([0, 0, 0, 0x08], MAGIC_BYTES_SIZE + COMMAND_SIZE);
-
-	//// fill the checksum
-	let hash = createHash('sha256').update(NONCE).digest();
-	let hashOfHash = createHash('sha256').update(hash).digest();
-	let arr = hashOfHash.slice(0, 4);
-	packet.set(arr, MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE);
-
-	let nonceArray = str2uint8(NONCE);
-	// fill the nonce
-	packet.set(
-		nonceArray,
-		MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE + CHECKSUM_SIZE
-	);
-	return packet;
-};
 function pong(
 	args = {
-		chosen_network,
-		nonce,
+		chosen_network: null,
+		nonce: null,
 	}
 ) {
 	let nonceBuffer = new Uint8Array(PING_NONCE_SIZE);
@@ -762,15 +697,15 @@ function pong(
 }
 function verack(
 	args = {
-		chosen_network,
+		chosen_network: null,
 	}
 ) {
 	return wrap_packet(args.chosen_network, 'verack', null, 0);
 }
 function senddsq(
 	args = {
-		chosen_network,
-		fSendDSQueue,
+		chosen_network: null,
+		fSendDSQueue: null,
 	}
 ) {
 	let buffer = new Uint8Array([args.fSendDSQueue ? 1 : 0]);
@@ -778,14 +713,14 @@ function senddsq(
 }
 function sendaddrv2(
 	args = {
-		chosen_network,
+		chosen_network: null,
 	}
 ) {
 	return wrap_packet(args.chosen_network, 'sendaddrv2', null, 0);
 }
 function sendaddr(
 	args = {
-		chosen_network,
+		chosen_network: null,
 	}
 ) {
 	return wrap_packet(args.chosen_network, 'sendaddr', null, 0);
@@ -800,9 +735,9 @@ function isStandardDenomination(d) {
 
 function dsa(
 	args = {
-		chosen_network, // 'testnet'
-		denomination, // COIN / 1000 + 1
-		collateral, // see: ctransaction.js
+		chosen_network: null, // 'testnet'
+		denomination: null, // COIN / 1000 + 1
+		collateral: null, // see: ctransaction.js
 	}
 ) {
 	if (!isStandardDenomination(args.denomination)) {
@@ -840,48 +775,12 @@ function dsa(
 }
 function dsc() {}
 function dsf() {}
-function encodeInputs(inputs) {
-	let utxos = [];
-	let satoshis = 0;
-	for (let input of inputs) {
-		satoshis = 0;
-		if (typeof input.amount !== 'undefined') {
-			satoshis = parseInt(input.amount * COIN, 10);
-		} else {
-			satoshis = parseInt(input.satoshis, 10);
-		}
-		let vout = 0;
-		if (typeof input.outputIndex !== 'undefined') {
-			vout = parseInt(input.outputIndex, 10);
-		} else {
-			vout = parseInt(input.vout, 10);
-		}
-		utxos.push({
-			txId: input.txid,
-			outputIndex: vout,
-			sequenceNumber: 0xffffffff,
-			scriptPubKey: [],
-			satoshis,
-		});
-	}
-	return new Transaction().from(utxos);
-}
-
-function encodeOutputs(client_session, amount) {
-	var tx = new Transaction();
-	let i = 0;
-	for (const address of client_session.generated_addresses) {
-		tx.to(address, amount);
-	}
-	return tx;
-}
-
 function dsi(
 	args = {
-		chosen_network, // 'testnet'
-		collateralTxn,
-		denominatedAmount,
-		client_session,
+		chosen_network: null, // 'testnet'
+		collateralTxn: null,
+		denominatedAmount: null,
+		client_session: null,
 	}
 ) {
 	let client_session = args.client_session;
@@ -890,23 +789,14 @@ function dsi(
 		throw new Error('collateralTxn must be Transaction');
 	}
 	let utxos = [];
-	var tx = new Transaction();
 	for (const input of client_session.mixing_inputs) {
-		utxos.push({
-			txId: input.txid,
-			outputIndex: input.outputIndex,
-			satoshis: input.satoshis,
-			scriptPubKey: [],
-			sequenceNumber: 0xffffffff,
-		});
+		utxos.push(input.utxo);
 	}
-	tx.from(utxos);
+	let userInputTxn = new Transaction().from(utxos);
+	let userOutputTxn = new Transaction();
 	for (const address of client_session.generated_addresses) {
-		tx.to(address, denominatedAmount);
+		userOutputTxn.to(Address.fromString(address.address), denominatedAmount);
 	}
-
-	let userInputTxn = encodeInputs(client_session.mixing_inputs);
-	let userOutputTxn = encodeOutputs(client_session, denominatedAmount);
 
 	// FIXME: very hacky
 	let trimmedUserInput = userInputTxn
@@ -914,10 +804,10 @@ function dsi(
 		.substr(8)
 		.replace(/[0]{10}$/, '');
 
-	d({
-		collateral: args.collateralTxn,
-		serialized: args.collateralTxn.uncheckedSerialize(),
-	});
+	//d({
+	//	collateral: args.collateralTxn,
+	//	serialized: args.collateralTxn.uncheckedSerialize(),
+	//});
 	let collateralTxn = hexToBytes(args.collateralTxn.uncheckedSerialize());
 
 	// FIXME: very hacky
@@ -964,11 +854,12 @@ function dsi(
 	return wrap_packet(args.chosen_network, 'dsi', packet, TOTAL_SIZE);
 }
 
-function dss(
+async function dss(
 	args = {
-		chosen_network,
-		dsfPacket,
-		client_session,
+		chosen_network: null,
+		dsfPacket: null,
+		client_session: null,
+		dboot: null,
 	}
 ) {
 	/**
@@ -976,113 +867,49 @@ function dss(
    * -----------
    * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
    */
-	const dsfPacket = args.dsfPacket;
-	assert.equal(
-		dsfPacket.transaction.inputCount < 253,
-		true,
-		'Can only support up to 252 inputs currently'
-	);
-	//const USER_INPUT_SIZE = args.dsfPacket.transaction.inputCount;
 	let client_session = args.client_session;
-	const USER_INPUT_SIZE = client_session.mixing_inputs.length;
-	/**
-   * The input count byte
-   */
-	let TOTAL_SIZE = 1; // TODO: support compactSize
-	const TXID_LENGTH = 32;
-	const OUTPUT_INDEX_LENGTH = 4;
-	const SEQUENCE_NUMBER_LENGTH = 4;
-	fs.writeFileSync(
-		`/home/foobar/data/dss-outputs-${client_session.username}-${date()}.json`,
-		JSON.stringify(client_session.mixing_inputs, null, 2)
-	);
-	let privkeys = [];
-	let pubkeys = [];
+	let TOTAL_SIZE = 0;
+	TOTAL_SIZE += 1; // input size length
+	client_session.signatures = {};
 	for (const input of client_session.mixing_inputs) {
-		privkeys.push(new PrivateKey(input.privateKey));
+		TOTAL_SIZE += 32;
+		TOTAL_SIZE += 4;
+		TOTAL_SIZE += 1; // script length
+		let rawSig = input.signed.inputs[0]._script.toHex();
+		let encodedSignature = hexToBytes(rawSig);
+		let len = encodedSignature.length;
+		d({ len, rawSig, encodedSignature });
+		TOTAL_SIZE += len;
+		TOTAL_SIZE += 4;
 	}
-	//pubkeys = privkeys.map(PublicKey);
-	//d({ pubkeys, len: xt(pubkeys, 'length'), type: typeof pubkeys });
-	//let address = new Address(pubkeys, pubkeys.length);
+	let rel_path = `dss-${client_session.username}-#DATE#`;
+	await FileLib.write_json(rel_path, client_session);
 
-	for (let i = 0; i < USER_INPUT_SIZE; i++) {
-		let txid = client_session.mixing_inputs[i].txid;
-		TOTAL_SIZE += TXID_LENGTH + OUTPUT_INDEX_LENGTH;
-		/**
-     * Assumes that the length byte of signatures[txid].signature
-     * is present as the first byte
-     */
-		d({ txid });
-
-		let pk = PrivateKey.fromWIF(client_session.mixing_inputs[i].privateKey);
-		let pub = pk.publicKey;
-		let utxo = {
-			address: client_session.mixing_inputs[i].address,
-			txId: client_session.mixing_inputs[i].txid,
-			outputIndex: client_session.mixing_inputs[i].outputIndex,
-			//script: client_session.mixing_inputs[i].script,
-			scriptPubKey: Script.buildPublicKeyHashOut(pub),
-			satoshis: client_session.mixing_inputs[i].satoshis,
-		};
-		let tx = new Transaction()
-			.from(utxo) //, pubkeys, pubkeys.length)
-			.to(
-				client_session.generated_addresses[i],
-				client_session.denominatedAmount
-			)
-			.sign(
-				[pk],
-				parseInt(Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY, 10)
-			);
-		//d({
-		//	ser: tx.uncheckedSerialize(),
-		//	gen_addr: client_session.generated_addresses[i],
-		//});
-		let sigScript = tx.inputs[0]._scriptBuffer;
-		let encodedScript = hexToBytes(sigScript.toString('hex'));
-		let len = encodedScript.length;
-		client_session.mixing_inputs[i].script = {
-			value: sigScript,
-			buffer: encodedScript,
-			len,
-		};
-		TOTAL_SIZE += 1;
-		TOTAL_SIZE += client_session.mixing_inputs[i].script.len;
-		TOTAL_SIZE += SEQUENCE_NUMBER_LENGTH;
-
-		//d({
-		//	ser: tx.uncheckedSerialize(),
-		//	//sig,
-		//	tx,
-		//	mi: client_session.mixing_inputs[i],
-		//	i,
-		//});
-	}
-
-	/**
-   * Packet payload
-   */
-	let offset = 0;
 	let packet = new Uint8Array(TOTAL_SIZE);
-	packet.set([USER_INPUT_SIZE], 0);
-	offset += 1; // TODO: compactSize
+	let offset = 0;
+	packet.set([client_session.mixing_inputs.length], offset);
+	offset += 1;
 
-	/**
-   * Add each input
-   */
 	for (const input of client_session.mixing_inputs) {
-		packet.set(hexToBytes(hashByteOrder(input.txid)), offset);
+		packet.set(hexToBytes(hashByteOrder(input.utxo.txId)), offset);
+		assert.equal(
+			hexToBytes(input.utxo.txId).length,
+			32,
+			'txid should equal 32 bytes'
+		);
 		offset += 32;
-		packet.set([input.outputIndex], offset);
+		packet = setUint32(packet, input.utxo.outputIndex, offset);
 		offset += 4;
-		packet.set([input.script.buffer.length], offset);
+		let rawSig = input.signed.inputs[0]._script.toHex();
+		let encodedSignature = hexToBytes(rawSig);
+		let len = encodedSignature.length;
+		packet.set([len], offset);
 		offset += 1;
-		packet.set(input.script.buffer, offset);
-		offset += input.script.buffer.length;
-		packet.set(hexToBytes('ffffffff'), offset);
+		packet.set(encodedSignature, offset);
+		offset += len;
+		packet = setUint32(packet, 0xffffffff, offset);
 		offset += 4;
 	}
-
 	return wrap_packet(args.chosen_network, 'dss', packet, TOTAL_SIZE);
 }
 
@@ -1164,8 +991,6 @@ Lib.packet.parse.magicBytes = function (buffer) {
 };
 
 Lib.packet.parse.identifyMagicBytes = function (buffer) {
-	let bytes = Lib.packet.parse.magicBytes(buffer);
-
 	for (let key in NETWORKS) {
 		let bytesMatched = 0;
 		for (let i = 0; i < 4; i++) {
@@ -1264,9 +1089,6 @@ Lib.packet.parse.dsq = function (buffer) {
    */
 	let offset = MESSAGE_HEADER_SIZE;
 
-	let dsqPacket = extractChunk(buffer, offset, buffer.length);
-	//console.debug("packet details (minus header):", dsqPacket);
-
 	/**
    * Grab the denomination
    */
@@ -1330,9 +1152,6 @@ Lib.packet.parse.dssu = function (buffer) {
    * order to get to the dssu packet details.
    */
 	let offset = MESSAGE_HEADER_SIZE;
-
-	let dssuPacket = extractChunk(buffer, offset, buffer.length);
-	//console.debug("packet details (minus header):", dssuPacket);
 
 	/**
    * Grab the session id
@@ -1426,7 +1245,6 @@ Lib.packet.parse.dsf = function (buffer) {
 	parsed.sessionID = extractUint32(buffer, offset);
 	offset += SIZES.SESSIONID;
 
-	let tx = extractChunk(buffer, offset, buffer.length);
 	/**
    * Grab the VERSION
    */
@@ -1497,9 +1315,6 @@ Lib.packet.parse.dsf = function (buffer) {
 	parsed.raw_buffer = buffer;
 	return parsed;
 };
-function d(...args) {
-	console.debug(...args);
-}
 function dd(...args) {
 	console.debug(...args);
 	process.exit();

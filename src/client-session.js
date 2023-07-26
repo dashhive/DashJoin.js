@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 const ArrayUtils = require('./array-utils.js');
+const FileLib = require('./file.js');
 
 function ClientSession() {
 	let self = this;
+	self.clazz = 'ClientSession';
 	self.address_info = {};
 	self.username = null;
 	self.used_txids = [];
@@ -48,6 +50,10 @@ function ClientSession() {
 			rep.push('=============================================================');
 		}
 		return rep.join('\n');
+	};
+	self.write = async function (prefix = 'dss') {
+		let rel_path = `${prefix}-${self.username}-#DATE#`;
+		await FileLib.write_json(rel_path, self);
 	};
 }
 

@@ -1,2 +1,7 @@
 dash-core-src
 .config.json
+data/
+dcore/
+data
+dcore
+electrum-dash/
