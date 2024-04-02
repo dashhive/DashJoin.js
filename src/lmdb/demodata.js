@@ -202,7 +202,12 @@ const txns = [
 ];
 
 (async () => {
-  await Lib.initialize('psend',require('./config.json'));
+  let os = require('os');
+  //@ts-ignore - tsc can't understand JSON
+  let lmdbConfig = require('./config.json');
+  let homedir = os.homedir();
+  lmdbConfig.db_path = lmdbConfig.db_path.replace(/^~[/]/, `${homedir}/`);
+  await Lib.initialize('psend', lmdbConfig);
   //Lib.store.create_user('psend');
   //d(db_get('users'));
   let address = 'yjPpZi9mPott4zeHzP1LtgoB9jPRBmB8hs';
