@@ -29,7 +29,7 @@ Lib.initialize = async function (uname,config) {
   DB.open({
     path: config.db_path,
     db_name: config.db_name,
-    create: !exists, 
+    create: !exists,
     maxDbs: config.max_dbs,
   });
   db_cj();
@@ -140,7 +140,7 @@ Lib.transaction.add = Lib.store.user.transaction;
 Lib.store.user.transaction = function(username,txn){
   /**
    * This is assuming you pass in an array or a single
-   * json object that is the result of the `listtransactions` 
+   * json object that is the result of the `listtransactions`
    * dash-cli command
    */
   let existing = Lib.transaction.get_all(username);
