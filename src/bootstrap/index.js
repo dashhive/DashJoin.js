@@ -788,7 +788,7 @@ Bootstrap.load_instance = async function (instance_name, options = {}) {
 		Bootstrap.save_exec = options.save_exec;
 	}
 	Bootstrap.saved_exec_list = [];
-	Bootstrap.DASH_CLI = [process.env.HOME, 'bin', 'dash-cli'].join('/');
+	Bootstrap.DASH_CLI = 'dash-cli';
 	Bootstrap.DB = require('../lmdb/lmdb.js');
 	Bootstrap.__data.instance.name = instance_name;
 	if (!Bootstrap.sane_instance()) {
