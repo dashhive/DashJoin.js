@@ -1,1 +1,1 @@
-tail -f /home/foobar/.dashmate/logs/local_3/core.log
+tail -f "${HOME}"/.dashmate/logs/local_3/core.log

@@ -1,4 +1,4 @@
 #!/bin/bash
 
-~/bin/dash-cli -conf=/home/foobar/.dashmate/local_2/core/dash.conf \
+~/bin/dash-cli -conf="${HOME}"/.dashmate/local_2/core/dash.conf \
   $*
