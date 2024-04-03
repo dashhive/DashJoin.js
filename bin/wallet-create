@@ -1,0 +1,40 @@
+#!/bin/sh
+set -e
+set -u
+
+fn_create_wallet() { (
+    a_wallet_name="${1}"
+
+    b_disable_privkeys=false
+    b_blank=false
+    b_passphrase='foobar'
+    b_avoid_reuse=false
+    b_load_on_startup=true
+
+    dash-cli -conf="${HOME}"/.dashmate/local_seed/core/dash.conf \
+        createwallet \
+        "${a_wallet_name}" \
+        "${b_disable_privkeys}" \
+        "${b_blank}" \
+        "${b_passphrase}" \
+        "${b_avoid_reuse}" \
+        "${b_load_on_startup}"
+); }
+
+main() { (
+    if test -z "${1:-}"; then
+        echo "Create a wallet under ~/.dashmate/local_seed/ with the given username, and the wallet password 'foobar'"
+        echo ""
+        echo "USAGE"
+        echo "    wallet_create <username>"
+        echo ""
+        echo "EXAMPLE"
+        echo "    wallet_create 'luke'"
+        echo ""
+        exit 1
+    fi
+
+    fn_create_wallet "${1}"
+); }
+
+main "${@}"
