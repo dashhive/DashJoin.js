@@ -170,9 +170,9 @@ Lib.nCachedNumBlocks = 9999; /** FIXME: use numeric_limits::max */
 //bool fCreateAutoBackups{true}; // builtin support for automatic backups
 Lib.fCreateAutoBackups = true;  // builtin support for automatic backups
 //void ProcessMessage(CNode& peer, CConnman& connman, const CTxMemPool& mempool, std::string_view msg_type, CDataStream& vRecv) LOCKS_EXCLUDED(cs_deqsessions);
-Lib.ProcessMessage = function(/*CNode& */peer, 
-	/*CConnman& */ connman, 
-	/*const CTxMemPool&*/ mempool, 
+Lib.ProcessMessage = function(/*CNode& */peer,
+	/*CConnman& */ connman,
+	/*const CTxMemPool&*/ mempool,
 	/*std::string_view*/ msg_type,
 	/*CDataStream&*/ vRecv) {
 	if(!Lib.CCoinJoinClientOptions.IsEnabled()) {
@@ -252,7 +252,7 @@ Lib.UpdatedSuccessBlock = function(){
 
 //orig: bool CCoinJoinClientManager::WaitForAnotherBlock() const
 Lib.WaitForAnotherBlock = function(){
-    if (!Lib.m_mn_sync->IsBlockchainSynced()){
+    if (!Lib.m_mn_sync.IsBlockchainSynced()){
 			return true;
 		}
 
@@ -270,7 +270,7 @@ Lib.DoAutomaticDenominating = function(mempool, connman, fDryRun){
 			return false;
 		}
 
-    if (!Lib.m_mn_sync->IsBlockchainSynced()) {
+    if (!Lib.m_mn_sync.IsBlockchainSynced()) {
         Lib.strAutoDenomResult = "Can't mix while sync in progress.";
         return false;
     }
@@ -280,7 +280,7 @@ Lib.DoAutomaticDenominating = function(mempool, connman, fDryRun){
         return false;
     }
 
-		//FIXME: we need to port the deterministicMNManager 
+		//FIXME: we need to port the deterministicMNManager
     let nMnCountEnabled = Lib.deterministicMNManager.GetListAtChainTip().GetValidMNsCount();
 
     // If we've used 90% of the Masternode list then drop the oldest first ~30%
@@ -333,7 +333,7 @@ Lib.GetRandomNotUsedMasternode = function () {
     let nCountEnabled = mnList.GetValidMNsCount();
     let nCountNotExcluded = nCountEnabled - Lib.vecMasternodesUsed.size();
 
-    Lib.LogPrint(`CCoinJoinClientManager::${__FUNCTION__} -- ${nCountEnabled} ` + 
+    Lib.LogPrint(`CCoinJoinClientManager::${__FUNCTION__} -- ${nCountEnabled} ` +
 			`enabled masternodes, ${nCountNotExcluded} masternodes to choose from`
 		);
     if (nCountNotExcluded < 1) {
