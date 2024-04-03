@@ -4,7 +4,7 @@
 
 let Lib = {};
 module.exports = Lib;
-const { COIN, MAX_MONEY, } = require('./coin.js');
+const { COIN, MAX_MONEY } = require('./coin.js');
 Lib.COINJOIN_AUTO_TIMEOUT_MIN = 5;
 Lib.COINJOIN_AUTO_TIMEOUT_MAX = 15;
 Lib.COINJOIN_QUEUE_TIMEOUT = 30;
@@ -58,18 +58,18 @@ Lib.COINJOIN_RANDOM_ROUNDS = 3;
 Lib.ERR_ALREADY_HAVE = 0;
 Lib.ERR_DENOM = 1;
 Lib.ERR_ENTRIES_FULL = 2;
-Lib.ERR_EXISTING_TX =3;
+Lib.ERR_EXISTING_TX = 3;
 Lib.ERR_FEES = 4;
 Lib.ERR_INVALID_COLLATERAL = 5;
 Lib.ERR_INVALID_INPUT = 6;
 Lib.ERR_INVALID_SCRIPT = 7;
-Lib.ERR_INVALID_TX =8;
+Lib.ERR_INVALID_TX = 8;
 Lib.ERR_MAXIMUM = 9;
 Lib.ERR_MN_LIST = 10;
 Lib.ERR_MODE = 11;
 Lib.ERR_NON_STANDARD_PUBKEY = 12; // not used
-Lib.ERR_NOT_A_MN = 13, // not used
-Lib.ERR_QUEUE_FULL = 14;
+(Lib.ERR_NOT_A_MN = 13), // not used
+	(Lib.ERR_QUEUE_FULL = 14);
 Lib.ERR_RECENT = 15;
 Lib.ERR_SESSION = 16;
 Lib.ERR_MISSING_TX = 17;
@@ -82,11 +82,11 @@ Lib.MSG_POOL_MIN = Lib.ERR_ALREADY_HAVE;
 Lib.MSG_POOL_MAX = Lib.ERR_SIZE_MISMATCH;
 
 Lib.STANDARD_DENOMINATIONS = [
-  10 * COIN + 10000,
-  1 * COIN + 1000,
-  COIN / 10 + 100,
-  COIN / 100 + 10,
-  COIN / 1000 + 1,
+	10 * COIN + 10000,
+	1 * COIN + 1000,
+	COIN / 10 + 100,
+	COIN / 100 + 10,
+	COIN / 1000 + 1,
 ];
 Lib.COIN = COIN;
 

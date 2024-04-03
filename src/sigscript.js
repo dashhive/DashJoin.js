@@ -25,7 +25,7 @@ async function extractSigScript(
 	username,
 	utxoInfo,
 	denominatedAmount,
-	onlyTx = false
+	onlyTx = false,
 ) {
 	let txid = utxoInfo.txid;
 	if (utxoInfo.needs_hash_byte_order) {
@@ -49,7 +49,7 @@ async function extractSigScript(
 
 	let tx = new Transaction()
 		.from(utxos)
-	//.to(address, denominatedAmount)
+		//.to(address, denominatedAmount)
 		.sign([pk], Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
 	d.d(tx.verify());
 	if (onlyTx) {

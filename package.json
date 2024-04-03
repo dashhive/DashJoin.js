@@ -8,8 +8,10 @@
     "test": "tests"
   },
   "scripts": {
+    "demo": "./src/demo.js",
+    "fmt": "npm run prettier",
     "test": "./node_modules/mocha/bin/mocha.js",
-    "demo": "./src/demo.js"
+    "prettier": "npx -p prettier@3.x -- prettier -w '**/*.{js,md}'"
   },
   "repository": {
     "type": "git",

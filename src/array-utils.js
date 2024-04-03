@@ -27,7 +27,7 @@ function bigint_safe_json_stringify(buffer, stringify_space = 2) {
 			this.k = key;
 			return typeof value === 'bigint' ? value.toString() + 'n' : value;
 		},
-		stringify_space
+		stringify_space,
 	);
 }
 function uniqueByKey(array, key) {
@@ -86,5 +86,5 @@ module.exports = {
 	unique,
 	ps_extract,
 	xt,
-  random,
+	random,
 };

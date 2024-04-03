@@ -71,12 +71,12 @@ const POOL_STATUS_UPDATE = {
 	ACCEPTED: 1,
 	toString: function (i) {
 		switch (i) {
-		case POOL_STATUS_UPDATE.REJECTED:
-			return 'REJECTED';
-		case POOL_STATUS_UPDATE.ACCEPTED:
-			return 'ACCEPTED';
-		default:
-			return null;
+			case POOL_STATUS_UPDATE.REJECTED:
+				return 'REJECTED';
+			case POOL_STATUS_UPDATE.ACCEPTED:
+				return 'ACCEPTED';
+			default:
+				return null;
 		}
 	},
 };
@@ -200,47 +200,47 @@ const RELAY_SIZE = 1;
 
 let SERVICE_IDENTIFIERS = {
 	/**
-   * NODE_UNNAMED:
-   * 	This node is not a full node. It may not be
-   * 	able to provide any data except for the
-   * 	transactions it originates.
-   */
+	 * NODE_UNNAMED:
+	 * 	This node is not a full node. It may not be
+	 * 	able to provide any data except for the
+	 * 	transactions it originates.
+	 */
 	NODE_UNNAMED: 0x00,
 	/**
-   * NODE_NETWORK:
-   * 	This is a full node and can be asked for full
-   * 	blocks. It should implement all protocol features
-   * 	available in its self-reported protocol version.
-   */
+	 * NODE_NETWORK:
+	 * 	This is a full node and can be asked for full
+	 * 	blocks. It should implement all protocol features
+	 * 	available in its self-reported protocol version.
+	 */
 	NODE_NETWORK: 0x01,
 	/**
-   * NODE_GETUTXO:
-   * 	This node is capable of responding to the getutxo
-   * 	protocol request. Dash Core does not support
-   * 	this service.
-   */
+	 * NODE_GETUTXO:
+	 * 	This node is capable of responding to the getutxo
+	 * 	protocol request. Dash Core does not support
+	 * 	this service.
+	 */
 	NODE_GETUTXO: 0x02,
 	/**
-   * NODE_BLOOM:
-   * 	This node is capable and willing to handle bloom-
-   * 	filtered connections. Dash Core nodes used to support
-   * 	this by default, without advertising this bit, but
-   * 	no longer do as of protocol version 70201
-   * 	(= NO_BLOOM_VERSION)
-   */
+	 * NODE_BLOOM:
+	 * 	This node is capable and willing to handle bloom-
+	 * 	filtered connections. Dash Core nodes used to support
+	 * 	this by default, without advertising this bit, but
+	 * 	no longer do as of protocol version 70201
+	 * 	(= NO_BLOOM_VERSION)
+	 */
 	NODE_BLOOM: 0x04,
 	/**
-   * NODE_XTHIN:
-   * 	This node supports Xtreme Thinblocks. Dash Core
-   * 	does not support this service.
-   */
+	 * NODE_XTHIN:
+	 * 	This node supports Xtreme Thinblocks. Dash Core
+	 * 	does not support this service.
+	 */
 	NODE_XTHIN: 0x08,
 	/**
-   * NODE_NETWORK_LIMITED:
-   * 	This is the same as NODE_NETWORK with the
-   * 	limitation of only serving the last 288 blocks.
-   * 	Not supported prior to Dash Core 0.16.0
-   */
+	 * NODE_NETWORK_LIMITED:
+	 * 	This is the same as NODE_NETWORK with the
+	 * 	limitation of only serving the last 288 blocks.
+	 * 	Not supported prior to Dash Core 0.16.0
+	 */
 	NODE_NETWORK_LIMITED: 0x400,
 };
 Lib.constants = {
@@ -313,7 +313,12 @@ function extractUint64(data, at) {
 	return b[0];
 }
 function extractUint32(data, at) {
-	let a = new Uint8Array([data[at], data[at + 1], data[at + 2], data[at + 3]]);
+	let a = new Uint8Array([
+		data[at],
+		data[at + 1],
+		data[at + 2],
+		data[at + 3],
+	]);
 	let b = new Uint32Array(a.buffer);
 	return b[0];
 }
@@ -368,8 +373,8 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
 	packet.set(NETWORKS[net].magic, 0);
 
 	/**
-   * Set command_name (char[12])
-   */
+	 * Set command_name (char[12])
+	 */
 	let COMMAND_NAME_OFFSET = SIZES.MAGIC_BYTES;
 	packet.set(str2uint8(command_name), COMMAND_NAME_OFFSET);
 
@@ -382,8 +387,8 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
 	packet = setUint32(packet, payload_size, PAYLOAD_SIZE_OFFSET);
 	packet.set(compute_checksum(payload), CHECKSUM_OFFSET);
 	/**
-   * Finally, append the payload to the header
-   */
+	 * Finally, append the payload to the header
+	 */
 	let ACTUAL_PAYLOAD_OFFSET = CHECKSUM_OFFSET + SIZES.CHECKSUM;
 	packet.set(payload, ACTUAL_PAYLOAD_OFFSET);
 	return packet;
@@ -403,108 +408,108 @@ Lib.net = {
 function version(
 	args = {
 		/**
-     * Required.
-     *
-     * Must be one of the values in NETWORKS constant above.
-     */
+		 * Required.
+		 *
+		 * Must be one of the values in NETWORKS constant above.
+		 */
 		chosen_network: null,
 		/**
-     * Required.
-     */
+		 * Required.
+		 */
 		protocol_version: null,
 		/**
-     * Required.
-     */
+		 * Required.
+		 */
 		services: null,
 		/**
-     * Required.
-     */
+		 * Required.
+		 */
 		addr_recv_services: null,
 		/**
-     * Required.
-     *
-     * addr_recv_ip is the ipv6 address of the master node (can be 'ipv4-mapped')
-     *
-     * DO NOT convert to big endian!
-     */
+		 * Required.
+		 *
+		 * addr_recv_ip is the ipv6 address of the master node (can be 'ipv4-mapped')
+		 *
+		 * DO NOT convert to big endian!
+		 */
 		addr_recv_ip: null,
 		/**
-     * Required.
-     *
-     * This has to be the port on the master node that you're connecting to.
-     * This is sometimes a port like 9999, 19999, but it can sometimes be
-     * a port chosen by the masternode owners themselves.
-     *
-     * DO NOT convert to big endian!
-     */
+		 * Required.
+		 *
+		 * This has to be the port on the master node that you're connecting to.
+		 * This is sometimes a port like 9999, 19999, but it can sometimes be
+		 * a port chosen by the masternode owners themselves.
+		 *
+		 * DO NOT convert to big endian!
+		 */
 		addr_recv_port: null,
 
 		/**
-     * Required.
-     *
-     * This has to be the IPv6 IP of our machine (can be 'ipv4-mapped').
-     * If you're not sure, leave it null and the library will fill it for you.
-     *
-     * DO NOT convert to big endian!
-     */
+		 * Required.
+		 *
+		 * This has to be the IPv6 IP of our machine (can be 'ipv4-mapped').
+		 * If you're not sure, leave it null and the library will fill it for you.
+		 *
+		 * DO NOT convert to big endian!
+		 */
 		addr_trans_ip: null,
 		/**
-     * Required.
-     *
-     * This is the port that corresponds to your current socket connection
-     * to the master node. Usually, the operating system gives you a random
-     * port.
-     *
-     * DO NOT convert to big endian!
-     */
+		 * Required.
+		 *
+		 * This is the port that corresponds to your current socket connection
+		 * to the master node. Usually, the operating system gives you a random
+		 * port.
+		 *
+		 * DO NOT convert to big endian!
+		 */
 		addr_trans_port: null,
 
 		/**
-     * Required.
-     *
-     * Start height of your best block chain.
-     */
+		 * Required.
+		 *
+		 * Start height of your best block chain.
+		 */
 		start_height: null,
 
 		/**
-     * Optional.
-     *
-     * If you specify a nonce, be prepared to see that value in verack messages.
-     */
+		 * Optional.
+		 *
+		 * If you specify a nonce, be prepared to see that value in verack messages.
+		 */
 		nonce: null,
 
 		/**
-     * Optional.
-     *
-     * If you'd like to, you can specify a user agent as a string of bytes.
-     */
+		 * Optional.
+		 *
+		 * If you'd like to, you can specify a user agent as a string of bytes.
+		 */
 		user_agent: null,
 
 		/**
-     * Optional.
-     *
-     * If you specify a protocol_version that
-     * is before 70001, this will be ignored.
-     * This is a bit of a complex field, so I would suggest you
-     * checkout the docs below.
-     *
-     * If you're not sure, just leave it as null or 0x00.
-     * @see https://dashcore.readme.io/docs/core-ref-p2p-network-control-messages#version
-     */
+		 * Optional.
+		 *
+		 * If you specify a protocol_version that
+		 * is before 70001, this will be ignored.
+		 * This is a bit of a complex field, so I would suggest you
+		 * checkout the docs below.
+		 *
+		 * If you're not sure, just leave it as null or 0x00.
+		 * @see https://dashcore.readme.io/docs/core-ref-p2p-network-control-messages#version
+		 */
 		relay: null,
 
 		/**
-     * Optional.
-     *
-     * If you pass in a protocol_version that is less than 70214,
-     * this field will be ignored.
-     *
-     * Use this field if you want a signed response by the masternode
-     * in it's verack message. See the docs for more info.
-     *
-     */
+		 * Optional.
+		 *
+		 * If you pass in a protocol_version that is less than 70214,
+		 * this field will be ignored.
+		 *
+		 * Use this field if you want a signed response by the masternode
+		 * in it's verack message. See the docs for more info.
+		 *
+		 */
 		mnauth_challenge: null,
-	}
+	},
 ) {
 	let SIZES = getVersionSizes();
 
@@ -516,18 +521,18 @@ function version(
 	}
 	if (
 		args.protocol_version < RELAY_PROTOCOL_VERSION_INTRODUCTION &&
-    'undefined' !== typeof args.relay
+		'undefined' !== typeof args.relay
 	) {
 		throw new Error(
-			`"relay" field is not supported in protocol versions prior to ${RELAY_PROTOCOL_VERSION_INTRODUCTION}`
+			`"relay" field is not supported in protocol versions prior to ${RELAY_PROTOCOL_VERSION_INTRODUCTION}`,
 		);
 	}
 	if (
 		args.protocol_version < MNAUTH_PROTOCOL_VERSION_INTRODUCTION &&
-    'undefined' !== typeof args.mnauth_challenge
+		'undefined' !== typeof args.mnauth_challenge
 	) {
 		throw new Error(
-			'"mnauth_challenge" field is not supported in protocol versions prior to MNAUTH_CHALLENGE_OFFSET'
+			'"mnauth_challenge" field is not supported in protocol versions prior to MNAUTH_CHALLENGE_OFFSET',
 		);
 	}
 	if ('undefined' !== typeof args.mnauth_challenge) {
@@ -536,7 +541,7 @@ function version(
 		}
 		if (args.mnauth_challenge.length !== MNAUTH_CHALLENGE_SIZE) {
 			throw new Error(
-				`"mnauth_challenge" field must be ${MNAUTH_CHALLENGE_SIZE} bytes long`
+				`"mnauth_challenge" field must be ${MNAUTH_CHALLENGE_SIZE} bytes long`,
 			);
 		}
 	}
@@ -548,7 +553,7 @@ function version(
 	}
 	if (
 		'undefined' !== typeof args.user_agent &&
-    'string' === typeof args.user_agent
+		'string' === typeof args.user_agent
 	) {
 		SIZES.USER_AGENT_STRING = args.user_agent.length;
 	}
@@ -563,8 +568,8 @@ function version(
 
 	packet = setUint32(packet, args.protocol_version, 0);
 	/**
-   * Set services to NODE_NETWORK (1) + NODE_BLOOM (4)
-   */
+	 * Set services to NODE_NETWORK (1) + NODE_BLOOM (4)
+	 */
 	const SERVICES_OFFSET = SIZES.VERSION;
 	let services = 0;
 	for (const service of args.services) {
@@ -579,34 +584,35 @@ function version(
 	packet.set([services], ADDR_RECV_SERVICES_OFFSET);
 
 	/**
-   * "ADDR_RECV" means the host that we're sending this traffic to.
-   * So, in other words, it's the master node
-   */
+	 * "ADDR_RECV" means the host that we're sending this traffic to.
+	 * So, in other words, it's the master node
+	 */
 	let ADDR_RECV_IP_OFFSET =
-    ADDR_RECV_SERVICES_OFFSET + SIZES.ADDR_RECV_SERVICES;
+		ADDR_RECV_SERVICES_OFFSET + SIZES.ADDR_RECV_SERVICES;
 	let ipBytes = dot2num(args.addr_recv_ip);
 	let inv = htonl(ipBytes);
 	packet = setUint32(packet, inv, ADDR_RECV_IP_OFFSET);
 
 	/**
-   * Copy address recv port
-   */
+	 * Copy address recv port
+	 */
 	let ADDR_RECV_PORT_OFFSET = ADDR_RECV_IP_OFFSET + SIZES.ADDR_RECV_IP;
 	let portBuffer = new Uint8Array(2);
 	htons(portBuffer, 0, args.addr_recv_port);
 	packet.set(portBuffer, ADDR_RECV_PORT_OFFSET);
 
 	/**
-   * Copy address transmitted services
-   */
-	let ADDR_TRANS_SERVICES_OFFSET = ADDR_RECV_PORT_OFFSET + SIZES.ADDR_RECV_PORT;
+	 * Copy address transmitted services
+	 */
+	let ADDR_TRANS_SERVICES_OFFSET =
+		ADDR_RECV_PORT_OFFSET + SIZES.ADDR_RECV_PORT;
 	packet.set([services], ADDR_TRANS_SERVICES_OFFSET);
 
 	/**
-   * We add the extra 10, so that we can encode an ipv4-mapped ipv6 address
-   */
+	 * We add the extra 10, so that we can encode an ipv4-mapped ipv6 address
+	 */
 	let ADDR_TRANS_IP_OFFSET =
-    ADDR_TRANS_SERVICES_OFFSET + SIZES.ADDR_TRANS_SERVICES;
+		ADDR_TRANS_SERVICES_OFFSET + SIZES.ADDR_TRANS_SERVICES;
 	let transmittingIP = args.addr_trans_ip;
 	if (is_ipv6_mapped_ipv4(transmittingIP)) {
 		let ipBytes = dot2num(transmittingIP.split(':').reverse()[0]);
@@ -645,7 +651,9 @@ function version(
 
 	// Skipping user agent. it can be zero
 	let START_HEIGHT_OFFSET =
-    USER_AGENT_BYTES_OFFSET + SIZES.USER_AGENT_BYTES + SIZES.USER_AGENT_STRING;
+		USER_AGENT_BYTES_OFFSET +
+		SIZES.USER_AGENT_BYTES +
+		SIZES.USER_AGENT_STRING;
 	packet = setUint32(packet, args.start_height, START_HEIGHT_OFFSET);
 
 	let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
@@ -667,7 +675,7 @@ function getaddr() {
 	const PAYLOAD_SIZE = 4;
 	const CHECKSUM_SIZE = 4;
 	const TOTAL_SIZE =
-    MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE + CHECKSUM_SIZE;
+		MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE + CHECKSUM_SIZE;
 	let packet = new Uint8Array(TOTAL_SIZE);
 	// TESTNET magic bytes
 	packet[0] = 0xce;
@@ -680,7 +688,7 @@ function getaddr() {
 
 	packet.set(
 		[0x5d, 0xf6, 0xe0, 0xe2],
-		MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE
+		MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE,
 	);
 	return packet;
 }
@@ -689,16 +697,21 @@ function pong(
 	args = {
 		chosen_network: null,
 		nonce: null,
-	}
+	},
 ) {
 	let nonceBuffer = new Uint8Array(PING_NONCE_SIZE);
 	nonceBuffer.set(args.nonce, 0);
-	return wrap_packet(args.chosen_network, 'pong', nonceBuffer, PING_NONCE_SIZE);
+	return wrap_packet(
+		args.chosen_network,
+		'pong',
+		nonceBuffer,
+		PING_NONCE_SIZE,
+	);
 }
 function verack(
 	args = {
 		chosen_network: null,
-	}
+	},
 ) {
 	return wrap_packet(args.chosen_network, 'verack', null, 0);
 }
@@ -706,7 +719,7 @@ function senddsq(
 	args = {
 		chosen_network: null,
 		fSendDSQueue: null,
-	}
+	},
 ) {
 	let buffer = new Uint8Array([args.fSendDSQueue ? 1 : 0]);
 	return wrap_packet(args.chosen_network, 'senddsq', buffer, buffer.length);
@@ -714,14 +727,14 @@ function senddsq(
 function sendaddrv2(
 	args = {
 		chosen_network: null,
-	}
+	},
 ) {
 	return wrap_packet(args.chosen_network, 'sendaddrv2', null, 0);
 }
 function sendaddr(
 	args = {
 		chosen_network: null,
-	}
+	},
 ) {
 	return wrap_packet(args.chosen_network, 'sendaddr', null, 0);
 }
@@ -738,14 +751,14 @@ function dsa(
 		chosen_network: null, // 'testnet'
 		denomination: null, // COIN / 1000 + 1
 		collateral: null, // see: ctransaction.js
-	}
+	},
 ) {
 	if (!isStandardDenomination(args.denomination)) {
 		throw new Error('Invalid denomination value');
 	}
 	let encodedDenom = CJLib.AmountToDenomination(args.denomination);
 	if (encodedDenom === 0) {
-		throw new Error('Couldn\'t serialize denomination');
+		throw new Error("Couldn't serialize denomination");
 	}
 
 	const SIZES = {
@@ -759,8 +772,8 @@ function dsa(
 
 	let offset = 0;
 	/**
-   * Packet payload
-   */
+	 * Packet payload
+	 */
 	let packet = new Uint8Array(TOTAL_SIZE);
 
 	packet.set([encodedDenom, 0, 0, 0], offset);
@@ -781,7 +794,7 @@ function dsi(
 		collateralTxn: null,
 		denominatedAmount: null,
 		client_session: null,
-	}
+	},
 ) {
 	let client_session = args.client_session;
 	let denominatedAmount = args.denominatedAmount;
@@ -795,7 +808,10 @@ function dsi(
 	let userInputTxn = new Transaction().from(utxos);
 	let userOutputTxn = new Transaction();
 	for (const address of client_session.generated_addresses) {
-		userOutputTxn.to(Address.fromString(address.address), denominatedAmount);
+		userOutputTxn.to(
+			Address.fromString(address.address),
+			denominatedAmount,
+		);
 	}
 
 	// FIXME: very hacky
@@ -821,34 +837,36 @@ function dsi(
 	let userOutputPayload = hexToBytes(trimmedUserOutput);
 
 	let TOTAL_SIZE =
-    userInputPayload.length + collateralTxn.length + userOutputPayload.length;
+		userInputPayload.length +
+		collateralTxn.length +
+		userOutputPayload.length;
 
 	/**
-   * Packet payload
-   */
+	 * Packet payload
+	 */
 	let offset = 0;
 	let packet = new Uint8Array(TOTAL_SIZE);
 	/**
-   * Set the user inputs
-   */
+	 * Set the user inputs
+	 */
 	packet.set(userInputPayload);
 	offset += userInputPayload.length;
 
 	/**
-   * Set the collateral txn(s)
-   */
+	 * Set the collateral txn(s)
+	 */
 	packet.set(collateralTxn, offset);
 	offset += collateralTxn.length;
 
 	/**
-   * Set the outputs
-   */
+	 * Set the outputs
+	 */
 	packet.set(userOutputPayload, offset);
 
 	assert.equal(
 		packet.length,
 		TOTAL_SIZE,
-		'packet length doesnt match TOTAL_SIZE'
+		'packet length doesnt match TOTAL_SIZE',
 	);
 
 	return wrap_packet(args.chosen_network, 'dsi', packet, TOTAL_SIZE);
@@ -860,13 +878,13 @@ async function dss(
 		dsfPacket: null,
 		client_session: null,
 		dboot: null,
-	}
+	},
 ) {
 	/**
-   * User inputs
-   * -----------
-   * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
-   */
+	 * User inputs
+	 * -----------
+	 * (for now) support only up to 252 inputs (FIXME: use compactSize integer encoding here)
+	 */
 	let client_session = args.client_session;
 	let TOTAL_SIZE = 0;
 	TOTAL_SIZE += 1; // input size length
@@ -895,7 +913,7 @@ async function dss(
 		assert.equal(
 			hexToBytes(input.utxo.txId).length,
 			32,
-			'txid should equal 32 bytes'
+			'txid should equal 32 bytes',
 		);
 		offset += 32;
 		packet = setUint32(packet, input.utxo.outputIndex, offset);
@@ -932,17 +950,17 @@ Lib.packet.parse.extractItems = function (buffer, items) {
 	let extracted = [];
 	for (let item of items) {
 		switch (item) {
-		case 'command':
-			extracted.push(Lib.packet.parse.commandName(buffer));
-			break;
-		case 'payloadSize':
-			extracted.push(Lib.packet.parse.payloadSize(buffer));
-			break;
-		case 'magic':
-			extracted.push(Lib.packet.parse.magicBytes(buffer));
-			break;
-		default:
-			break;
+			case 'command':
+				extracted.push(Lib.packet.parse.commandName(buffer));
+				break;
+			case 'payloadSize':
+				extracted.push(Lib.packet.parse.payloadSize(buffer));
+				break;
+			case 'magic':
+				extracted.push(Lib.packet.parse.magicBytes(buffer));
+				break;
+			default:
+				break;
 		}
 	}
 	return extracted;
@@ -962,7 +980,7 @@ Lib.packet.parse.hasPayload = function (buffer) {
 		throw new Error('Must be an instance of Uint8Array');
 	}
 	return !Lib.packet.messagesWithNoPayload.includes(
-		Lib.packet.parse.commandName(buffer)
+		Lib.packet.parse.commandName(buffer),
 	);
 };
 Lib.packet.parse.payloadSize = function (buffer) {
@@ -1032,11 +1050,11 @@ Lib.packet.parse.getheaders = function (buffer) {
 		hashes: [],
 	};
 	/**
-   * getheaders message structure:
-   * version 							- 4 bytes
-   * hash count 					- varies
-   * block header hashes 	- varies
-   */
+	 * getheaders message structure:
+	 * version 							- 4 bytes
+	 * hash count 					- varies
+	 * block header hashes 	- varies
+	 */
 	for (let i = 0; i < 4; i++) {
 		parsed.version[i] = buffer[i];
 	}
@@ -1048,7 +1066,7 @@ Lib.packet.parse.getheaders = function (buffer) {
 		hash = extractChunk(
 			buffer,
 			OFFSET + i * HASH_SIZE,
-			OFFSET + i * HASH_SIZE + HASH_SIZE
+			OFFSET + i * HASH_SIZE + HASH_SIZE,
 		);
 		if (allZeroes(hash)) {
 			continue;
@@ -1084,32 +1102,32 @@ Lib.packet.parse.dsq = function (buffer) {
 
 	//console.debug("Size of dsq packet:", buffer.length);
 	/**
-   * We'll need to point past the message header in
-   * order to get to the dsq packet details.
-   */
+	 * We'll need to point past the message header in
+	 * order to get to the dsq packet details.
+	 */
 	let offset = MESSAGE_HEADER_SIZE;
 
 	/**
-   * Grab the denomination
-   */
+	 * Grab the denomination
+	 */
 	parsed.nDenom = extractUint32(buffer, offset);
 	offset += SIZES.DENOM;
 
 	/**
-   * Grab the protxhash
-   */
+	 * Grab the protxhash
+	 */
 	parsed.proTxHash = extractChunk(buffer, offset, offset + SIZES.PROTX);
 	offset += SIZES.PROTX;
 
 	/**
-   * Grab the time
-   */
+	 * Grab the time
+	 */
 	parsed.nTime = extractInt64(buffer, offset);
 	offset += SIZES.TIME;
 
 	/**
-   * Grab the fReady
-   */
+	 * Grab the fReady
+	 */
 	parsed.fReady = buffer[offset];
 	offset += SIZES.READY;
 
@@ -1132,12 +1150,12 @@ Lib.packet.parse.dssu = function (buffer) {
 		message_id: 0,
 	};
 	/**
-   * 4	nMsgSessionID			-	Required			-	Session ID
-   * 4	nMsgState					- Required			- Current state of processing
-   * 4	nMsgEntriesCount	- Required			- Number of entries in the pool (deprecated)
-   * 4	nMsgStatusUpdate	-	Required			- Update state and/or signal if entry was accepted or not
-   * 4	nMsgMessageID			- Required			- ID of the typical masternode reply message
-   */
+	 * 4	nMsgSessionID			-	Required			-	Session ID
+	 * 4	nMsgState					- Required			- Current state of processing
+	 * 4	nMsgEntriesCount	- Required			- Number of entries in the pool (deprecated)
+	 * 4	nMsgStatusUpdate	-	Required			- Update state and/or signal if entry was accepted or not
+	 * 4	nMsgMessageID			- Required			- ID of the typical masternode reply message
+	 */
 	const SIZES = {
 		SESSION_ID: 4,
 		STATE: 4,
@@ -1148,20 +1166,20 @@ Lib.packet.parse.dssu = function (buffer) {
 
 	//console.debug("Size of dssu packet:", buffer.length);
 	/**
-   * We'll need to point past the message header in
-   * order to get to the dssu packet details.
-   */
+	 * We'll need to point past the message header in
+	 * order to get to the dssu packet details.
+	 */
 	let offset = MESSAGE_HEADER_SIZE;
 
 	/**
-   * Grab the session id
-   */
+	 * Grab the session id
+	 */
 	parsed.session_id = extractUint32(buffer, offset);
 	offset += SIZES.SESSION_ID;
 
 	/**
-   * Grab the state
-   */
+	 * Grab the state
+	 */
 	let state = extractUint32(buffer, offset);
 	offset += SIZES.STATE;
 
@@ -1174,14 +1192,14 @@ Lib.packet.parse.dssu = function (buffer) {
 	//offset += SIZES.ENTRIES_COUNT;
 
 	/**
-   * Grab the status update
-   */
+	 * Grab the status update
+	 */
 	let status_update = extractUint32(buffer, offset);
 	offset += SIZES.STATUS_UPDATE;
 
 	/**
-   * Grab the message id
-   */
+	 * Grab the message id
+	 */
 	let message_id = extractUint32(buffer, offset);
 	parsed.message_id = [message_id, MESSAGE_ID.toString(message_id)];
 	parsed.state = [state, POOL_STATE.toString(state)];
@@ -1214,12 +1232,12 @@ Lib.packet.parse.dsf = function (buffer) {
 	const SIGSCRIPT_SIZE = 1;
 	const SEQUENCE_NUMBER_SIZE = 4;
 	/**
-   * TRANSACTION_SIZE:
-   * 1) A TxID Hash (32 bytes)
-   * 2) vout (4 bytes)
-   * 3) sigscript bytes (1 byte)
-   * 4) sequence number (4 bytes)
-   */
+	 * TRANSACTION_SIZE:
+	 * 1) A TxID Hash (32 bytes)
+	 * 2) vout (4 bytes)
+	 * 3) sigscript bytes (1 byte)
+	 * 4) sequence number (4 bytes)
+	 */
 	//const TRANSACTION_SIZE =
 	//  TXID_HASH_SIZE + VOUT_SIZE + SIGSCRIPT_SIZE + SEQUENCE_NUMBER_SIZE;
 	let SIZES = {
@@ -1234,33 +1252,33 @@ Lib.packet.parse.dsf = function (buffer) {
 
 	//console.debug('Size of dsf packet:', buffer.length);
 	/**
-   * We'll need to point past the message header in
-   * order to get to the dsq packet details.
-   */
+	 * We'll need to point past the message header in
+	 * order to get to the dsq packet details.
+	 */
 	let offset = MESSAGE_HEADER_SIZE;
 
 	/**
-   * Grab the SESSION ID
-   */
+	 * Grab the SESSION ID
+	 */
 	parsed.sessionID = extractUint32(buffer, offset);
 	offset += SIZES.SESSIONID;
 
 	/**
-   * Grab the VERSION
-   */
+	 * Grab the VERSION
+	 */
 	parsed.transaction.version = parseInt(
 		extractChunk(buffer, offset, offset + SIZES.VERSION),
-		10
+		10,
 	);
 	offset += SIZES.VERSION;
 
 	/**
-   * Grab the INPUT COUNT
-   */
+	 * Grab the INPUT COUNT
+	 */
 	// FIXME: parse compactSize int
 	parsed.transaction.inputCount = parseInt(
 		extractChunk(buffer, offset, offset + SIZES.INPUT_COUNT),
-		10
+		10,
 	);
 
 	let inputs = parseInt(parsed.transaction.inputCount, 10);
@@ -1271,14 +1289,14 @@ Lib.packet.parse.dsf = function (buffer) {
 	for (let i = 0; i < inputs; i++) {
 		let transaction = {};
 		transaction.txid = toSerializedFormat(
-			extractChunk(buffer, offset, offset + TXID_HASH_SIZE)
+			extractChunk(buffer, offset, offset + TXID_HASH_SIZE),
 		);
 		offset += TXID_HASH_SIZE;
 		transaction.vout = parseInt(extractUint32(buffer, offset), 10);
 		offset += VOUT_SIZE;
 		transaction.sigscript_bytes = parseInt(
 			extractChunk(buffer, offset, offset + SIGSCRIPT_SIZE),
-			10
+			10,
 		);
 		offset += SIGSCRIPT_SIZE;
 		transaction.sequence = parseInt(extractUint32(buffer, offset), 10);
@@ -1288,10 +1306,10 @@ Lib.packet.parse.dsf = function (buffer) {
 
 	parsed.transaction.outputCount = parseInt(
 		extractChunk(buffer, offset, offset + SIZES.OUTPUT_COUNT),
-		10
+		10,
 	);
 	if (isNaN(parsed.transaction.outputCount)) {
-		throw new Error('couldn\'t parse output count');
+		throw new Error("couldn't parse output count");
 	}
 	offset += SIZES.OUTPUT_COUNT;
 	for (let i = 0; i < parsed.transaction.outputCount; i++) {
@@ -1300,13 +1318,13 @@ Lib.packet.parse.dsf = function (buffer) {
 		offset += 8;
 		output.pubkey_script_bytes = parseInt(
 			extractChunk(buffer, offset, offset + 1),
-			10
+			10,
 		);
 		offset += 1;
 		output.pubkey_script = extractChunk(
 			buffer,
 			offset,
-			offset + output.pubkey_script_bytes
+			offset + output.pubkey_script_bytes,
 		);
 		offset += output.pubkey_script_bytes;
 		parsed.transaction.outputs.push(output);
@@ -1356,8 +1374,8 @@ if (process.argv.includes('--run-dsf-test')) {
 				dsf,
 				(key, value) =>
 					typeof value === 'bigint' ? value.toString() + 'n' : value,
-				2
-			)
+				2,
+			),
 		);
 		process.exit(0);
 	})();

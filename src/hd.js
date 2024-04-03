@@ -3,10 +3,10 @@
  */
 
 let HardDrive = {
-	GetDataDir: function(){
-		return './';//FIXME
+	GetDataDir: function () {
+		return './'; //FIXME
 	},
-	CheckDiskSpace: function(dir) {
+	CheckDiskSpace: function (dir) {
 		/**
 		 * TODO: FIXME: if not enough space, return false
 		 */

@@ -61,12 +61,12 @@ async function getUnusedTxn() {
 	let { PsendTxnList, sourceAddress, PsendUsedTxnFile } = await fetchData();
 	for (let txn of PsendTxnList) {
 		/**
-     * Pull from PsendTxnList where:
-     * 1) category is 'generate'.
-     * 2) has more than zero confirmations
-     * 3) where address matches dp-address-0
-     * 4) txid does NOT exist in /home/foobar/docs/dp-used-txn.json
-     */
+		 * Pull from PsendTxnList where:
+		 * 1) category is 'generate'.
+		 * 2) has more than zero confirmations
+		 * 3) where address matches dp-address-0
+		 * 4) txid does NOT exist in /home/foobar/docs/dp-used-txn.json
+		 */
 		if (txn.category === 'receive' || txn.category === 'send') {
 			continue;
 		}
@@ -129,7 +129,7 @@ Lib.getUnusedTransaction = async function () {
 			found = row;
 			sourceAddress = address;
 			privateKey = PrivateKey(
-				sanitizePrivateKey(data.denominations[address].privateKey)
+				sanitizePrivateKey(data.denominations[address].privateKey),
 			);
 			break;
 		}
@@ -138,10 +138,12 @@ Lib.getUnusedTransaction = async function () {
 		}
 	}
 	if (!found) {
-		throw new Error('Couldn\'t find an unused transaction');
+		throw new Error("Couldn't find an unused transaction");
 	}
 	if (!sourceAddress) {
-		throw new Error('Couldn\'t find source address associated with transaction');
+		throw new Error(
+			"Couldn't find source address associated with transaction",
+		);
 	}
 	if (!privateKey) {
 		throw new Error('Private Key not found');
@@ -232,22 +234,22 @@ Lib.LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 async function fetchData() {
 	let files = {};
 	switch (user) {
-	default:
-	case 'dh':
-		files = require('./dh-config.demodata.json');
-		break;
-	case 'dche':
-		files = require('./dche-config.demodata.json');
-		break;
-	case 'dl':
-		files = require('./dl-config.demodata.json');
-		break;
-	case 'dp':
-		files = require('./dp-config.demodata.json');
-		break;
-	case 'df':
-		files = require('./df-config.demodata.json');
-		break;
+		default:
+		case 'dh':
+			files = require('./dh-config.demodata.json');
+			break;
+		case 'dche':
+			files = require('./dche-config.demodata.json');
+			break;
+		case 'dl':
+			files = require('./dl-config.demodata.json');
+			break;
+		case 'dp':
+			files = require('./dp-config.demodata.json');
+			break;
+		case 'df':
+			files = require('./df-config.demodata.json');
+			break;
 	}
 	let denominations = require(`./${user}-denominations.json`);
 	let PsendUsedTxnFile = files.usedTxn;
@@ -256,7 +258,7 @@ async function fetchData() {
 	let sourceAddress = await read_file(files.sourceAddress);
 	let payeeAddress = await read_file(files.payeeAddress);
 	let privkeySet = PrivateKey(
-		PrivateKey.fromWIF(await read_file(files.wif), NETWORK)
+		PrivateKey.fromWIF(await read_file(files.wif), NETWORK),
 	);
 	return {
 		denominations,

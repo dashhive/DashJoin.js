@@ -31,13 +31,13 @@ async function createDSIPacket(masterNode, username, denominatedAmount, count) {
 	assert.equal(
 		client_session.mixing_inputs.length,
 		count,
-		'mixing inputs should equal count'
+		'mixing inputs should equal count',
 	);
 	debug({ inputs: client_session.mixing_inputs });
 
 	client_session.generated_addresses = await dboot.generate_new_addresses(
 		client_session.username,
-		count
+		count,
 	);
 	{
 		let other = [];
@@ -45,7 +45,7 @@ async function createDSIPacket(masterNode, username, denominatedAmount, count) {
 			let obj = {
 				privateKey: await dboot.get_private_key(
 					client_session.username,
-					client_session.generated_addresses[i]
+					client_session.generated_addresses[i],
 				),
 				address: client_session.generated_addresses[i],
 			};
@@ -57,7 +57,7 @@ async function createDSIPacket(masterNode, username, denominatedAmount, count) {
 		let lmdb_counter = await dboot.increment_key(username, 'dsfcounter');
 		await fs.writeFileSync(
 			`${Util.getDataDir()}/dsf-mixing-inputs-${username}-${lmdb_counter}.json`,
-			bigint_safe_json_stringify(client_session, null, 2)
+			bigint_safe_json_stringify(client_session, null, 2),
 		);
 	}
 	return Network.packet.coinjoin.dsi({
@@ -74,7 +74,7 @@ async function initialize(
 	_in_count,
 	_in_send_dsi,
 	_in_denominated_amount,
-	_in_client_session
+	_in_client_session,
 ) {
 	debug(`${_in_username},${_in_nickname},${_in_count},${_in_send_dsi}`);
 	DebugLib.setNickname(_in_nickname);

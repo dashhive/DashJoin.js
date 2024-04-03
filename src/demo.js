@@ -18,7 +18,7 @@ const UserDetails = require('./bootstrap/user-details.js');
 const dashboot = require('./bootstrap/index.js');
 const FileLib = require('./file.js');
 const MasterNodeConnection =
-  require('./masternode-connection.js').MasterNodeConnection;
+	require('./masternode-connection.js').MasterNodeConnection;
 const DashCore = require('@dashevo/dashcore-lib');
 const Transaction = DashCore.Transaction;
 const Script = DashCore.Script;
@@ -61,7 +61,7 @@ async function onDSFMessage(parsed, masterNode) {
 	d('Submitting DSS packet');
 	await FileLib.write_json(
 		`dss-outputs-${client_session.username}-#DATE#`,
-		client_session
+		client_session,
 	);
 	masterNode.client.write(
 		await Network.packet.coinjoin.dss({
@@ -69,7 +69,7 @@ async function onDSFMessage(parsed, masterNode) {
 			dsfPacket: parsed,
 			client_session,
 			dboot,
-		})
+		}),
 	);
 	d('DSS sent');
 }
@@ -100,9 +100,11 @@ async function onDSSUChanged(parsed, masterNode) {
 		client_session.used_txids.push(masterNode.collateralTx.txid);
 		await dboot.mark_txid_used(
 			client_session.username,
-			masterNode.collateralTx.txid
+			masterNode.collateralTx.txid,
 		);
-		debug(`marked collateral input: ${masterNode.collateralTx.txid} as used`);
+		debug(
+			`marked collateral input: ${masterNode.collateralTx.txid} as used`,
+		);
 		debug('input: ', masterNode.collateralTx);
 		await masterNodeConnection.disconnect(function () {
 			done = true;
@@ -120,53 +122,53 @@ async function stateChanged(obj) {
 	let self = obj.self;
 	let masterNode = self;
 	switch (masterNode.status) {
-	default:
-		break;
-	case 'CLOSED':
-		console.warn('[-] Connection closed');
-		break;
-	case 'NEEDS_AUTH':
-	case 'EXPECT_VERACK':
-	case 'EXPECT_HCDP':
-	case 'RESPOND_VERACK':
-		break;
-	case 'READY':
-		if (dsaSent === false) {
-			self.denominationsAmount = getDemoDenomination();
-			masterNode.client.write(
-				Network.packet.coinjoin.dsa({
-					chosen_network: network,
-					denomination: getDemoDenomination(),
-					collateral: await masterNode.makeCollateralTx(),
-				})
-			);
-			dsaSent = true;
-		}
-		break;
-	case 'DSQ_RECEIVED':
-		{
-			if (self.dsq.fReady) {
-				debug('sending dsi');
-			} else {
-				info('[-][COINJOIN] masternode not ready for dsi...');
-				return;
+		default:
+			break;
+		case 'CLOSED':
+			console.warn('[-] Connection closed');
+			break;
+		case 'NEEDS_AUTH':
+		case 'EXPECT_VERACK':
+		case 'EXPECT_HCDP':
+		case 'RESPOND_VERACK':
+			break;
+		case 'READY':
+			if (dsaSent === false) {
+				self.denominationsAmount = getDemoDenomination();
+				masterNode.client.write(
+					Network.packet.coinjoin.dsa({
+						chosen_network: network,
+						denomination: getDemoDenomination(),
+						collateral: await masterNode.makeCollateralTx(),
+					}),
+				);
+				dsaSent = true;
 			}
-			if (String(sendDsi) === 'false') {
-				info('not sending dsi as per cli switch');
-				return;
+			break;
+		case 'DSQ_RECEIVED':
+			{
+				if (self.dsq.fReady) {
+					debug('sending dsi');
+				} else {
+					info('[-][COINJOIN] masternode not ready for dsi...');
+					return;
+				}
+				if (String(sendDsi) === 'false') {
+					info('not sending dsi as per cli switch');
+					return;
+				}
+				let packet = await DsiFactory.createDSIPacket(
+					masterNode,
+					username,
+					getDemoDenomination(),
+					INPUTS,
+				);
+				masterNode.client.write(packet);
+				debug('sent dsi packet');
 			}
-			let packet = await DsiFactory.createDSIPacket(
-				masterNode,
-				username,
-				getDemoDenomination(),
-				INPUTS
-			);
-			masterNode.client.write(packet);
-			debug('sent dsi packet');
-		}
-		break;
-	case 'EXPECT_DSQ':
-		break;
+			break;
+		case 'EXPECT_DSQ':
+			break;
 	}
 }
 const AMOUNT = 0.00100001;
@@ -178,24 +180,24 @@ async function preInit(
 	_in_count,
 	_in_send_dsi,
 	_in_verbose,
-	_in_mn_choice
+	_in_mn_choice,
 ) {
 	let nickName = _in_username;
 	let id = {};
 	let config = require('./.mn0-config.json');
 	switch (_in_mn_choice) {
-	default:
-	case 'local_1':
-		config = require('./.mn0-config.json');
-		id.mn = 0;
-		break;
-	case 'local_2':
-		config = require('./.mn1-config.json');
-		id.mn = 1;
-		break;
-	case 'local_3':
-		config = require('./.mn2-config.json');
-		id.mn = 2;
+		default:
+		case 'local_1':
+			config = require('./.mn0-config.json');
+			id.mn = 0;
+			break;
+		case 'local_2':
+			config = require('./.mn1-config.json');
+			id.mn = 1;
+			break;
+		case 'local_3':
+			config = require('./.mn2-config.json');
+			id.mn = 2;
 	}
 	nickName += `(${_in_mn_choice})`;
 	DebugLib.setNickname(nickName);
@@ -230,8 +232,8 @@ async function preInit(
 	dboot = await dashboot.load_instance(instanceName);
 
 	/**
-   * Grab all unspent utxos
-   */
+	 * Grab all unspent utxos
+	 */
 	let keep = [];
 	let utxos = await dboot.get_denominated_utxos(username, SATOSHIS);
 	let payeeAddress = await dboot.get_change_addresses(username);
@@ -261,16 +263,22 @@ async function preInit(
 				let utxo = {
 					txId: u.txid,
 					outputIndex: detail.vout,
-					satoshis: parseInt(parseFloat(detail.amount, 10) * COIN, 10),
+					satoshis: parseInt(
+						parseFloat(detail.amount, 10) * COIN,
+						10,
+					),
 					scriptPubKey: Script.buildPublicKeyHashOut(
 						address,
-						Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+						Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY,
 					),
 					sequence: 0xffffffff,
 				};
 				let txn = new Transaction().from(utxo);
 				let pk = await dboot.get_private_key(username, detail.address);
-				txn.sign(pk, Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
+				txn.sign(
+					pk,
+					Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY,
+				);
 				d(txn.inputs[0]._script.toHex());
 				keep.push({
 					signed: txn,
@@ -324,7 +332,7 @@ async function preInit(
 		client_session,
 		mainUser,
 		randomPayeeName,
-		payee
+		payee,
 	);
 
 	//{
@@ -367,7 +375,7 @@ preInit(
 	extractOption('count', true),
 	extractOption('senddsi', true),
 	extractOption('verbose', true),
-	extractOption('mn', true)
+	extractOption('mn', true),
 );
 async function psbt_main(dboot, client_session) {
 	const quota = 3;
@@ -375,8 +383,8 @@ async function psbt_main(dboot, client_session) {
 	let cs = client_session;
 	let wallet_exec = await dboot.auto.build_executor(cs);
 	/**
-   * 1) Get unspent
-   */
+	 * 1) Get unspent
+	 */
 	let addresses = {};
 	let address = await dboot.nth_address(cs, 1);
 	let unspent = await dboot.list_unspent_by_address(cs, address, {
@@ -406,8 +414,8 @@ async function psbt_main(dboot, client_session) {
 		throw new Error('unable to fill quota');
 	}
 	/**
-   * 2) Create quota inputs
-   */
+	 * 2) Create quota inputs
+	 */
 	let payee = await dboot.generate_address(cs, quota);
 	let json = [];
 	for (const tx of chosen) {
@@ -435,7 +443,7 @@ async function psbt_main(dboot, client_session) {
 		'walletprocesspsbt',
 		out,
 		'true',
-		'ALL|ANYONECANPAY'
+		'ALL|ANYONECANPAY',
 	);
 	let hex = null;
 	try {
@@ -459,6 +467,6 @@ async function psbt_main(dboot, client_session) {
 	}
 
 	/**
-   * 3) pass to cli
-   */
+	 * 3) pass to cli
+	 */
 }

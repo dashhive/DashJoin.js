@@ -43,7 +43,7 @@ async function getUserInputs(client_session, denominatedAmount, count) {
 	}
 	let utxos = await dboot.get_denominated_utxos(
 		client_session.username,
-		denominatedAmount
+		denominatedAmount,
 	);
 	let selected = [];
 	let txids = {};

@@ -14,7 +14,7 @@ Lib.extractUserDetails = async function (username) {
 			return null;
 		});
 	if (!utxos || utxos.length === 0) {
-		throw new Error('User doesn\'t have any UTXOS!');
+		throw new Error("User doesn't have any UTXOS!");
 	}
 	//dd({ utxos });
 	let addrMap = {};

@@ -16,7 +16,7 @@ Lib.open = function (
 		create: false,
 		maxDbs: 10,
 		mapSize: null,
-	}
+	},
 ) {
 	let DB = Lib._data.lmdb;
 	let DBI = Lib._data.dbi;

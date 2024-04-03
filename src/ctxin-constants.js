@@ -1,4 +1,4 @@
-/** 
+/**
  * Ported from Dash core
  * Dash Core file: https://github.com/dashpay/dash/blob/master/src/primitives/transaction.h
  *
@@ -31,9 +31,9 @@ const /*uint32_t*/ SEQUENCE_LOCKTIME_MASK = 0x0000ffff;
 const /*int*/ SEQUENCE_LOCKTIME_GRANULARITY = 9;
 
 module.exports = {
-		SEQUENCE_FINAL,
-		SEQUENCE_LOCKTIME_DISABLE_FLAG,
-		SEQUENCE_LOCKTIME_TYPE_FLAG,
-		SEQUENCE_LOCKTIME_MASK,
-		SEQUENCE_LOCKTIME_GRANULARITY,
+	SEQUENCE_FINAL,
+	SEQUENCE_LOCKTIME_DISABLE_FLAG,
+	SEQUENCE_LOCKTIME_TYPE_FLAG,
+	SEQUENCE_LOCKTIME_MASK,
+	SEQUENCE_LOCKTIME_GRANULARITY,
 };

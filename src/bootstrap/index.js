@@ -76,7 +76,7 @@ function mkudb(username) {
 			db_make_key: Bootstrap.MetaDB.DB.make_key,
 		},
 		username,
-		'cj'
+		'cj',
 	);
 }
 
@@ -100,7 +100,7 @@ function mkudb(username) {
 Bootstrap.list_unspent_advanced = async function (
 	username,
 	options,
-	addresses = null
+	addresses = null,
 ) {
 	username = Bootstrap.alias_check(username);
 	let udb = mkudb(username);
@@ -162,7 +162,7 @@ Bootstrap.list_unspent_advanced = async function (
 	];
 	let { out, err } = await Bootstrap.auto.wallet_exec(
 		username,
-		unspent_options
+		unspent_options,
 	);
 	if (err.length) {
 		throw new Error(err);
@@ -213,7 +213,7 @@ Bootstrap.split_utxo = async function (username) {
 	await Bootstrap.store_denominated_addresses(username, created);
 	let change_address = await Bootstrap.get_multi_change_address_from_cli(
 		username,
-		1
+		1,
 	);
 	let rb_address = new RingBuffer(created);
 	if (Array.isArray(change_address)) {
@@ -226,7 +226,7 @@ Bootstrap.split_utxo = async function (username) {
 			outputIndex: choice.vout,
 			scriptPubKey: Script.buildPublicKeyHashOut(
 				choice.address,
-				Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+				Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY,
 			),
 			amount: choice.amount,
 		});
@@ -371,7 +371,7 @@ Bootstrap.decode_raw_transaction = async function (username, decode) {
 Bootstrap.get_transaction = async function (
 	username,
 	txid_list,
-	keep_errors = false
+	keep_errors = false,
 ) {
 	if (keep_errors) {
 		Bootstrap.get_transaction_errors = [];
@@ -449,7 +449,7 @@ Bootstrap.list_unspent = async function (username, opts = []) {
 Bootstrap.list_unspent_by_address = async function (
 	username,
 	address,
-	query_opts = null
+	query_opts = null,
 ) {
 	await Bootstrap.unlock_all_wallets();
 	username = Bootstrap.alias_check(username);
@@ -489,7 +489,7 @@ Bootstrap.get_denominated_utxos = async function (
 	username,
 	denominatedAmount = null,
 	count = 5250,
-	filter_used = true
+	filter_used = true,
 ) {
 	username = Bootstrap.alias_check(username);
 	let list = [];
@@ -555,7 +555,7 @@ Bootstrap.ring_buffer_init = async function (key_name, values) {
 		JSON.stringify({
 			value: values[0],
 			values,
-		})
+		}),
 	);
 };
 Bootstrap.ring_buffer_next = async function (key_name) {
@@ -582,7 +582,7 @@ Bootstrap.ring_buffer_next = async function (key_name) {
 		JSON.stringify({
 			value: val.value,
 			values: val.values,
-		})
+		}),
 	);
 	return val.value;
 };
@@ -654,9 +654,9 @@ Bootstrap.__data = {
 };
 Bootstrap.shuffle = function (a) {
 	/**
-   * Shuffles array in place.
-   * @param {Array} a items An array containing the items.
-   */
+	 * Shuffles array in place.
+	 * @param {Array} a items An array containing the items.
+	 */
 	let j, x, i;
 	for (i = a.length - 1; i > 0; i--) {
 		j = Math.floor(Math.random() * (i + 1));
@@ -669,7 +669,7 @@ Bootstrap.shuffle = function (a) {
 Bootstrap.filter_shuffle_address_count = async function (
 	username,
 	except,
-	count
+	count,
 ) {
 	let addr = await Bootstrap.user_addresses(username);
 	addr = Bootstrap.shuffle(addr);
@@ -705,7 +705,7 @@ Bootstrap.filter_denominated_transaction = async function (
 	username,
 	denominatedAmount,
 	count,
-	except
+	except,
 ) {
 	count = parseInt(count, 10);
 	if (isNaN(count) || count <= 0) {
@@ -715,7 +715,7 @@ Bootstrap.filter_denominated_transaction = async function (
 	let utxos = await Bootstrap.get_denominated_utxos(
 		username,
 		denominatedAmount,
-		count
+		count,
 	);
 	let selected = [];
 	let selMap = {};
@@ -731,7 +731,7 @@ Bootstrap.filter_denominated_transaction = async function (
 			}
 		}
 	}
-	throw new Error('Couldn\'t find enough transactions');
+	throw new Error("Couldn't find enough transactions");
 };
 Bootstrap.random_change_address = async function (username, except) {
 	username = Bootstrap.alias_check(username);
@@ -914,7 +914,9 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 			}
 			if (keep.length) {
 				await mkudb(username).set_array('addresses', keep);
-				console.info(`${keep.length} addresses imported for user: ${username}`);
+				console.info(
+					`${keep.length} addresses imported for user: ${username}`,
+				);
 				return true;
 			} else {
 				console.warn(`No addresses for user: ${username}`);
@@ -1036,7 +1038,7 @@ Bootstrap.auto.wallet_exec = async function (wallet_name, cli_arguments) {
 	}
 	let output = await cproc.spawnSync(
 		Bootstrap.DASH_CLI,
-		cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments])
+		cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments]),
 	);
 	return ps_extract(output);
 };
@@ -1056,17 +1058,19 @@ Bootstrap.wallet_exec = async function (wallet_name, cli_arguments) {
 	}
 	return await cproc.spawnSync(
 		Bootstrap.DASH_CLI,
-		cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments])
+		cli_args([`-rpcwallet=${wallet_name}`, ...cli_arguments]),
 	);
 };
 Bootstrap.get_multi_change_address_from_cli = async function (
 	username,
 	count,
-	save = true
+	save = true,
 ) {
 	let addresses = [];
 	for (let i = 0; i < count; i++) {
-		let buffer = await Bootstrap.wallet_exec(username, ['getrawchangeaddress']);
+		let buffer = await Bootstrap.wallet_exec(username, [
+			'getrawchangeaddress',
+		]);
 		let { out } = ps_extract(buffer, false);
 		if (out.length) {
 			addresses.push(out);
@@ -1111,7 +1115,7 @@ Bootstrap.finalize_psbt = async function (username, psbt) {
 		await Bootstrap.auto.wallet_exec(username, [
 			'finalizepsbt',
 			sanitize_psbt(psbt),
-		])
+		]),
 	);
 };
 Bootstrap.generate_new_addresses = async function (username, count) {
@@ -1148,7 +1152,7 @@ Bootstrap.store_change_addresses = async function (username, w_addresses) {
 	return await Bootstrap.store_addresses(
 		username,
 		sanitize_addresses(w_addresses),
-		'change'
+		'change',
 	);
 };
 Bootstrap.normalize_pk = async function (privateKey) {
@@ -1161,7 +1165,10 @@ Bootstrap.normalize_pk = async function (privateKey) {
 };
 Bootstrap.get_private_key = async function (username, address) {
 	username = Bootstrap.alias_check(username);
-	let buffer = await Bootstrap.wallet_exec(username, ['dumpprivkey', address]);
+	let buffer = await Bootstrap.wallet_exec(username, [
+		'dumpprivkey',
+		address,
+	]);
 	let { out, err } = ps_extract(buffer, false);
 	if (err.length) {
 		console.error(err);
@@ -1174,7 +1181,7 @@ Bootstrap.set_addresses = async function (username, w_addresses) {
 	username = Bootstrap.alias_check(username);
 	return await mkudb(username).set_array(
 		'addresses',
-		sanitize_addresses(w_addresses)
+		sanitize_addresses(w_addresses),
 	);
 };
 
@@ -1183,7 +1190,7 @@ Bootstrap.store_denominated_addresses = async function (username, addresses) {
 	return await Bootstrap.store_addresses(
 		username,
 		addresses,
-		'denominated-addresses'
+		'denominated-addresses',
 	);
 };
 Bootstrap.get_denominated_addresses = async function (username) {
@@ -1204,7 +1211,7 @@ Bootstrap.get_addresses = async function (username, key = 'addresses') {
 Bootstrap.store_addresses = async function (
 	username,
 	w_addresses,
-	key = 'addresses'
+	key = 'addresses',
 ) {
 	username = Bootstrap.alias_check(username);
 	let udb = mkudb(username);
@@ -1292,7 +1299,9 @@ Bootstrap.create_wallets = async function (count = 3) {
 
 		let w_addresses = [];
 		for (let actr = 0; actr < 1; actr++) {
-			let buffer = await Bootstrap.wallet_exec(wallet_name, ['getnewaddress']);
+			let buffer = await Bootstrap.wallet_exec(wallet_name, [
+				'getnewaddress',
+			]);
 			let { out } = ps_extract(buffer, false);
 			if (out.length) {
 				await mkudb(wallet_name).set_main_address(out);
@@ -1301,7 +1310,7 @@ Bootstrap.create_wallets = async function (count = 3) {
 		}
 		await Bootstrap.store_addresses(
 			wallet_name,
-			sanitize_addresses(w_addresses)
+			sanitize_addresses(w_addresses),
 		);
 		await Bootstrap.unlock_wallet(wallet_name);
 	}
@@ -1321,9 +1330,9 @@ Bootstrap.create_denominations_to_all = async function (iterations = 10) {
 		await Bootstrap.unlock_all_wallets();
 		const AMOUNT = '0.00100001';
 		/**
-     * Loop through all wallets and send the lowest denomination to
-     * all other users
-     */
+		 * Loop through all wallets and send the lowest denomination to
+		 * all other users
+		 */
 		let users = await Bootstrap.user_list();
 		for (const user of users) {
 			for (const otherUser of users) {
@@ -1356,9 +1365,9 @@ Bootstrap.create_collaterals_to_all = async function (iterations = 1) {
 		await Bootstrap.unlock_all_wallets();
 		const AMOUNT = String(Bootstrap.collateral_amount.amount);
 		/**
-     * Loop through all wallets and send the lowest denomination to
-     * all other users
-     */
+		 * Loop through all wallets and send the lowest denomination to
+		 * all other users
+		 */
 		let users = await Bootstrap.user_list();
 		for (const user of users) {
 			for (const otherUser of users) {
@@ -1374,7 +1383,12 @@ Bootstrap.create_collaterals_to_all = async function (iterations = 1) {
 				let { out, err } = ps_extract(ps);
 				if (out.length) {
 					let txid = sanitize_txid(out);
-					console.log({ sent_to: address, from: user, to: otherUser, txid });
+					console.log({
+						sent_to: address,
+						from: user,
+						to: otherUser,
+						txid,
+					});
 				}
 				if (err.length) {
 					console.error({ address, from: user, to: otherUser, err });
@@ -1391,7 +1405,7 @@ Bootstrap.unlock_wallet = async function (username) {
 			'walletpassphrase',
 			'foobar',
 			'100000000',
-		])
+		]),
 	);
 };
 
@@ -1505,65 +1519,71 @@ function usage() {
 	console.log('# Options');
 	console.log('-------------------------------------------------------');
 	console.log(
-		'--instance=N       Uses N as the instance. If not passed, defaults to "base"'
+		'--instance=N       Uses N as the instance. If not passed, defaults to "base"',
 	);
 	console.log('--unlock-all       Unlocks all user wallets.');
 	console.log('--addrfromtxid=TX  [EXPERIMENTAL]           ');
 	console.log('             i---> Requires --username=U    ');
 	console.log('--generate-to=N    Generates DASH to the user named N');
 	console.log('--dash-for-all     Generates DASH to EVERY user');
-	console.log('--create-wallets   Creates wallets, addresses, and UTXO\'s');
+	console.log("--create-wallets   Creates wallets, addresses, and UTXO's");
 	console.log('--create-n-wallet=N  Creates N wallets');
 	console.log(
-		'--denom-amt=N      Search through user\'s UTXO\'s for denominated amounts matching N'
+		"--denom-amt=N      Search through user's UTXO's for denominated amounts matching N",
 	);
 	console.log(
-		'                   denom-amt also requires that you pass in --username=U'
+		'                   denom-amt also requires that you pass in --username=U',
 	);
 	console.log(
-		'--create-denoms    Loops through all wallets and sends each wallet 0.00100001 DASH'
+		'--create-denoms    Loops through all wallets and sends each wallet 0.00100001 DASH',
 	);
 	console.log(
-		'--create-cols      Loops through all wallets and creates collaterals'
+		'--create-cols      Loops through all wallets and creates collaterals',
 	);
 	console.log('--list-users       Lists all users');
 	console.log(
-		'--filter-unused=User  Filter unused txids and discard used txids from lmdb entries for User'
+		'--filter-unused=User  Filter unused txids and discard used txids from lmdb entries for User',
 	);
 	console.log(
-		'--user-denoms=AMT  Lists all users with the desired denominated amount'
+		'--user-denoms=AMT  Lists all users with the desired denominated amount',
 	);
 	console.log(
-		'--send-to=USER/--amount=SAT  When combined, sends SAT satoshis to USER'
+		'--send-to=USER/--amount=SAT  When combined, sends SAT satoshis to USER',
 	);
 	console.log('--list-addr=user   Lists all addresses for a user');
-	console.log('--list-utxos=user  Lists all UTXO\'s for a user');
-	console.log('--all-utxos        Lists all UTXO\'s for ALL users');
-	console.log('--new-addr=user    Creates 10 new addresses for the given user');
+	console.log("--list-utxos=user  Lists all UTXO's for a user");
+	console.log("--all-utxos        Lists all UTXO's for ALL users");
 	console.log(
-		'--wallet-cmd=user  Gives you the ability to call dash-cli for the specified user'
+		'--new-addr=user    Creates 10 new addresses for the given user',
 	);
 	console.log(
-		'--dump-dsf         Dumps the db contents for DSF example payloads that have been logged'
+		'--wallet-cmd=user  Gives you the ability to call dash-cli for the specified user',
 	);
 	console.log(
-		'--dsf-to=FILE      Dumps the db contents for DSF example payloads to the specified file'
+		'--dump-dsf         Dumps the db contents for DSF example payloads that have been logged',
 	);
 	console.log(
-		'--import-addresses=USER  Import addresses from dash-cli into lmdb'
+		'--dsf-to=FILE      Dumps the db contents for DSF example payloads to the specified file',
 	);
 	console.log(
-		'--sync-all         Will import all addresses from dash-cli into lmdb for ALL users'
+		'--import-addresses=USER  Import addresses from dash-cli into lmdb',
+	);
+	console.log(
+		'--sync-all         Will import all addresses from dash-cli into lmdb for ALL users',
 	);
 	console.log('--alias-users      Will give easy to use names for each user');
 	console.log(
-		'--grind            Calls generate dash and create denoms in a loop'
+		'--grind            Calls generate dash and create denoms in a loop',
 	);
-	console.log('--hash-byte-order=N  Convert the string N into hash byte order');
-	console.log('--split-utxos=USER   Split one big transaction into 0.00100001');
+	console.log(
+		'--hash-byte-order=N  Convert the string N into hash byte order',
+	);
+	console.log(
+		'--split-utxos=USER   Split one big transaction into 0.00100001',
+	);
 	console.log('--make-junk-user     Create a junk user');
 	console.log(
-		'--grind-junk-user    Send a ton of dash to this junk user to give the more important users confirmations'
+		'--grind-junk-user    Send a ton of dash to this junk user to give the more important users confirmations',
 	);
 	if (extractOption('helpinstances')) {
 		console.log('');
@@ -1672,7 +1692,9 @@ Bootstrap.run_cli_program = async function () {
 		if (send_to && amt) {
 			let times = extractOption('times', true);
 			if (!times) {
-				console.log('defaulting to 20 sends. to override, use --times=N');
+				console.log(
+					'defaulting to 20 sends. to override, use --times=N',
+				);
 				times = 20;
 			}
 			d(await Bootstrap.send_satoshis_to(send_to, amt, times));
@@ -1699,8 +1721,8 @@ Bootstrap.run_cli_program = async function () {
 		d(
 			await Bootstrap.get_address_from_txid(
 				extractOption('username', true),
-				txid
-			)
+				txid,
+			),
 		);
 		process.exit(0);
 	}
@@ -1712,7 +1734,10 @@ Bootstrap.run_cli_program = async function () {
 				console.log({ [user]: 'start' });
 				line();
 				let addresses = await Bootstrap.user_addresses(user);
-				let utxos = await Bootstrap.user_utxos_from_cli(user, addresses);
+				let utxos = await Bootstrap.user_utxos_from_cli(
+					user,
+					addresses,
+				);
 				for (const u of utxos) {
 					console.log(u);
 				}
@@ -1759,9 +1784,14 @@ Bootstrap.run_cli_program = async function () {
 	}
 	if (extractOption('dsftest1')) {
 		let buffer = await fs.readFileSync(
-			'./dsf-7250bb2a2e294f728081f50ee2bdd3a1.dat'
+			'./dsf-7250bb2a2e294f728081f50ee2bdd3a1.dat',
 		);
-		d(await Bootstrap._dsftest1(buffer, '7250bb2a2e294f728081f50ee2bdd3a1'));
+		d(
+			await Bootstrap._dsftest1(
+				buffer,
+				'7250bb2a2e294f728081f50ee2bdd3a1',
+			),
+		);
 		process.exit(0);
 	}
 	let denom = extractOption('denom-amt', true);
@@ -1773,7 +1803,7 @@ Bootstrap.run_cli_program = async function () {
 		}
 		let utxos = await Bootstrap.get_denominated_utxos(
 			username,
-			parseInt(denom, 10)
+			parseInt(denom, 10),
 		);
 		await LogUtxos(username, utxos);
 		d(utxos);
@@ -1869,20 +1899,22 @@ Bootstrap.run_cli_program = async function () {
 		console.info(
 			'[status]: Generating dash to user:',
 			config.generateTo,
-			'...'
+			'...',
 		);
 		d(await Bootstrap.generate_dash_to(config.generateTo));
 		console.log('[DONE]');
 		process.exit(0);
 		return;
 	}
-	let count = extractOption('create-n-wallets', true);
-	if (count !== null) {
-		if (isNaN(parseInt(count, 10))) {
+	let countArg = extractOption('create-n-wallets', true);
+	if (countArg !== null) {
+		let count = parseInt(String(countArg), 10);
+		if (isNaN(count)) {
 			d('usage: --create-n-wallets=N where N is a number');
 			process.exit(1);
 		}
-		d(await Bootstrap.create_wallets(count));
+		await Bootstrap.create_wallets(count);
+		d('created wallets');
 		process.exit(0);
 	}
 	if (config.create_wallets ?? false) {
@@ -1991,7 +2023,7 @@ Bootstrap.ram_txid_used = function (txid) {
 Bootstrap.extract_unique_users = async function (
 	count,
 	denominatedAmount,
-	besides
+	besides,
 ) {
 	await Bootstrap.unlock_all_wallets();
 	await Bootstrap.load_used_txid_ram_slots();
@@ -2011,7 +2043,10 @@ Bootstrap.extract_unique_users = async function (
 		let rando = await Bootstrap.getRandomPayee(user);
 		choices.push({
 			user,
-			utxos: await Bootstrap.get_denominated_utxos(user, denominatedAmount),
+			utxos: await Bootstrap.get_denominated_utxos(
+				user,
+				denominatedAmount,
+			),
 			changeAddress: await Bootstrap.get_change_address_from_cli(user),
 			randomPayee: rando,
 		});

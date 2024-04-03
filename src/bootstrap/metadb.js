@@ -75,7 +75,11 @@ module.exports = function (_DB) {
 	Lib.meta_set = async function (username, key, values) {
 		if (Lib.debug) {
 			if (Array.isArray(values)) {
-				d('meta_set entry', { username, key, item_count: values.length });
+				d('meta_set entry', {
+					username,
+					key,
+					item_count: values.length,
+				});
 			} else {
 				d('meta_set entry', { username, key, item_count: 'not-array' });
 			}
@@ -93,9 +97,17 @@ module.exports = function (_DB) {
 	Lib.meta_store = async function (username, key, values) {
 		if (Lib.debug) {
 			if (Array.isArray(values)) {
-				d('meta_store entry', { username, key, item_count: values.length });
+				d('meta_store entry', {
+					username,
+					key,
+					item_count: values.length,
+				});
 			} else {
-				d('meta_store entry', { username, key, item_count: 'not-array' });
+				d('meta_store entry', {
+					username,
+					key,
+					item_count: 'not-array',
+				});
 			}
 		}
 		if (Array.isArray(username)) {
@@ -124,9 +136,17 @@ module.exports = function (_DB) {
 	Lib.meta_remove = async function (username, key, values) {
 		if (Lib.debug) {
 			if (Array.isArray(values)) {
-				d('meta_remove entry', { username, key, item_count: values.length });
+				d('meta_remove entry', {
+					username,
+					key,
+					item_count: values.length,
+				});
 			} else {
-				d('meta_remove entry', { username, key, item_count: 'not-array' });
+				d('meta_remove entry', {
+					username,
+					key,
+					item_count: 'not-array',
+				});
 			}
 		}
 

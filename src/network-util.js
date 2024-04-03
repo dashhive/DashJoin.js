@@ -46,35 +46,35 @@ function encodeCompactSizeBytes(obj) {
 		len = obj.length;
 	}
 	switch (size) {
-	case 1:
-		return [len];
-	case 3:
-		return [0xfd, len & 0xff, len >> 8];
-	case 5:
-		/**
-       *  32      24      16       8       1
-       *   |-------|-------|-------|-------|
-       *
-       */
-		return [
-			0xfe,
-			len & 0xff,
-			len >> 8,
-			(len >> 16) & 0xff,
-			(len >> 24) & 0xff,
-		];
-	case 9:
-		return [
-			0xff,
-			len & 0xff, // byte 1
-			(len >> 8) & 0xff, // byte 2
-			(len >> 16) & 0xff, // byte 3
-			(len >> 24) & 0xff, // byte 4
-			(len >> 32) & 0xff, // byte 5
-			(len >> 40) & 0xff, // byte 6
-			(len >> 48) & 0xff, // byte 7
-			(len >> 56) & 0xff, // byte 8
-		];
+		case 1:
+			return [len];
+		case 3:
+			return [0xfd, len & 0xff, len >> 8];
+		case 5:
+			/**
+			 *  32      24      16       8       1
+			 *   |-------|-------|-------|-------|
+			 *
+			 */
+			return [
+				0xfe,
+				len & 0xff,
+				len >> 8,
+				(len >> 16) & 0xff,
+				(len >> 24) & 0xff,
+			];
+		case 9:
+			return [
+				0xff,
+				len & 0xff, // byte 1
+				(len >> 8) & 0xff, // byte 2
+				(len >> 16) & 0xff, // byte 3
+				(len >> 24) & 0xff, // byte 4
+				(len >> 32) & 0xff, // byte 5
+				(len >> 40) & 0xff, // byte 6
+				(len >> 48) & 0xff, // byte 7
+				(len >> 56) & 0xff, // byte 8
+			];
 	}
 }
 
@@ -109,7 +109,7 @@ function bytesToString(b) {
 }
 function str2uint8(text) {
 	return Uint8Array.from(
-		Array.from(text).map((letter) => letter.charCodeAt(0))
+		Array.from(text).map((letter) => letter.charCodeAt(0)),
 	);
 }
 function extractUint32(data, at) {

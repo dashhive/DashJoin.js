@@ -20,11 +20,11 @@ const { extractOption } = require('../argv.js');
 	async function create_data() {
 		let values = [];
 		/**
-     * I have a thousand values that I want to store in LMDB.
-     * As page 1 fills up with 250 items (the default), page 2
-     * gets created and then the values go from 250 to 499 since
-     * it's inclusive. This continues up until 1000.
-     */
+		 * I have a thousand values that I want to store in LMDB.
+		 * As page 1 fills up with 250 items (the default), page 2
+		 * gets created and then the values go from 250 to 499 since
+		 * it's inclusive. This continues up until 1000.
+		 */
 		for (let i = 0; i < 1000; i++) {
 			values.push(i);
 		}
@@ -36,10 +36,10 @@ const { extractOption } = require('../argv.js');
    */
 		await mdb.paged_store('user1', 'utxos', values);
 		/**
-     * We can grab the page information which will give us
-     * metadata like how many pages are in this particular
-     * paged lmdb key.
-     */
+		 * We can grab the page information which will give us
+		 * metadata like how many pages are in this particular
+		 * paged lmdb key.
+		 */
 	}
 	if (extractOption('store')) {
 		await create_data();
@@ -65,8 +65,8 @@ const { extractOption } = require('../argv.js');
 	//	});
 	//}
 	/**
-   * An alternate way to do something for every page
-   */
+	 * An alternate way to do something for every page
+	 */
 	await mdb.paged_for_each(
 		'user1',
 		'utxos',
@@ -83,6 +83,6 @@ const { extractOption } = require('../argv.js');
 					return false; // returning false means stop looping
 				}
 			}
-		}
+		},
 	);
 })();

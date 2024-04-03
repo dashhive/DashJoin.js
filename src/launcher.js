@@ -42,8 +42,8 @@ module.exports = {
 	run_cli_program: function () {
 		(async function (instanceName) {
 			/**
-       * Start CONCURRENT_USERS clients simultaneously
-       */
+			 * Start CONCURRENT_USERS clients simultaneously
+			 */
 			console.info(`[status]: loading "${instanceName}" instance...`);
 			dboot = await dashboot.load_instance(instanceName);
 			let mnRingBuffer = null;
@@ -63,20 +63,20 @@ module.exports = {
 			let uniqueUsers = await dboot.extract_unique_users(
 				CONCURRENT_USERS,
 				getDemoDenomination(),
-				except
+				except,
 			);
 
 			/**
-       * Pass choices[N] to a different process.
-       */
+			 * Pass choices[N] to a different process.
+			 */
 			let f = [];
 			for (const choice of uniqueUsers) {
 				/**
-         * Spawn CONCURRENT_USERS different processes.
-         * Hand them each their own user
-         * Have them each submit to the same masternode
-         *
-         */
+				 * Spawn CONCURRENT_USERS different processes.
+				 * Hand them each their own user
+				 * Have them each submit to the same masternode
+				 *
+				 */
 				//dd({ user: choice.user });
 				let m = cproc.spawn('node', [
 					`${CURDIR}/demo.js`,

@@ -61,13 +61,13 @@ async function signTransaction(dboot, client_session, txid) {
 		sequenceNumber: 0xffffffff,
 		satoshis: parseInt(choice.amount * COIN, 10),
 		scriptPubKey: Script.buildPublicKeyHashOut(
-			sanitize_address(choice.address)
+			sanitize_address(choice.address),
 		),
 	};
 	let pk = await dboot.get_private_key(username, choice.address);
 	let payeeAddress = await dboot.generate_new_addresses(
 		client_session.username,
-		1
+		1,
 	);
 	payeeAddress = payeeAddress[0];
 	//for (let input of client_session.mixing_inputs) {

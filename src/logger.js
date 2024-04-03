@@ -37,7 +37,7 @@ function bigint_safe_json_stringify(buffer, stringify_space = 2) {
 			this.k = key;
 			return typeof value === 'bigint' ? value.toString() + 'n' : value;
 		},
-		stringify_space
+		stringify_space,
 	);
 }
 function getLogFile(_in_nickName = null) {
@@ -67,8 +67,8 @@ function date() {
 	}
 	return (
 		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
-    ' ' +
-    [h, m, s].join(':')
+		' ' +
+		[h, m, s].join(':')
 	);
 }
 async function log(...args) {
@@ -78,7 +78,9 @@ async function log(...args) {
 	return fsPromises
 		.open(getLogFile(), 'a', 0o600)
 		.then(function (fp) {
-			fp.appendFile(`${date()}: ${bigint_safe_json_stringify(args, 2)}\n`);
+			fp.appendFile(
+				`${date()}: ${bigint_safe_json_stringify(args, 2)}\n`,
+			);
 			return true;
 		})
 		.catch(function (error) {

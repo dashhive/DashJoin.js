@@ -1,10 +1,9 @@
-
-function Wallet(...args){
+function Wallet(...args) {
 	/**
 	 * TODO fill this in
 	 */
-	this.contents =args;
+	this.contents = args;
 	return this;
-};
+}
 
 module.exports = Wallet;

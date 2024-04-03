@@ -2,7 +2,6 @@
  * A port of DASH core's CoinJoin client
  */
 
-
 let Lib = {};
 module.exports = Lib;
 // std::map<const std::string, std::shared_ptr<CCoinJoinClientManager>> coinJoinClientManagers;
@@ -20,10 +19,10 @@ Lib.nType = 0;
 // Orig: int nVersion;
 Lib.nVersion;
 
-Lib.Init = function(nTypeIn, nVersionIn) {
-		Lib.nReadPos = 0;
-		Lib.nType = nTypeIn;
-		Lib.nVersion = nVersionIn;
+Lib.Init = function (nTypeIn, nVersionIn) {
+	Lib.nReadPos = 0;
+	Lib.nType = nTypeIn;
+	Lib.nVersion = nVersionIn;
 };
 
 Lib.read = function (obj) {

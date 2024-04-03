@@ -19,8 +19,8 @@ function date() {
 	}
 	return (
 		[d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-') +
-    ' ' +
-    [h, m, s].join(':')
+		' ' +
+		[h, m, s].join(':')
 	);
 }
 function getDataDir() {

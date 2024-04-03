@@ -29,7 +29,7 @@ LibDsfInput.dump_parsed = function dump_parsed(parsed) {
 		console.log(
 			'pubkey_script_bytes: ',
 			xt(outputs, `${i}.pubkey_script_bytes`),
-			','
+			',',
 		);
 		console.log('pubkey_script: [');
 		Network.util.dumpAsHex(xt(outputs, `${i}.pubkey_script`));

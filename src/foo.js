@@ -68,15 +68,15 @@ let cproc = require('child_process');
 		mixing_inputs: inputs,
 		generated_addresses: await dboot.generate_new_addresses(
 			username,
-			inputs.length
+			inputs.length,
 		),
 	};
 
 	let signatures = [];
 	//d({ inputs, client_session });
 	/**
-   * The input count byte
-   */
+	 * The input count byte
+	 */
 	let TOTAL_SIZE = 1; // TODO: support compactSize
 	const TXID_LENGTH = 32;
 	const OUTPUT_INDEX_LENGTH = 4;
@@ -92,9 +92,9 @@ let cproc = require('child_process');
 		//let _tx = hashByteOrder(txid);
 		TOTAL_SIZE += TXID_LENGTH + OUTPUT_INDEX_LENGTH;
 		/**
-     * Assumes that the length byte of signatures[txid].signature
-     * is present as the first byte
-     */
+		 * Assumes that the length byte of signatures[txid].signature
+		 * is present as the first byte
+		 */
 		console.debug({ txid });
 		let utxo = {
 			txId: client_session.mixing_inputs[i].txid,
@@ -106,7 +106,7 @@ let cproc = require('child_process');
 			.from(utxo)
 			.to(
 				client_session.generated_addresses[i],
-				client_session.mixing_inputs[i].satoshis
+				client_session.mixing_inputs[i].satoshis,
 			);
 		dd({ tx });
 
@@ -144,11 +144,11 @@ let cproc = require('child_process');
 			.from(utxo)
 			.to(
 				client_session.generated_addresses[i],
-				client_session.mixing_inputs[i].satoshis
+				client_session.mixing_inputs[i].satoshis,
 			)
 			.sign(
 				[client_session.mixing_inputs[0].privateKey],
-				Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY
+				Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY,
 			);
 
 		let output = await dboot.wallet_exec(username, [
@@ -176,16 +176,16 @@ let cproc = require('child_process');
 	dd(s);
 
 	/**
-   * Packet payload
-   */
+	 * Packet payload
+	 */
 	let offset = 0;
 	let packet = new Uint8Array(TOTAL_SIZE);
 	packet.set([USER_INPUT_SIZE], 0);
 	offset += 1; // TODO: compactSize
 
 	/**
-   * Add each input
-   */
+	 * Add each input
+	 */
 	for (const input of client_session.mixing_inputs) {
 		packet.set(hexToBytes(input.txid), offset);
 		offset += 32;

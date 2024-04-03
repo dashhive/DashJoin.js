@@ -1,7 +1,9 @@
 # Overview
+
 Code review of Dash Core C++ code. Particularly, DSS flow.
 
 # Where we're concerned
+
 ```
 2023-07-07T04:02:11Z (mocktime: 2023-07-07T04:06:14Z) CCoinJoinServer::CheckPool -- entries count 2
 2023-07-07T04:02:11Z (mocktime: 2023-07-07T04:06:14Z) CCoinJoinServer::CheckPool -- SIGNING
@@ -24,10 +26,12 @@ Code review of Dash Core C++ code. Particularly, DSS flow.
 ```
 
 # Entry `void CCoinJoinServer::CommitFinalTransaction()` in server.cpp
+
 server.cpp:327: `mempool.PrioritiseTransaction(hashTx, 0.1 * COIN);`
 
-Line 328 is the top of the call stack. It is where the DSS flow ultimately fails.
-server.cpp:328:
+Line 328 is the top of the call stack. It is where the DSS flow ultimately
+fails. server.cpp:328:
+
 ```
         if (!lockMain || !AcceptToMemoryPool(mempool, validationState, finalTransaction, nullptr /* pfMissingInputs */, false /* bypass_limits */, DEFAULT_MAX_RAW_TX_FEE /* nAbsurdFee */)) {
             LogPrint(BCLog::COINJOIN, "CCoinJoinServer::CommitFinalTransaction -- AcceptToMemoryPool() error: Transaction not valid\n");
@@ -40,10 +44,13 @@ server.cpp:328:
 ```
 
 ## PrioritiseTransaction
-- Updates ancestry data with fees
+
+-   Updates ancestry data with fees
 
 ## AcceptToMemoryPool
+
 Is just a wrapper function to `AcceptToMemoryPoolWithTime`.
+
 ```
 bool AcceptToMemoryPool(
   CTxMemPool& pool,       // mempool
@@ -51,43 +58,50 @@ bool AcceptToMemoryPool(
   const CTransactionRef &tx,  // finalTransaction
   bool* pfMissingInputs,
   bool bypass_limits,
-  const CAmount nAbsurdFee, 
+  const CAmount nAbsurdFee,
   bool test_accept) {
     const CChainParams& chainparams = Params();
     return AcceptToMemoryPoolWithTime(
-      chainparams,  // 
+      chainparams,  //
       pool,   // mempool
       state,  // validationState
       tx,     // finalTransaction
       pfMissingInputs, // nullptr when called
-      GetTime(),      // 
+      GetTime(),      //
       bypass_limits,  // false when called
       nAbsurdFee,     // DEFAULT_MAX_RAW_TX_FEE
       test_accept);
 }
 ```
+
 ## validationState:
+
 ```
 CValidationState validationState;
 ```
-- is mostly used as a pass by reference parameter which will change by the called functions it's passed to
 
+-   is mostly used as a pass by reference parameter which will change by the
+    called functions it's passed to
 
 ## finalTransaction
+
 ```
 CTransactionRef finalTransaction = WITH_LOCK(cs_coinjoin, return MakeTransactionRef(finalMutableTransaction));
 uint256 hashTx = finalTransaction->GetHash();
 ```
-- locks the coinjoin mutex
-- references the `finalMutableTransaction`
-- fetches the hash... txid?
 
+-   locks the coinjoin mutex
+-   references the `finalMutableTransaction`
+-   fetches the hash... txid?
 
 ## AcceptToMemoryPoolWithTime
-Description as per comment above function: 
+
+Description as per comment above function:
+
 ```
 /** (try to) add transaction to memory pool with a specified acceptance time **/
 ```
+
 ```
 static bool AcceptToMemoryPoolWithTime(
 const CChainParams& chainparams,  // when called: const CChainParams& chainparams = Params();
@@ -113,26 +127,36 @@ bool test_accept    //  not sure where this is set
     }
 
 ```
-- pfMissingInputs is nullptr, so will not be set to false
+
+-   pfMissingInputs is nullptr, so will not be set to false
 
 ### Some things we can assume about AcceptToMemoryPoolWithTime
-- The transaction that gets prioritised is *not* already in the mempool since the following line does not cause the function to return early:
+
+-   The transaction that gets prioritised is _not_ already in the mempool since
+    the following line does not cause the function to return early:
+
 ```
     // is it already in the memory pool?
     if (pool.exists(hash)) {
 ```
-- It's not a coinbase tx
-- It is a standard tx
-- Serialized size is good:
+
+-   It's not a coinbase tx
+-   It is a standard tx
+-   Serialized size is good:
+
 ```
     // Transactions smaller than this are not relayed to mitigate CVE-2017-12842 by not relaying
     // 64-byte transactions.
 ```
-- CheckTxInputs (for consensus) checks out
+
+-   CheckTxInputs (for consensus) checks out
+
 ```
 if (!Consensus::CheckTxInputs(tx, state, view, GetSpendHeight(view), nFees)) {
 ```
-- All inputs are standard:
+
+-   All inputs are standard:
+
 ```
         // Check for non-standard pay-to-script-hash in inputs
         if (fRequireStandard && !AreInputsStandard(tx, view))
@@ -140,6 +164,7 @@ if (!Consensus::CheckTxInputs(tx, state, view, GetSpendHeight(view), nFees)) {
 ```
 
 ## CheckInputs
+
 ```
         // Check against previous transactions
         // This is done last to help prevent CPU exhaustion denial-of-service attacks.
@@ -158,7 +183,9 @@ if (!Consensus::CheckTxInputs(tx, state, view, GetSpendHeight(view), nFees)) {
             return false; // state filled in by CheckInputs
         }
 ```
+
 ### Function signature:
+
 ```
 bool CheckInputs(
 const CTransaction& tx,     // finalTransaction
@@ -173,16 +200,18 @@ CValidationState &state,    // validationState
 ```
 
 ## CheckInputs
-- Checks all inputs are valid
-  - no double spends
-  - scripts+sigs are good
-  - amounts are good
-- if `pvChecks` not nullptr,
-  - script checks pushed onto it
-- setting `cacheFullScriptStore` to false (we are)
-  - will remove elements from the corresponding cache
+
+-   Checks all inputs are valid
+    -   no double spends
+    -   scripts+sigs are good
+    -   amounts are good
+-   if `pvChecks` not nullptr,
+    -   script checks pushed onto it
+-   setting `cacheFullScriptStore` to false (we are)
+    -   will remove elements from the corresponding cache
 
 ### Point of failure
+
 ```
                 // Verify signature
                 CScriptCheck check(coin.out, tx, i, flags, cacheSigStore, &txdata);
@@ -193,18 +222,22 @@ CValidationState &state,    // validationState
 ```
 
 ## CScriptCheck
-- The constructor is called at validation.cpp:1468
+
+-   The constructor is called at validation.cpp:1468
+
 ```
 CScriptCheck check(
 coin.out,   // inputs.AccessCoin(tx.vin[i].prevout)
-tx,         // 
-i, 
-flags, 
-cacheSigStore, 
+tx,         //
+i,
+flags,
+cacheSigStore,
 &txdata
 );
 ```
-- Constructor:
+
+-   Constructor:
+
 ```
     CScriptCheck(
     const CTxOut& outIn,  // m_tx_out
@@ -216,7 +249,9 @@ cacheSigStore,
  // error(SCRIPT_ERR_UNKNOWN_ERROR)
  )
 ```
-- coin is the current vin's previous out:
+
+-   coin is the current vin's previous out:
+
 ```
 for (unsigned int i = 0; i < tx.vin.size(); i++) {
     const COutPoint &prevout = tx.vin[i].prevout;
@@ -229,7 +264,7 @@ bool CScriptCheck::operator()() {
     PrecomputedTransactionData txdata(*ptxTo);
     return VerifyScript(
     scriptSig,  // CScript scriptSig vinput[outputIndex].scriptSig
- m_tx_out.scriptPubKey, // 
+ m_tx_out.scriptPubKey, //
  nFlags,  // STANDARD_SCRIPT_VERIFY_FLAGS
  CachingTransactionSignatureChecker(ptxTo,
  nIn,
@@ -241,9 +276,10 @@ bool CScriptCheck::operator()() {
 ```
 
 ## VerifyScript
+
 ```
 bool VerifyScript(
-const CScript& scriptSig, // scriptSig 
+const CScript& scriptSig, // scriptSig
  const CScript& scriptPubKey, //m_tx_out.scriptPubKey
  unsigned int flags,  // STANDARD_SCRIPT_VERIFY_FLAGS
  const BaseSignatureChecker& checker, //CachingTransactionSignatureChecker
@@ -251,14 +287,15 @@ const CScript& scriptSig, // scriptSig
  )
 ```
 
-
 ## EvalScript
-- `OP_CHECKSIGVERIFY`
-  - `bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);`
-  - script/interpreter.cpp:998
 
+-   `OP_CHECKSIGVERIFY`
 
-- `OP_CHECKDATASIG/OP_CHECKDATASIGVERIFY`
+    -   `bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);`
+    -   script/interpreter.cpp:998
+
+-   `OP_CHECKDATASIG/OP_CHECKDATASIGVERIFY`
+
 ```
 bool fSuccess = false;
 if (vchSig.size()) {
@@ -269,10 +306,13 @@ if (vchSig.size()) {
     fSuccess = CPubKey(vchPubKey).Verify(uint256(vchHash), vchSig);
 }
 ```
-  - script/interpreter.cpp:1039
 
-- `OP_CHECKMULTISIG/OP_CHECKMULTISIGVERIFY`
-```
-```
-  - script/interpreter.cpp:1136
+-   script/interpreter.cpp:1039
 
+-   `OP_CHECKMULTISIG/OP_CHECKMULTISIGVERIFY`
+
+```
+
+```
+
+-   script/interpreter.cpp:1136
