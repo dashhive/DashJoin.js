@@ -52,8 +52,12 @@ Lib.txn = () => {
 Lib.get = (str) => {
 	let { txn, dbi } = Lib._data;
 
-	// Get data
-	return txn.getString(dbi, str);
+	let val = txn.getString(dbi, str);
+	// Goodbye Christopher Null...
+	if ('null' === val || 'undefined' === val) {
+		val = null;
+	}
+	return val;
 };
 
 Lib.put = (k, val) => {
