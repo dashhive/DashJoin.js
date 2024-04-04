@@ -1,1 +1,0 @@
-tail -f "${HOME}"/.dashmate/logs/local_1/core.log

@@ -1,2 +1,0 @@
- ~/bin/dc getblock $(dc getbestblockhash) | grep height | tail -n 1 | cut -d: -f 2 | tr -d ,
-

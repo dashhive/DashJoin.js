@@ -1,4 +1,0 @@
-#!/bin/bash
-
-~/bin/du getnewaddress >> ~/docs/du-address-x
-~/bin/du generatetoaddress 100 $(cat ~/docs/du-address-x | tail -n 1)

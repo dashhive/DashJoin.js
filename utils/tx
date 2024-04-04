@@ -1,6 +1,0 @@
-#!/bin/bash
-if [[ $1 == "tx0" ]]; then
-    ~/bin/dp gettransaction $(cat ~/.tx0)
-    exit $?
-fi
-~/bin/dp gettransaction $*

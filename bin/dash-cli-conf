@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+set -u
+
+main() { (
+    # local_seed, local_1, local_2, local_3
+    a_conf="${1:-local_seed}"
+    dash-cli -conf="${HOME}/.dashmate/${a_conf}/core/dash.conf" "${@}"
+); }
+
+main "${@:-}"

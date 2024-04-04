@@ -1,94 +1,104 @@
 #!/bin/bash
+set -e
+set -u
 
 function dump_denoms() {
-    pushd $PWD
-    ~/bin/update-manifest
-    popd
+    ./utils/update-manifest
 }
+
 function load-foobar() {
-    for i in $(seq 1 10); do
-        ~/bin/df generatetoaddress 10 $(cat ~/docs/df-address-0)
+    for _ in $(seq 1 10); do
+        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./docs/w-foobar-address-0)"
     done
-    ~/bin/dftx.sh 500 > ~/docs/df-txn.json
+    ./bin/dash-cli-listtransactions 'foobar' 500 > ./docs/w-foobar-txns.json
 }
+
 function load-psend() {
-    for i in $(seq 1 10); do
-        ~/bin/dp generatetoaddress 10 $(cat ~/docs/dp-address-0)
+    for _ in $(seq 1 10); do
+        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./docs/w-psend-address-0)"
     done
-    ~/bin/dptx.sh 500 > ~/docs/dp-txn.json
+    ./bin/dash-cli-listtransactions 'psend' 500 > ./docs/w-psend-txns.json
 }
+
 function load-han() {
-    for i in $(seq 1 10); do
-        ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
+    for _ in $(seq 1 10); do
+        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./docs/w-han-address-0)"
     done
-    ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
+    ./bin/dash-cli-listtransactions 'han' 500 > ./docs/w-han-txns.json
 }
+
 function load-chewie() {
-    for i in $(seq 1 10); do
-        ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+    for _ in $(seq 1 10); do
+        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./docs/w-chewie-address-0)"
     done
-    ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+    ./bin/dash-cli-listtransactions 'chewie' 500 > ./docs/w-chewie-txns.json
 }
+
 function load-luke() {
-    for i in $(seq 1 10); do
-        ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
+    for _ in $(seq 1 10); do
+        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./docs/w-luke-address-0)"
     done
-    ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
+    ./bin/dash-cli-listtransactions 'luke' 500 > ./docs/w-luke-txns.json
 }
+
 function foobar() {
-    ~/bin/create-foobar-wallet.sh
-    ~/bin/df getnewaddress > ~/docs/df-address-0
-    ~/bin/df getrawchangeaddress > ~/docs/df-change-address-0
-    ~/bin/df walletpassphrase foobar 100000000
-    ~/bin/df dumpprivkey $(cat ~/docs/df-address-0) > ~/docs/df-privkey-0
-    for i in $(seq 1 4); do
-        ~/bin/df generatetoaddress 10 $(cat ~/docs/df-address-0)
+    ./bin/wallet-create 'foobar'
+    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./docs/w-foobar-address-0
+    ./bin/dash-cli-wallet 'foobar' getrawchangeaddress > ./docs/w-foobar-change-address-0
+    ./bin/dash-cli-wallet 'foobar' walletpassphrase foobar 100000000
+    ./bin/dash-cli-wallet 'foobar' dumpprivkey "$(cat ./docs/w-foobar-address-0)" > ./docs/w-foobar-privkey-0
+    for _ in $(seq 1 4); do
+        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./docs/w-foobar-address-0)"
     done
-    ~/bin/dftx.sh 500 > ~/docs/df-txn.json
+    ./bin/dash-cli-listtransactions 'foobar' 500 > ./docs/w-foobar-txns.json
 }
+
 function psend() {
-    ~/bin/create-psend-wallet.sh
-    ~/bin/dp getnewaddress > ~/docs/dp-address-0
-    ~/bin/dp getrawchangeaddress > ~/docs/dp-change-address-0
-    ~/bin/dp walletpassphrase foobar 100000000
-    ~/bin/dp dumpprivkey $(cat ~/docs/dp-address-0) > ~/docs/dp-privkey-0
-    for i in $(seq 1 4); do
-        ~/bin/dp generatetoaddress 10 $(cat ~/docs/dp-address-0)
+    ./bin/wallet-create 'psend'
+    ./bin/dash-cli-wallet 'psend' getnewaddress > ./docs/w-psend-address-0
+    ./bin/dash-cli-wallet 'psend' getrawchangeaddress > ./docs/w-psend-change-address-0
+    ./bin/dash-cli-wallet 'psend' walletpassphrase foobar 100000000
+    ./bin/dash-cli-wallet 'psend' dumpprivkey "$(cat ./docs/w-psend-address-0)" > ./docs/w-psend-privkey-0
+    for _ in $(seq 1 4); do
+        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./docs/w-psend-address-0)"
     done
-    ~/bin/dptx.sh 500 > ~/docs/dp-txn.json
+    ./bin/dash-cli-listtransactions 'psend' 500 > ./docs/w-psend-txns.json
 }
+
 function chewie() {
-    ~/bin/create-chewie-wallet.sh
-    ~/bin/dche getnewaddress > ~/docs/dche-address-0
-    ~/bin/dche getrawchangeaddress > ~/docs/dche-change-address-0
-    ~/bin/dche walletpassphrase foobar 100000000
-    ~/bin/dche dumpprivkey $(cat ~/docs/dche-address-0) > ~/docs/dche-privkey-0
-    for i in $(seq 1 4); do
-        ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+    ./bin/wallet-create 'chewie'
+    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./docs/w-chewie-address-0
+    ./bin/dash-cli-wallet 'chewie' getrawchangeaddress > ./docs/w-chewie-change-address-0
+    ./bin/dash-cli-wallet 'chewie' walletpassphrase foobar 100000000
+    ./bin/dash-cli-wallet 'chewie' dumpprivkey "$(cat ./docs/w-chewie-address-0)" > ./docs/w-chewie-privkey-0
+    for _ in $(seq 1 4); do
+        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./docs/w-chewie-address-0)"
     done
-    ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+    ./bin/dash-cli-listtransactions 'chewie' 500 > ./docs/w-chewie-txns.json
 }
+
 function han() {
-    ~/bin/create-han-wallet.sh
-    ~/bin/dh getnewaddress > ~/docs/dh-address-0
-    ~/bin/dh getrawchangeaddress > ~/docs/dh-change-address-0
-    ~/bin/dh walletpassphrase foobar 100000000
-    ~/bin/dh dumpprivkey $(cat ~/docs/dh-address-0) > ~/docs/dh-privkey-0
-    for i in $(seq 1 4); do
-        ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
+    ./bin/wallet-create 'han'
+    ./bin/dash-cli-wallet 'han' getnewaddress > ./docs/w-han-address-0
+    ./bin/dash-cli-wallet 'han' getrawchangeaddress > ./docs/w-han-change-address-0
+    ./bin/dash-cli-wallet 'han' walletpassphrase foobar 100000000
+    ./bin/dash-cli-wallet 'han' dumpprivkey "$(cat ./docs/w-han-address-0)" > ./docs/w-han-privkey-0
+    for _ in $(seq 1 4); do
+        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./docs/w-han-address-0)"
     done
-    ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
+    ./bin/dash-cli-listtransactions 'han' 500 > ./docs/w-han-txns.json
 }
+
 function luke() {
-    ~/bin/create-luke-wallet.sh
-    ~/bin/dl getnewaddress > ~/docs/dl-address-0
-    ~/bin/dl getrawchangeaddress > ~/docs/dl-change-address-0
-    ~/bin/dl walletpassphrase foobar 100000000
-    ~/bin/dl dumpprivkey $(cat ~/docs/dl-address-0) > ~/docs/dl-privkey-0
-    for i in $(seq 1 4); do
-        ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
+    ./bin/wallet-create 'luke'
+    ./bin/dash-cli-wallet 'luke' getnewaddress > ./docs/w-luke-address-0
+    ./bin/dash-cli-wallet 'luke' getrawchangeaddress > ./docs/w-luke-change-address-0
+    ./bin/dash-cli-wallet 'luke' walletpassphrase foobar 100000000
+    ./bin/dash-cli-wallet 'luke' dumpprivkey "$(cat ./docs/w-luke-address-0)" > ./docs/w-luke-privkey-0
+    for _ in $(seq 1 4); do
+        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./docs/w-luke-address-0)"
     done
-    ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
+    ./bin/dash-cli-listtransactions 'luke' 500 > ./docs/w-luke-txns.json
 }
 
 HELP=0
@@ -107,7 +117,7 @@ LOAD_CHEWIE=0
 LOAD_LUKE=0
 LOAD_FOOBAR=0
 LOAD_PSEND=0
-for arg in $*; do
+for arg in "${@}"; do
     if [[ $arg == "--all" ]]; then
         CREATE=1
         UNLOCK=1
@@ -182,22 +192,22 @@ if [[ $HELP == 1 ]]; then
     echo "  --all           Same as passing the following flags: "
     echo "                  --dump-denoms --create --unlock --txn --unused "
     echo "                  --han --chewie --luke --psend --foobar"
-    echo "  --dump-denoms   runs the script at ~/bin/update-manifest"
+    echo "  --dump-denoms   runs the script at ./utils/update-manifest"
     echo "  --txn           generates transactions to all wallets listed"
     echo "  --create        creates all wallets, private,keys, and coins. Overwriting previous configs."
     echo "  --unlock        Unlocks all the wallets using walletpassphrase"
 
+    echo "  --foobar        Create Foobar's wallet"
+    echo "  --psend         Create Psend's wallet"
+    echo "  --luke          Create Luke's wallet"
     echo "  --han           Create Han's wallet"
     echo "  --chewie        Create Chewie's wallet"
-    echo "  --luke          Create Luke's wallet"
-    echo "  --psend         Create Psend's wallet"
-    echo "  --foobar        Create Foobar's wallet"
     echo
+    echo "  --load-foobar   Generate 100 blocks to Foobar's wallet"
+    echo "  --load-psend    Generate 100 blocks to Psend's wallet"
+    echo "  --load-luke     Generate 100 blocks to Luke's wallet"
     echo "  --load-han      Generate 100 blocks to Han's wallet"
     echo "  --load-chewie   Generate 100 blocks to Chewie's wallet"
-    echo "  --load-luke     Generate 100 blocks to Luke's wallet"
-    echo "  --load-psend    Generate 100 blocks to Psend's wallet"
-    echo "  --load-foobar   Generate 100 blocks to Foobar's wallet"
     echo
     echo "  --help|-h       This help screen"
     echo
@@ -205,52 +215,63 @@ if [[ $HELP == 1 ]]; then
 fi
 
 if [[ $CREATE == 1 ]]; then
-    ~/bin/create-foobar-wallet.sh
-    ~/bin/create-luke-wallet.sh
-    ~/bin/create-psend-wallet.sh
-    ~/bin/create-han-wallet.sh
-    ~/bin/create-chewie-wallet.sh
-    ~/bin/dp getnewaddress > ~/docs/dp-address-0
-    ~/bin/df getnewaddress > ~/docs/df-address-0
-    ~/bin/dl getnewaddress > ~/docs/dl-address-0
-    ~/bin/dh getnewaddress > ~/docs/dh-address-0
-    ~/bin/dche getnewaddress > ~/docs/dche-address-0
-    ~/bin/df getrawchangeaddress > ~/docs/df-change-address-0
-    ~/bin/dp getrawchangeaddress > ~/docs/dp-change-address-0
-    ~/bin/dl getrawchangeaddress > ~/docs/dl-change-address-0
-    ~/bin/dh getrawchangeaddress > ~/docs/dh-change-address-0
-    ~/bin/dche getrawchangeaddress > ~/docs/dche-change-address-0
+    ./bin/wallet-create 'foobar'
+    ./bin/wallet-create 'psend'
+    ./bin/wallet-create 'han'
+    ./bin/wallet-create 'luke'
+    ./bin/wallet-create 'chewie'
+
+    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./docs/w-foobar-address-0
+    ./bin/dash-cli-wallet 'psend' getnewaddress > ./docs/w-psend-address-0
+    ./bin/dash-cli-wallet 'luke' getnewaddress > ./docs/w-luke-address-0
+    ./bin/dash-cli-wallet 'han' getnewaddress > ./docs/w-han-address-0
+    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./docs/w-chewie-address-0
+
+    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./docs/w-foobar-change-address-0
+    ./bin/dash-cli-wallet 'psend' getnewaddress > ./docs/w-psend-change-address-0
+    ./bin/dash-cli-wallet 'luke' getnewaddress > ./docs/w-luke-change-address-0
+    ./bin/dash-cli-wallet 'han' getnewaddress > ./docs/w-han-change-address-0
+    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./docs/w-chewie-change-address-0
 fi
 
 if [[ $UNLOCK == 1 ]]; then
-    ~/bin/df walletpassphrase funbar 100000000
-    ~/bin/dp walletpassphrase foobar 100000000
-    ~/bin/dl walletpassphrase foobar 100000000
-    ~/bin/dh walletpassphrase foobar 100000000
-    ~/bin/dche walletpassphrase foobar 100000000
-    ~/bin/df dumpprivkey $(cat ~/docs/df-address-0) > ~/docs/df-privkey-0
-    ~/bin/dp dumpprivkey $(cat ~/docs/dp-address-0) > ~/docs/dp-privkey-0
-    ~/bin/dl dumpprivkey $(cat ~/docs/dl-address-0) > ~/docs/dl-privkey-0
-    ~/bin/dh dumpprivkey $(cat ~/docs/dh-address-0) > ~/docs/dh-privkey-0
-    ~/bin/dche dumpprivkey $(cat ~/docs/dche-address-0) > ~/docs/dche-privkey-0
+    b_wallet_salt='foobar'
+    b_unlock_time=100000000
+
+    ./bin/dash-cli-wallet 'foobar' walletpassphrase "${b_wallet_salt}" "${b_unlock_time}"
+    ./bin/dash-cli-wallet 'psend' walletpassphrase "${b_wallet_salt}" "${b_unlock_time}"
+    ./bin/dash-cli-wallet 'luke' walletpassphrase "${b_wallet_salt}" "${b_unlock_time}"
+    ./bin/dash-cli-wallet 'han' walletpassphrase "${b_wallet_salt}" "${b_unlock_time}"
+    ./bin/dash-cli-wallet 'chewie' walletpassphrase "${b_wallet_salt}" "${b_unlock_time}"
+
+    ./bin/dash-cli-wallet 'foobar' dumpprivkey "$(cat ./docs/w-foobar-address-0)" \
+        > ./docs/w-foobar-privkey-0
+    ./bin/dash-cli-wallet 'psend' dumpprivkey "$(cat ./docs/w-psend-address-0)" \
+        > ./docs/w-psend-privkey-0
+    ./bin/dash-cli-wallet 'luke' dumpprivkey "$(cat ./docs/w-luke-address-0)" \
+        > ./docs/w-luke-privkey-0
+    ./bin/dash-cli-wallet 'han' dumpprivkey "$(cat ./docs/w-han-address-0)" \
+        > ./docs/w-han-privkey-0
+    ./bin/dash-cli-wallet 'chewie' dumpprivkey "$(cat ./docs/w-chewie-address-0)" \
+        > ./docs/w-chewie-privkey-0
 fi
 
 if [[ $TXN == 1 ]]; then
-    for i in $(seq 1 10); do
-        ~/bin/dl generatetoaddress 10 $(cat ~/docs/dl-address-0)
-        ~/bin/df generatetoaddress 10 $(cat ~/docs/df-address-0)
-        ~/bin/dp generatetoaddress 10 $(cat ~/docs/dp-address-0)
-        ~/bin/dh generatetoaddress 10 $(cat ~/docs/dh-address-0)
-        ~/bin/dche generatetoaddress 10 $(cat ~/docs/dche-address-0)
+    for _ in $(seq 1 10); do
+        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./docs/w-foobar-address-0)"
+        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./docs/w-psend-address-0)"
+        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./docs/w-luke-address-0)"
+        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./docs/w-han-address-0)"
+        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./docs/w-chewie-address-0)"
     done
 fi
 
 if [[ $UNUSED == 1 ]]; then
-    ~/bin/dptx.sh 500 > ~/docs/dp-txn.json
-    ~/bin/dftx.sh 500 > ~/docs/df-txn.json
-    ~/bin/dltx.sh 500 > ~/docs/dl-txn.json
-    ~/bin/dhtx.sh 500 > ~/docs/dh-txn.json
-    ~/bin/dchetx.sh 500 > ~/docs/dche-txn.json
+    ./bin/dash-cli-listtransactions 'foobar' 500 > ./docs/w-foobar-txns.json
+    ./bin/dash-cli-listtransactions 'psend' 500 > ./docs/w-psend-txns.json
+    ./bin/dash-cli-listtransactions 'luke' 500 > ./docs/w-luke-txns.json
+    ./bin/dash-cli-listtransactions 'han' 500 > ./docs/w-han-txns.json
+    ./bin/dash-cli-listtransactions 'chewie' 500 > ./docs/w-chewie-txns.json
 fi
 
 if [[ $DUMP_DENOMS == 1 ]]; then

@@ -1,1 +1,0 @@
-dashmate config set core.docker.image dashpay/dashd:19.1.0

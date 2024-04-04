@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+set -u
+
+main() { (
+    a_username="${1:-}"
+    a_rpccommand="${2:-}"
+    if test -z "${a_username}" || test -z "${a_rpccommand}"; then
+        {
+            #shellcheck disable=SC2016 # variables should not expand here in the docs
+            echo 'Runs dash-cli -conf=$HOME/.dashmate/local_seed/core/dash.conf -rpcwallet=$username <rpc-command> [rpc-opts...]'
+            echo ""
+            echo "USAGE"
+            echo "    dash-cli-wallet <username> <rpc-command> [rpc-opts...]"
+            echo ""
+            echo "EXAMPLES"
+            echo "    dash-cli-wallet luke getbalances"
+            echo ""
+        } >&2
+        exit 1
+    fi
+    shift
+
+    dash-cli -conf="${HOME}"/.dashmate/local_seed/core/dash.conf \
+        -rpcwallet="${a_username}" \
+        "${@}"
+); }
+
+main "${@}"
