@@ -4,7 +4,7 @@
 
 INSTANCE_NAME=base2
 if test ! -z "$1"; then
-  INSTANCE_NAME="$1"
+    INSTANCE_NAME="$1"
 fi
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 FILE="$PWD/.djo-users"
@@ -13,6 +13,6 @@ FILE="$PWD/.djo-users"
 #"$SCRIPT_DIR"/dboot --instance="$INSTANCE_NAME" --dash-for-all
 "$SCRIPT_DIR"/list-users > "$FILE"
 for user in $(cat "$FILE"); do
-  X=$("$SCRIPT_DIR"/dboot --instance="$INSTANCE_NAME" --denom-amt=100001 --username="$user" | wc -l)
-  echo "$user" has: "$X" denominations of 100001
+    X=$("$SCRIPT_DIR"/dboot --instance="$INSTANCE_NAME" --denom-amt=100001 --username="$user" | wc -l)
+    echo "$user" has: "$X" denominations of 100001
 done
