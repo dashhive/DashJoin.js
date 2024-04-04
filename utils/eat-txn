@@ -2,7 +2,7 @@
 
 cd "${HOME}"/code/DashJoin.js/src
 for user in luke han chewie psend foobar; do
-  echo 'eating transaction for ... ' $user
-  ~/bin/mk --"$user" --eat-txn
-  echo 'done'
+    echo 'eating transaction for ... ' $user
+    ~/bin/mk --"$user" --eat-txn
+    echo 'done'
 done
