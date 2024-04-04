@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+set -u
+
+g_default_version='20.1.1'
+
+main() { (
+
+    a_version="${1:-${g_default_version}}"
+
+    set -x
+    for b_conf in local_seed local_1 local_2 local_3; do
+        dashmate config set \
+            --config "${b_conf}" \
+            core.docker.image \
+            dashpay/dashd:"${a_version}"
+    done
+    set +x
+); }
+
+main "${@:-}"

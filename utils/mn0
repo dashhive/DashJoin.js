@@ -1,4 +1,0 @@
-#!/bin/bash
-
-dash-cli -conf="${HOME}"/.dashmate/local_1/core/dash.conf \
-    $*

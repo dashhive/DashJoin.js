@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+set -u
+
+main() { (
+    a_username="${1:-}"
+    if test -z "${a_username}"; then
+        {
+            #shellcheck disable=SC2016 # variables should not expand here in the docs
+            echo 'Runs dash-cli -conf=$HOME/.dashmate/local_seed/core/dash.conf -rpcwallet="$username" listaddressgroupings [listaddressgroupings-opts...]'
+            echo ""
+            echo "USAGE"
+            echo "    dash-cli-listaddressgroupings <username> [listaddressgroupings-opts...]"
+            echo ""
+            echo "EXAMPLES"
+            echo "    dash-cli-listaddressgroupings luke"
+            echo ""
+        } >&2
+        exit 1
+    fi
+    shift
+
+    #shellcheck disable=SC2048,2086 # we want 0 or more, whitespace-delimited args
+    dash-cli -conf="${HOME}/.dashmate/local_seed/core/dash.conf" \
+        -rpcwallet="${a_username}" \
+        listaddressgroupings $*
+); }
+
+main "${@}"

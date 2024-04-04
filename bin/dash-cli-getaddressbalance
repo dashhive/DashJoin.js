@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+set -u
+
+main() { (
+    a_username="${1:-}"
+    a_address="${2:-}"
+    if test -z "${a_username}" || test -z "${a_address}"; then
+        {
+            #shellcheck disable=SC2016 # variables should not expand here in the docs
+            echo 'Runs dash-cli -conf=$HOME/.dashmate/local_seed/core/dash.conf -rpcwallet="$username" getaddressbalance [getaddressbalance-opts...]'
+            echo ""
+            echo "USAGE"
+            echo "    dash-cli-getaddressbalance <username> <address> [getaddressbalance-opts...]"
+            echo ""
+            echo "EXAMPLES"
+            echo "    dash-cli-getaddressbalance 'luke' 'yLNfoPqjCMgKYXq2Ky5Lrx39VENtXUBcyR'"
+            echo ""
+        } >&2
+        exit 1
+    fi
+    shift
+    shift
+
+    #shellcheck disable=SC2048,2086 # we want 0 or more, whitespace-delimited args
+    dash-cli -conf="${HOME}/.dashmate/local_seed/core/dash.conf" \
+        -rpcwallet="${a_username}" \
+        getaddressbalance '{"addresses":["'"${a_address}"'"]}' $*
+); }
+
+main "${@}"

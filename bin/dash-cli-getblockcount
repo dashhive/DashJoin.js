@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+set -u
+
+dash-cli -conf="${HOME}"/.dashmate/local_seed/core/dash.conf getblockcount $*

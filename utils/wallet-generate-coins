@@ -1,0 +1,39 @@
+#!/bin/sh
+set -e
+set -u
+
+main() { (
+    a_username="${1}"
+    a_num_blocks="${2:-100}"
+    if test -z "${a_username}"; then
+        {
+            #shellcheck disable=SC2016 # variables should not expand here in the docs
+            echo 'Runs dash-cli -conf=$HOME/.dashmate/local_seed/core/dash.conf -rpcwallet="$username" generatetoaddress <count> <generated-address> [generatetoaddress-opts...]'
+            echo ""
+            echo "USAGE"
+            echo "    wallet-generate-coins <username> [count] [generatetoaddress-opts...]"
+            echo ""
+            echo "EXAMPLES"
+            echo "    wallet-generate-coins luke 100"
+            echo ""
+        } >&2
+        exit 1
+    fi
+    if test -n "${2:-}"; then
+        shift
+    fi
+    shift
+
+    b_new_address="$(
+        dash-cli -conf="${HOME}/.dashmate/local_seed/core/dash.conf" \
+            -rpcwallet="${a_username}" \
+            getnewaddress
+    )"
+    echo "New address: ${b_new_address}"
+    #shellcheck disable=SC2048,2086 # we want 0 or more, whitespace-delimited args
+    dash-cli -conf="${HOME}/.dashmate/local_seed/core/dash.conf" \
+        -rpcwallet="${a_username}" \
+        generatetoaddress ${a_num_blocks} "${b_new_address}" $*
+); }
+
+main "${@}"

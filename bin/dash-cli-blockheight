@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+set -u
+
+g_conf="${HOME}/.dashmate/local_seed/core/dash.conf"
+g_bestblockhash="$(dash-cli -conf="${g_conf}" getbestblockhash)"
+
+dash-cli -conf="${g_conf}" getblock "${g_bestblockhash}" | grep height | tail -n 1 | cut -d: -f 2 | tr -d ,

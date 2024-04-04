@@ -1,3 +1,0 @@
-#!/bin/bash
-
-ADDRESSES=$(~/bin/dp listaddressgroupings | cut -d'"' -f 2 | grep -vE '({|})')

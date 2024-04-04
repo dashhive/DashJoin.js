@@ -22,7 +22,8 @@ fn_create_wallet() { (
 ); }
 
 main() { (
-    if test -z "${1:-}"; then
+    a_username="${1:-}"
+    if test -z "${a_username}"; then
         echo "Create a wallet under ~/.dashmate/local_seed/ with the given username, and the wallet password 'foobar'"
         echo ""
         echo "USAGE"
