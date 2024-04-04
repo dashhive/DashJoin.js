@@ -1,6 +1,6 @@
 #!/bin/bash
 
 pushd $PWD
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 cd "${SCRIPT_DIR}"/../src/
-./demo.js --instance=base2 --username=f49bf6f8c5c344e8ba00b0dc83a4fbdb  --count=2
+./demo.js --instance=base2 --username=f49bf6f8c5c344e8ba00b0dc83a4fbdb --count=2

@@ -6,7 +6,7 @@ INSTANCE_NAME=base2
 if test ! -z "$1"; then
   INSTANCE_NAME="$1"
 fi
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 FILE="$PWD/.djo-users"
 
 "$SCRIPT_DIR"/dboot --instance="$INSTANCE_NAME" --unlock-all
