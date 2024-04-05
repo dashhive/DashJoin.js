@@ -20,10 +20,10 @@ let DENOMS = [1.00001];
 			'',
 			'for username in foobar psend luke han chewie; do ',
 			'    ./bin/dash-cli-listtransactions "${username}" 20000 \\',
-			'        > ./docs/w-"${username}"-txns-staged.json',
+			'        > ./data/w-"${username}"-txns-staged.json',
 			'done',
 			'',
-			'git add ./docs/w-*-txns-staged.json',
+			'git add ./data/w-*-txns-staged.json',
 			'#git commit -m "chore: update staged txns"',
 		].join('\n');
 		await fs.writeFile('/tmp/foo', SCRIPT);
@@ -54,10 +54,10 @@ let DENOMS = [1.00001];
 
 	{
 		/**
-		 * Process all files in ./docs/w-*-denominations.json
+		 * Process all files in ./data/w-*-denominations.json
 		 */
 
-		let dir = './docs';
+		let dir = './data';
 		let files = await fs.readdir(dir);
 		let keep = [];
 		let sorted = {};
@@ -113,7 +113,7 @@ let DENOMS = [1.00001];
 			'set -u',
 			'',
 			'for u in foobar psend luke han chewie; do ',
-			'    git add ./docs/w-"$u"-denominations.json',
+			'    git add ./data/w-"$u"-denominations.json',
 			'done',
 			'',
 			'#git commit -m "chore: update denominations json"',
