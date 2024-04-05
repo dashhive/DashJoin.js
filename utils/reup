@@ -6,99 +6,25 @@ function dump_denoms() {
     ./utils/update-manifest
 }
 
-function load-foobar() {
+function generate_for_user() {
+    a_username="${1}"
     for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./data/w-foobar-address-0)"
+        ./bin/dash-cli-wallet "${a_username}" generatetoaddress 10 "$(cat ./data/w-"${a_username}"-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'foobar' 500 > ./data/w-foobar-txns.json
+    ./bin/dash-cli-listtransactions "${a_username}" 500 > ./data/w-"${a_username}"-txns.json
 }
 
-function load-psend() {
-    for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./data/w-psend-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'psend' 500 > ./data/w-psend-txns.json
-}
-
-function load-han() {
-    for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./data/w-han-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'han' 500 > ./data/w-han-txns.json
-}
-
-function load-chewie() {
-    for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./data/w-chewie-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'chewie' 500 > ./data/w-chewie-txns.json
-}
-
-function load-luke() {
-    for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./data/w-luke-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'luke' 500 > ./data/w-luke-txns.json
-}
-
-function foobar() {
-    ./bin/wallet-create 'foobar'
-    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./data/w-foobar-address-0
-    ./bin/dash-cli-wallet 'foobar' getrawchangeaddress > ./data/w-foobar-change-address-0
-    ./bin/dash-cli-wallet 'foobar' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'foobar' dumpprivkey "$(cat ./data/w-foobar-address-0)" > ./data/w-foobar-privkey-0
+function init_user() {
+    a_username="${1}"
+    ./bin/wallet-create "${a_username}"
+    ./bin/dash-cli-wallet "${a_username}" getnewaddress > ./data/w-"${a_username}"-address-0
+    ./bin/dash-cli-wallet "${a_username}" getrawchangeaddress > ./data/w-"${a_username}"-change-address-0
+    ./bin/dash-cli-wallet "${a_username}" walletpassphrase foobar 100000000
+    ./bin/dash-cli-wallet "${a_username}" dumpprivkey "$(cat ./data/w-"${a_username}"-address-0)" > ./data/w-"${a_username}"-privkey-0
     for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./data/w-foobar-address-0)"
+        ./bin/dash-cli-wallet "${a_username}" generatetoaddress 10 "$(cat ./data/w-"${a_username}"-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'foobar' 500 > ./data/w-foobar-txns.json
-}
-
-function psend() {
-    ./bin/wallet-create 'psend'
-    ./bin/dash-cli-wallet 'psend' getnewaddress > ./data/w-psend-address-0
-    ./bin/dash-cli-wallet 'psend' getrawchangeaddress > ./data/w-psend-change-address-0
-    ./bin/dash-cli-wallet 'psend' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'psend' dumpprivkey "$(cat ./data/w-psend-address-0)" > ./data/w-psend-privkey-0
-    for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./data/w-psend-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'psend' 500 > ./data/w-psend-txns.json
-}
-
-function chewie() {
-    ./bin/wallet-create 'chewie'
-    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./data/w-chewie-address-0
-    ./bin/dash-cli-wallet 'chewie' getrawchangeaddress > ./data/w-chewie-change-address-0
-    ./bin/dash-cli-wallet 'chewie' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'chewie' dumpprivkey "$(cat ./data/w-chewie-address-0)" > ./data/w-chewie-privkey-0
-    for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./data/w-chewie-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'chewie' 500 > ./data/w-chewie-txns.json
-}
-
-function han() {
-    ./bin/wallet-create 'han'
-    ./bin/dash-cli-wallet 'han' getnewaddress > ./data/w-han-address-0
-    ./bin/dash-cli-wallet 'han' getrawchangeaddress > ./data/w-han-change-address-0
-    ./bin/dash-cli-wallet 'han' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'han' dumpprivkey "$(cat ./data/w-han-address-0)" > ./data/w-han-privkey-0
-    for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./data/w-han-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'han' 500 > ./data/w-han-txns.json
-}
-
-function luke() {
-    ./bin/wallet-create 'luke'
-    ./bin/dash-cli-wallet 'luke' getnewaddress > ./data/w-luke-address-0
-    ./bin/dash-cli-wallet 'luke' getrawchangeaddress > ./data/w-luke-change-address-0
-    ./bin/dash-cli-wallet 'luke' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'luke' dumpprivkey "$(cat ./data/w-luke-address-0)" > ./data/w-luke-privkey-0
-    for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./data/w-luke-address-0)"
-    done
-    ./bin/dash-cli-listtransactions 'luke' 500 > ./data/w-luke-txns.json
+    ./bin/dash-cli-listtransactions "${a_username}" 500 > ./data/w-"${a_username}"-txns.json
 }
 
 HELP=0
@@ -278,42 +204,34 @@ if [[ $DUMP_DENOMS == 1 ]]; then
     dump_denoms
 fi
 
-if [[ $HAN == 1 ]]; then
-    han
-fi
-
-if [[ $LUKE == 1 ]]; then
-    luke
-fi
-
-if [[ $CHEWIE == 1 ]]; then
-    chewie
-fi
-
 if [[ $FOOBAR == 1 ]]; then
-    foobar
+    init_user 'foobar'
 fi
-
 if [[ $PSEND == 1 ]]; then
-    psend
+    init_user 'psend'
 fi
-
-if [[ $LOAD_HAN == 1 ]]; then
-    load-han
+if [[ $HAN == 1 ]]; then
+    init_user 'han'
 fi
-
-if [[ $LOAD_CHEWIE == 1 ]]; then
-    load-chewie
+if [[ $LUKE == 1 ]]; then
+    init_user 'luke'
 fi
-
-if [[ $LOAD_LUKE == 1 ]]; then
-    load-luke
-fi
-
-if [[ $LOAD_PSEND == 1 ]]; then
-    load-psend
+if [[ $CHEWIE == 1 ]]; then
+    init_user 'chewie'
 fi
 
 if [[ $LOAD_FOOBAR == 1 ]]; then
-    load-foobar
+    generate_for_user 'foobar'
+fi
+if [[ $LOAD_PSEND == 1 ]]; then
+    generate_for_user 'psend'
+fi
+if [[ $LOAD_LUKE == 1 ]]; then
+    generate_for_user 'luke'
+fi
+if [[ $LOAD_HAN == 1 ]]; then
+    generate_for_user 'han'
+fi
+if [[ $LOAD_CHEWIE == 1 ]]; then
+    generate_for_user 'chewie'
 fi
