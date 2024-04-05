@@ -8,97 +8,97 @@ function dump_denoms() {
 
 function load-foobar() {
     for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./docs/w-foobar-address-0)"
+        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./data/w-foobar-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'foobar' 500 > ./docs/w-foobar-txns.json
+    ./bin/dash-cli-listtransactions 'foobar' 500 > ./data/w-foobar-txns.json
 }
 
 function load-psend() {
     for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./docs/w-psend-address-0)"
+        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./data/w-psend-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'psend' 500 > ./docs/w-psend-txns.json
+    ./bin/dash-cli-listtransactions 'psend' 500 > ./data/w-psend-txns.json
 }
 
 function load-han() {
     for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./docs/w-han-address-0)"
+        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./data/w-han-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'han' 500 > ./docs/w-han-txns.json
+    ./bin/dash-cli-listtransactions 'han' 500 > ./data/w-han-txns.json
 }
 
 function load-chewie() {
     for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./docs/w-chewie-address-0)"
+        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./data/w-chewie-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'chewie' 500 > ./docs/w-chewie-txns.json
+    ./bin/dash-cli-listtransactions 'chewie' 500 > ./data/w-chewie-txns.json
 }
 
 function load-luke() {
     for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./docs/w-luke-address-0)"
+        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./data/w-luke-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'luke' 500 > ./docs/w-luke-txns.json
+    ./bin/dash-cli-listtransactions 'luke' 500 > ./data/w-luke-txns.json
 }
 
 function foobar() {
     ./bin/wallet-create 'foobar'
-    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./docs/w-foobar-address-0
-    ./bin/dash-cli-wallet 'foobar' getrawchangeaddress > ./docs/w-foobar-change-address-0
+    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./data/w-foobar-address-0
+    ./bin/dash-cli-wallet 'foobar' getrawchangeaddress > ./data/w-foobar-change-address-0
     ./bin/dash-cli-wallet 'foobar' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'foobar' dumpprivkey "$(cat ./docs/w-foobar-address-0)" > ./docs/w-foobar-privkey-0
+    ./bin/dash-cli-wallet 'foobar' dumpprivkey "$(cat ./data/w-foobar-address-0)" > ./data/w-foobar-privkey-0
     for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./docs/w-foobar-address-0)"
+        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./data/w-foobar-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'foobar' 500 > ./docs/w-foobar-txns.json
+    ./bin/dash-cli-listtransactions 'foobar' 500 > ./data/w-foobar-txns.json
 }
 
 function psend() {
     ./bin/wallet-create 'psend'
-    ./bin/dash-cli-wallet 'psend' getnewaddress > ./docs/w-psend-address-0
-    ./bin/dash-cli-wallet 'psend' getrawchangeaddress > ./docs/w-psend-change-address-0
+    ./bin/dash-cli-wallet 'psend' getnewaddress > ./data/w-psend-address-0
+    ./bin/dash-cli-wallet 'psend' getrawchangeaddress > ./data/w-psend-change-address-0
     ./bin/dash-cli-wallet 'psend' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'psend' dumpprivkey "$(cat ./docs/w-psend-address-0)" > ./docs/w-psend-privkey-0
+    ./bin/dash-cli-wallet 'psend' dumpprivkey "$(cat ./data/w-psend-address-0)" > ./data/w-psend-privkey-0
     for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./docs/w-psend-address-0)"
+        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./data/w-psend-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'psend' 500 > ./docs/w-psend-txns.json
+    ./bin/dash-cli-listtransactions 'psend' 500 > ./data/w-psend-txns.json
 }
 
 function chewie() {
     ./bin/wallet-create 'chewie'
-    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./docs/w-chewie-address-0
-    ./bin/dash-cli-wallet 'chewie' getrawchangeaddress > ./docs/w-chewie-change-address-0
+    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./data/w-chewie-address-0
+    ./bin/dash-cli-wallet 'chewie' getrawchangeaddress > ./data/w-chewie-change-address-0
     ./bin/dash-cli-wallet 'chewie' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'chewie' dumpprivkey "$(cat ./docs/w-chewie-address-0)" > ./docs/w-chewie-privkey-0
+    ./bin/dash-cli-wallet 'chewie' dumpprivkey "$(cat ./data/w-chewie-address-0)" > ./data/w-chewie-privkey-0
     for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./docs/w-chewie-address-0)"
+        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./data/w-chewie-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'chewie' 500 > ./docs/w-chewie-txns.json
+    ./bin/dash-cli-listtransactions 'chewie' 500 > ./data/w-chewie-txns.json
 }
 
 function han() {
     ./bin/wallet-create 'han'
-    ./bin/dash-cli-wallet 'han' getnewaddress > ./docs/w-han-address-0
-    ./bin/dash-cli-wallet 'han' getrawchangeaddress > ./docs/w-han-change-address-0
+    ./bin/dash-cli-wallet 'han' getnewaddress > ./data/w-han-address-0
+    ./bin/dash-cli-wallet 'han' getrawchangeaddress > ./data/w-han-change-address-0
     ./bin/dash-cli-wallet 'han' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'han' dumpprivkey "$(cat ./docs/w-han-address-0)" > ./docs/w-han-privkey-0
+    ./bin/dash-cli-wallet 'han' dumpprivkey "$(cat ./data/w-han-address-0)" > ./data/w-han-privkey-0
     for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./docs/w-han-address-0)"
+        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./data/w-han-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'han' 500 > ./docs/w-han-txns.json
+    ./bin/dash-cli-listtransactions 'han' 500 > ./data/w-han-txns.json
 }
 
 function luke() {
     ./bin/wallet-create 'luke'
-    ./bin/dash-cli-wallet 'luke' getnewaddress > ./docs/w-luke-address-0
-    ./bin/dash-cli-wallet 'luke' getrawchangeaddress > ./docs/w-luke-change-address-0
+    ./bin/dash-cli-wallet 'luke' getnewaddress > ./data/w-luke-address-0
+    ./bin/dash-cli-wallet 'luke' getrawchangeaddress > ./data/w-luke-change-address-0
     ./bin/dash-cli-wallet 'luke' walletpassphrase foobar 100000000
-    ./bin/dash-cli-wallet 'luke' dumpprivkey "$(cat ./docs/w-luke-address-0)" > ./docs/w-luke-privkey-0
+    ./bin/dash-cli-wallet 'luke' dumpprivkey "$(cat ./data/w-luke-address-0)" > ./data/w-luke-privkey-0
     for _ in $(seq 1 4); do
-        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./docs/w-luke-address-0)"
+        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./data/w-luke-address-0)"
     done
-    ./bin/dash-cli-listtransactions 'luke' 500 > ./docs/w-luke-txns.json
+    ./bin/dash-cli-listtransactions 'luke' 500 > ./data/w-luke-txns.json
 }
 
 HELP=0
@@ -221,17 +221,17 @@ if [[ $CREATE == 1 ]]; then
     ./bin/wallet-create 'luke'
     ./bin/wallet-create 'chewie'
 
-    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./docs/w-foobar-address-0
-    ./bin/dash-cli-wallet 'psend' getnewaddress > ./docs/w-psend-address-0
-    ./bin/dash-cli-wallet 'luke' getnewaddress > ./docs/w-luke-address-0
-    ./bin/dash-cli-wallet 'han' getnewaddress > ./docs/w-han-address-0
-    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./docs/w-chewie-address-0
+    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./data/w-foobar-address-0
+    ./bin/dash-cli-wallet 'psend' getnewaddress > ./data/w-psend-address-0
+    ./bin/dash-cli-wallet 'luke' getnewaddress > ./data/w-luke-address-0
+    ./bin/dash-cli-wallet 'han' getnewaddress > ./data/w-han-address-0
+    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./data/w-chewie-address-0
 
-    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./docs/w-foobar-change-address-0
-    ./bin/dash-cli-wallet 'psend' getnewaddress > ./docs/w-psend-change-address-0
-    ./bin/dash-cli-wallet 'luke' getnewaddress > ./docs/w-luke-change-address-0
-    ./bin/dash-cli-wallet 'han' getnewaddress > ./docs/w-han-change-address-0
-    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./docs/w-chewie-change-address-0
+    ./bin/dash-cli-wallet 'foobar' getnewaddress > ./data/w-foobar-change-address-0
+    ./bin/dash-cli-wallet 'psend' getnewaddress > ./data/w-psend-change-address-0
+    ./bin/dash-cli-wallet 'luke' getnewaddress > ./data/w-luke-change-address-0
+    ./bin/dash-cli-wallet 'han' getnewaddress > ./data/w-han-change-address-0
+    ./bin/dash-cli-wallet 'chewie' getnewaddress > ./data/w-chewie-change-address-0
 fi
 
 if [[ $UNLOCK == 1 ]]; then
@@ -244,34 +244,34 @@ if [[ $UNLOCK == 1 ]]; then
     ./bin/dash-cli-wallet 'han' walletpassphrase "${b_wallet_salt}" "${b_unlock_time}"
     ./bin/dash-cli-wallet 'chewie' walletpassphrase "${b_wallet_salt}" "${b_unlock_time}"
 
-    ./bin/dash-cli-wallet 'foobar' dumpprivkey "$(cat ./docs/w-foobar-address-0)" \
-        > ./docs/w-foobar-privkey-0
-    ./bin/dash-cli-wallet 'psend' dumpprivkey "$(cat ./docs/w-psend-address-0)" \
-        > ./docs/w-psend-privkey-0
-    ./bin/dash-cli-wallet 'luke' dumpprivkey "$(cat ./docs/w-luke-address-0)" \
-        > ./docs/w-luke-privkey-0
-    ./bin/dash-cli-wallet 'han' dumpprivkey "$(cat ./docs/w-han-address-0)" \
-        > ./docs/w-han-privkey-0
-    ./bin/dash-cli-wallet 'chewie' dumpprivkey "$(cat ./docs/w-chewie-address-0)" \
-        > ./docs/w-chewie-privkey-0
+    ./bin/dash-cli-wallet 'foobar' dumpprivkey "$(cat ./data/w-foobar-address-0)" \
+        > ./data/w-foobar-privkey-0
+    ./bin/dash-cli-wallet 'psend' dumpprivkey "$(cat ./data/w-psend-address-0)" \
+        > ./data/w-psend-privkey-0
+    ./bin/dash-cli-wallet 'luke' dumpprivkey "$(cat ./data/w-luke-address-0)" \
+        > ./data/w-luke-privkey-0
+    ./bin/dash-cli-wallet 'han' dumpprivkey "$(cat ./data/w-han-address-0)" \
+        > ./data/w-han-privkey-0
+    ./bin/dash-cli-wallet 'chewie' dumpprivkey "$(cat ./data/w-chewie-address-0)" \
+        > ./data/w-chewie-privkey-0
 fi
 
 if [[ $TXN == 1 ]]; then
     for _ in $(seq 1 10); do
-        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./docs/w-foobar-address-0)"
-        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./docs/w-psend-address-0)"
-        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./docs/w-luke-address-0)"
-        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./docs/w-han-address-0)"
-        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./docs/w-chewie-address-0)"
+        ./bin/dash-cli-wallet 'foobar' generatetoaddress 10 "$(cat ./data/w-foobar-address-0)"
+        ./bin/dash-cli-wallet 'psend' generatetoaddress 10 "$(cat ./data/w-psend-address-0)"
+        ./bin/dash-cli-wallet 'luke' generatetoaddress 10 "$(cat ./data/w-luke-address-0)"
+        ./bin/dash-cli-wallet 'han' generatetoaddress 10 "$(cat ./data/w-han-address-0)"
+        ./bin/dash-cli-wallet 'chewie' generatetoaddress 10 "$(cat ./data/w-chewie-address-0)"
     done
 fi
 
 if [[ $UNUSED == 1 ]]; then
-    ./bin/dash-cli-listtransactions 'foobar' 500 > ./docs/w-foobar-txns.json
-    ./bin/dash-cli-listtransactions 'psend' 500 > ./docs/w-psend-txns.json
-    ./bin/dash-cli-listtransactions 'luke' 500 > ./docs/w-luke-txns.json
-    ./bin/dash-cli-listtransactions 'han' 500 > ./docs/w-han-txns.json
-    ./bin/dash-cli-listtransactions 'chewie' 500 > ./docs/w-chewie-txns.json
+    ./bin/dash-cli-listtransactions 'foobar' 500 > ./data/w-foobar-txns.json
+    ./bin/dash-cli-listtransactions 'psend' 500 > ./data/w-psend-txns.json
+    ./bin/dash-cli-listtransactions 'luke' 500 > ./data/w-luke-txns.json
+    ./bin/dash-cli-listtransactions 'han' 500 > ./data/w-han-txns.json
+    ./bin/dash-cli-listtransactions 'chewie' 500 > ./data/w-chewie-txns.json
 fi
 
 if [[ $DUMP_DENOMS == 1 ]]; then
