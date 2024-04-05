@@ -43,6 +43,10 @@ LOAD_CHEWIE=0
 LOAD_LUKE=0
 LOAD_FOOBAR=0
 LOAD_PSEND=0
+
+if test -z "${*}"; then
+    set -- "--help"
+fi
 for arg in "${@}"; do
     if [[ $arg == "--all" ]]; then
         CREATE=1
