@@ -46,18 +46,13 @@ async function isUsed(fileName, txnId) {
 	return data.list.indexOf(txnId) !== -1;
 }
 const NETWORK = 'regtest';
-let PsendUsedTxnFile = '/home/foobar/docs/dp-used-txn.json';
-let PsendTxnList = require('/home/foobar/docs/dp-txn.json');
-let PsendChangeAddress = await read_file(
-	'/home/foobar/docs/dp-change-address-0',
-);
-let sourceAddress = await read_file('/home/foobar/docs/dp-address-0');
-let payeeAddress = await read_file('/home/foobar/docs/df-address-0');
+let PsendUsedTxnFile = './data/w-psend-used-txn.json';
+let PsendTxnList = require('./data/w-psend-txn.json');
+let PsendChangeAddress = await read_file('./data/w-psend-change-address-0');
+let sourceAddress = await read_file('./data/w-psend-address-0');
+let payeeAddress = await read_file('./data/w-foobar-address-0');
 let privkeySet = PrivateKey(
-	PrivateKey.fromWIF(
-		await read_file('/home/foobar/docs/dp-privkey-0'),
-		NETWORK,
-	),
+	PrivateKey.fromWIF(await read_file('./data/w-psend-privkey-0'), NETWORK),
 );
 
 /**
@@ -72,7 +67,7 @@ let privkeySet = PrivateKey(
  *  - not incredibly important
  *  - but needs to be there from what i can tell
  * 5) denominations
- * 6) 
+ * 6)
  */
 
 module.exports = {
@@ -142,7 +137,7 @@ async function getUnusedTxn() {
 		 * 1) category is 'generate'.
 		 * 2) has more than zero confirmations
 		 * 3) where address matches dp-address-0
-		 * 4) txid does NOT exist in /home/foobar/docs/dp-used-txn.json
+		 * 4) txid does NOT exist in ./data/w-psend-used-txn.json
 		 */
 		if (txn.category !== 'generate') {
 			continue;
@@ -269,9 +264,7 @@ async function getUnusedTxn() {
 				console.info('[ ... ] Handshake in progress');
 				break;
 			case 'READY':
-				console.log(
-					'[+] Ready to start dealing with CoinJoin traffic...',
-				);
+				console.log('[+] Ready to start dealing with CoinJoin traffic...');
 				masterNode.switchHandlerTo('coinjoin');
 				if (dsaSent === false) {
 					setTimeout(async () => {

@@ -64,8 +64,8 @@ async function getUnusedTxn() {
 		 * Pull from PsendTxnList where:
 		 * 1) category is 'generate'.
 		 * 2) has more than zero confirmations
-		 * 3) where address matches dp-address-0
-		 * 4) txid does NOT exist in /home/foobar/docs/dp-used-txn.json
+		 * 3) where address matches w-psend-address-0
+		 * 4) txid does NOT exist in ./data/w-psend-used-txn.json
 		 */
 		if (txn.category === 'receive' || txn.category === 'send') {
 			continue;
@@ -231,7 +231,7 @@ Lib.makeCollateralTx = async function () {
 Lib.LOW_COLLATERAL = (COIN / 1000 + 1) / 10;
 async function fetchData() {
 	let files = require(`../${user}-config.demodata.json`);
-	let denominations = require(`../docs/w-${user}-denominations.json`);
+	let denominations = require(`../data/w-${user}-denominations.json`);
 	let PsendUsedTxnFile = files.usedTxn;
 	let PsendTxnList = require(files.txnList);
 	let PsendChangeAddress = await read_file(files.changeAddress);

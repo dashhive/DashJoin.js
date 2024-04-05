@@ -27,7 +27,7 @@ let cproc = require('child_process');
 	let username = 'user1';
 	let dboot = await dashboot.load_instance('base1');
 	dboot.DASH_CLI = [process.env.HOME, 'bin', 'dash-cli'].join('/');
-	let inputs = require('/home/foobar/data/dss-outputs-fde664227d6541a4abf0d6da6f8832db-2023-7-108:56:45.json');
+	let inputs = require('../data/dss-outputs-fde664227d6541a4abf0d6da6f8832db-2023-7-108:56:45.json');
 	//inputs = await dboot.get_denominated_utxos(username, 100001);
 	inputs = [
 		{
