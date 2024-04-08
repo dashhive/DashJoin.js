@@ -66,8 +66,7 @@ Lib.WaitForAnotherBlock = function () {
 	}
 
 	return (
-		Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock <
-		Lib.nMinBlocksToWait
+		Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock < Lib.nMinBlocksToWait
 	);
 };
 
@@ -272,8 +271,7 @@ Lib.WaitForAnotherBlock = function () {
 	}
 
 	return (
-		Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock <
-		Lib.nMinBlocksToWait
+		Lib.nCachedBlockHeight - Lib.nCachedLastSuccessBlock < Lib.nMinBlocksToWait
 	);
 };
 
@@ -306,10 +304,7 @@ Lib.DoAutomaticDenominating = function (mempool, connman, fDryRun) {
 	);
 
 	if (Lib.vecMasternodesUsed.size() > nThreshold_high) {
-		Lib.vecMasternodesUsed.erase(
-			0,
-			vecMasternodesUsed.size() - nThreshold_low,
-		);
+		Lib.vecMasternodesUsed.erase(0, vecMasternodesUsed.size() - nThreshold_low);
 		Lib.LogPrint(
 			`vecMasternodesUsed: new size: ${Lib.vecMasternodesUsed.size()}, threshold: ${nThreshold_high}`,
 		);

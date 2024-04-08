@@ -6,12 +6,12 @@ The process seems to be:
 2. MN responds with `version`, `verack`, `sendaddrv2`
 3. Client sends `verack` to the MN's `version` message
 4. MN responds with:
-    - `sendheaders`
-    - `sendcmpct`
-    - `senddsq`
-    - `ping`
+   - `sendheaders`
+   - `sendcmpct`
+   - `senddsq`
+   - `ping`
 5. The client should then send `dsa` coin join message
-    - Which includes valid collateral transaction
+   - Which includes valid collateral transaction
 6. MN responds with `dssu` message Next steps are documented here:
    [CoinJoin Messages](https://docs.dash.org/projects/core/en/stable/docs/reference/p2p-network-privatesend-messages.html#dssu)
 
@@ -29,24 +29,24 @@ encoded.
 
 # TODO: parse `dssu` message
 
--   [ ] Write a function that parses the `dssu` message
+- [ ] Write a function that parses the `dssu` message
 
 # TODO: finalize `dsa` message logic
 
 The `dsa` packet creation functions are now encoding the denomination and
 collateral transaction correctly. We now need to:
 
--   [ ] Verify the collateral transaction is properly encoded
-        (`SHA256(SHA256(txn))`)
--   [ ] Verify the signature script is correct
+- [ ] Verify the collateral transaction is properly encoded
+      (`SHA256(SHA256(txn))`)
+- [ ] Verify the signature script is correct
 
 ## Using dash core's `CCoinJoin::IsCollateralValid`
 
     - [ ] Add a `vout` to the `dsa` payload
     	- This seems to be *MANDATORY*
 
--   [ ] Create several collateral transactions for demo purposes and testing
--   [ ] Unit test the integrity of all fields within a transaction
+- [ ] Create several collateral transactions for demo purposes and testing
+- [ ] Unit test the integrity of all fields within a transaction
 
 # Notes on connection lifetimes
 

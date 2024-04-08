@@ -313,12 +313,7 @@ function extractUint64(data, at) {
 	return b[0];
 }
 function extractUint32(data, at) {
-	let a = new Uint8Array([
-		data[at],
-		data[at + 1],
-		data[at + 2],
-		data[at + 3],
-	]);
+	let a = new Uint8Array([data[at], data[at + 1], data[at + 2], data[at + 3]]);
 	let b = new Uint32Array(a.buffer);
 	return b[0];
 }
@@ -604,8 +599,7 @@ function version(
 	/**
 	 * Copy address transmitted services
 	 */
-	let ADDR_TRANS_SERVICES_OFFSET =
-		ADDR_RECV_PORT_OFFSET + SIZES.ADDR_RECV_PORT;
+	let ADDR_TRANS_SERVICES_OFFSET = ADDR_RECV_PORT_OFFSET + SIZES.ADDR_RECV_PORT;
 	packet.set([services], ADDR_TRANS_SERVICES_OFFSET);
 
 	/**
@@ -651,9 +645,7 @@ function version(
 
 	// Skipping user agent. it can be zero
 	let START_HEIGHT_OFFSET =
-		USER_AGENT_BYTES_OFFSET +
-		SIZES.USER_AGENT_BYTES +
-		SIZES.USER_AGENT_STRING;
+		USER_AGENT_BYTES_OFFSET + SIZES.USER_AGENT_BYTES + SIZES.USER_AGENT_STRING;
 	packet = setUint32(packet, args.start_height, START_HEIGHT_OFFSET);
 
 	let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
@@ -701,12 +693,7 @@ function pong(
 ) {
 	let nonceBuffer = new Uint8Array(PING_NONCE_SIZE);
 	nonceBuffer.set(args.nonce, 0);
-	return wrap_packet(
-		args.chosen_network,
-		'pong',
-		nonceBuffer,
-		PING_NONCE_SIZE,
-	);
+	return wrap_packet(args.chosen_network, 'pong', nonceBuffer, PING_NONCE_SIZE);
 }
 function verack(
 	args = {
@@ -808,10 +795,7 @@ function dsi(
 	let userInputTxn = new Transaction().from(utxos);
 	let userOutputTxn = new Transaction();
 	for (const address of client_session.generated_addresses) {
-		userOutputTxn.to(
-			Address.fromString(address.address),
-			denominatedAmount,
-		);
+		userOutputTxn.to(Address.fromString(address.address), denominatedAmount);
 	}
 
 	// FIXME: very hacky
@@ -837,9 +821,7 @@ function dsi(
 	let userOutputPayload = hexToBytes(trimmedUserOutput);
 
 	let TOTAL_SIZE =
-		userInputPayload.length +
-		collateralTxn.length +
-		userOutputPayload.length;
+		userInputPayload.length + collateralTxn.length + userOutputPayload.length;
 
 	/**
 	 * Packet payload

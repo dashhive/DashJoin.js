@@ -10,7 +10,7 @@ master
 
 `bool CCoinJoinClientSession::CreateDenominated(CAmount nBalanceToDenominate)`
 
--   src/coinjoin/client.cpp:1559
+- src/coinjoin/client.cpp:1559
 
 # Coin selection
 
@@ -18,4 +18,4 @@ master
 
 # Look at
 
--   CTransactionBuilderOutput (coinjoin/util.cpp)
+- CTransactionBuilderOutput (coinjoin/util.cpp)

@@ -78,9 +78,7 @@ async function log(...args) {
 	return fsPromises
 		.open(getLogFile(), 'a', 0o600)
 		.then(function (fp) {
-			fp.appendFile(
-				`${date()}: ${bigint_safe_json_stringify(args, 2)}\n`,
-			);
+			fp.appendFile(`${date()}: ${bigint_safe_json_stringify(args, 2)}\n`);
 			return true;
 		})
 		.catch(function (error) {

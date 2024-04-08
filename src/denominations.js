@@ -91,12 +91,8 @@ Lib.CalculateAmountPriority = function (nInputAmount) {
 Lib.sortByLargestDenoms = function (vCoins) {
 	//(const COutput& t1, const COutput& t2) const {
 	vCoins.contents.sort(function (a, b) {
-		let aval = Lib.CalculateAmountPriority(
-			a.GetInputCoin().effective_value,
-		);
-		let bval = Lib.CalculateAmountPriority(
-			b.GetInputCoin().effective_value,
-		);
+		let aval = Lib.CalculateAmountPriority(a.GetInputCoin().effective_value);
+		let bval = Lib.CalculateAmountPriority(b.GetInputCoin().effective_value);
 		if (aval < bval) {
 			return -1;
 		}
@@ -298,16 +294,12 @@ Lib.AvailableCoins = function ({
 				if (!CCoinJoinDenominations.IsDenominatedAmount(nValue)) {
 					continue;
 				}
-				found = Lib.IsFullyMixed(
-					new COutPoint({ hashIn: wtxid, nIn: i }),
-				);
+				found = Lib.IsFullyMixed(new COutPoint({ hashIn: wtxid, nIn: i }));
 			} else if (nCoinType == CoinType.ONLY_READY_TO_MIX) {
 				if (!CCoinJoinDenominations.IsDenominatedAmount(nValue)) {
 					continue;
 				}
-				found = !Lib.IsFullyMixed(
-					new COutPoint({ hashIn: wtxid, nIn: i }),
-				);
+				found = !Lib.IsFullyMixed(new COutPoint({ hashIn: wtxid, nIn: i }));
 			} else if (nCoinType == CoinType.ONLY_NONDENOMINATED) {
 				if (CCoinJoinDenominations.IsCollateralAmount(nValue)) {
 					continue; // do not use collateral amounts
@@ -331,9 +323,7 @@ Lib.AvailableCoins = function ({
 			if (
 				coinControl.HasSelected() &&
 				!coinControl.fAllowOtherInputs &&
-				!coinControl.IsSelected(
-					new COutPoint({ hashIn: wtxid, nIn: i }),
-				)
+				!coinControl.IsSelected(new COutPoint({ hashIn: wtxid, nIn: i }))
 			) {
 				continue;
 			}

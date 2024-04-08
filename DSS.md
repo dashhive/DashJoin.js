@@ -45,7 +45,7 @@ fails. server.cpp:328:
 
 ## PrioritiseTransaction
 
--   Updates ancestry data with fees
+- Updates ancestry data with fees
 
 ## AcceptToMemoryPool
 
@@ -80,8 +80,8 @@ bool AcceptToMemoryPool(
 CValidationState validationState;
 ```
 
--   is mostly used as a pass by reference parameter which will change by the
-    called functions it's passed to
+- is mostly used as a pass by reference parameter which will change by the
+  called functions it's passed to
 
 ## finalTransaction
 
@@ -90,9 +90,9 @@ CTransactionRef finalTransaction = WITH_LOCK(cs_coinjoin, return MakeTransaction
 uint256 hashTx = finalTransaction->GetHash();
 ```
 
--   locks the coinjoin mutex
--   references the `finalMutableTransaction`
--   fetches the hash... txid?
+- locks the coinjoin mutex
+- references the `finalMutableTransaction`
+- fetches the hash... txid?
 
 ## AcceptToMemoryPoolWithTime
 
@@ -128,34 +128,34 @@ bool test_accept    //  not sure where this is set
 
 ```
 
--   pfMissingInputs is nullptr, so will not be set to false
+- pfMissingInputs is nullptr, so will not be set to false
 
 ### Some things we can assume about AcceptToMemoryPoolWithTime
 
--   The transaction that gets prioritised is _not_ already in the mempool since
-    the following line does not cause the function to return early:
+- The transaction that gets prioritised is _not_ already in the mempool since
+  the following line does not cause the function to return early:
 
 ```
     // is it already in the memory pool?
     if (pool.exists(hash)) {
 ```
 
--   It's not a coinbase tx
--   It is a standard tx
--   Serialized size is good:
+- It's not a coinbase tx
+- It is a standard tx
+- Serialized size is good:
 
 ```
     // Transactions smaller than this are not relayed to mitigate CVE-2017-12842 by not relaying
     // 64-byte transactions.
 ```
 
--   CheckTxInputs (for consensus) checks out
+- CheckTxInputs (for consensus) checks out
 
 ```
 if (!Consensus::CheckTxInputs(tx, state, view, GetSpendHeight(view), nFees)) {
 ```
 
--   All inputs are standard:
+- All inputs are standard:
 
 ```
         // Check for non-standard pay-to-script-hash in inputs
@@ -201,14 +201,14 @@ CValidationState &state,    // validationState
 
 ## CheckInputs
 
--   Checks all inputs are valid
-    -   no double spends
-    -   scripts+sigs are good
-    -   amounts are good
--   if `pvChecks` not nullptr,
-    -   script checks pushed onto it
--   setting `cacheFullScriptStore` to false (we are)
-    -   will remove elements from the corresponding cache
+- Checks all inputs are valid
+  - no double spends
+  - scripts+sigs are good
+  - amounts are good
+- if `pvChecks` not nullptr,
+  - script checks pushed onto it
+- setting `cacheFullScriptStore` to false (we are)
+  - will remove elements from the corresponding cache
 
 ### Point of failure
 
@@ -223,7 +223,7 @@ CValidationState &state,    // validationState
 
 ## CScriptCheck
 
--   The constructor is called at validation.cpp:1468
+- The constructor is called at validation.cpp:1468
 
 ```
 CScriptCheck check(
@@ -236,7 +236,7 @@ cacheSigStore,
 );
 ```
 
--   Constructor:
+- Constructor:
 
 ```
     CScriptCheck(
@@ -250,7 +250,7 @@ cacheSigStore,
  )
 ```
 
--   coin is the current vin's previous out:
+- coin is the current vin's previous out:
 
 ```
 for (unsigned int i = 0; i < tx.vin.size(); i++) {
@@ -289,12 +289,12 @@ const CScript& scriptSig, // scriptSig
 
 ## EvalScript
 
--   `OP_CHECKSIGVERIFY`
+- `OP_CHECKSIGVERIFY`
 
-    -   `bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);`
-    -   script/interpreter.cpp:998
+  - `bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);`
+  - script/interpreter.cpp:998
 
--   `OP_CHECKDATASIG/OP_CHECKDATASIGVERIFY`
+- `OP_CHECKDATASIG/OP_CHECKDATASIGVERIFY`
 
 ```
 bool fSuccess = false;
@@ -307,12 +307,12 @@ if (vchSig.size()) {
 }
 ```
 
--   script/interpreter.cpp:1039
+- script/interpreter.cpp:1039
 
--   `OP_CHECKMULTISIG/OP_CHECKMULTISIGVERIFY`
-
-```
+- `OP_CHECKMULTISIG/OP_CHECKMULTISIGVERIFY`
 
 ```
 
--   script/interpreter.cpp:1136
+```
+
+- script/interpreter.cpp:1136

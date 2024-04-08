@@ -22,9 +22,7 @@ Lib.GetStandardDenominations = function () {
 };
 //orig: static constexpr CAmount GetSmallestDenomination() { return vecStandardDenominations.back(); }
 Lib.GetSmallestDenomination = function () {
-	return Lib.vecStandardDenominations[
-		Lib.vecStandardDenominations.length - 1
-	];
+	return Lib.vecStandardDenominations[Lib.vecStandardDenominations.length - 1];
 };
 
 //orig: static constexpr bool IsDenominatedAmount(CAmount nInputAmount) { return AmountToDenomination(nInputAmount) > 0; }
