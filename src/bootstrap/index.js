@@ -914,9 +914,7 @@ Bootstrap.import_user_addresses_from_cli = async function (username) {
 			}
 			if (keep.length) {
 				await mkudb(username).set_array('addresses', keep);
-				console.info(
-					`${keep.length} addresses imported for user: ${username}`,
-				);
+				console.info(`${keep.length} addresses imported for user: ${username}`);
 				return true;
 			} else {
 				console.warn(`No addresses for user: ${username}`);
@@ -1068,9 +1066,7 @@ Bootstrap.get_multi_change_address_from_cli = async function (
 ) {
 	let addresses = [];
 	for (let i = 0; i < count; i++) {
-		let buffer = await Bootstrap.wallet_exec(username, [
-			'getrawchangeaddress',
-		]);
+		let buffer = await Bootstrap.wallet_exec(username, ['getrawchangeaddress']);
 		let { out } = ps_extract(buffer, false);
 		if (out.length) {
 			addresses.push(out);
@@ -1165,10 +1161,7 @@ Bootstrap.normalize_pk = async function (privateKey) {
 };
 Bootstrap.get_private_key = async function (username, address) {
 	username = Bootstrap.alias_check(username);
-	let buffer = await Bootstrap.wallet_exec(username, [
-		'dumpprivkey',
-		address,
-	]);
+	let buffer = await Bootstrap.wallet_exec(username, ['dumpprivkey', address]);
 	let { out, err } = ps_extract(buffer, false);
 	if (err.length) {
 		console.error(err);
@@ -1299,9 +1292,7 @@ Bootstrap.create_wallets = async function (count = 3) {
 
 		let w_addresses = [];
 		for (let actr = 0; actr < 1; actr++) {
-			let buffer = await Bootstrap.wallet_exec(wallet_name, [
-				'getnewaddress',
-			]);
+			let buffer = await Bootstrap.wallet_exec(wallet_name, ['getnewaddress']);
 			let { out } = ps_extract(buffer, false);
 			if (out.length) {
 				await mkudb(wallet_name).set_main_address(out);
@@ -1553,9 +1544,7 @@ function usage() {
 	console.log('--list-addr=user   Lists all addresses for a user');
 	console.log("--list-utxos=user  Lists all UTXO's for a user");
 	console.log("--all-utxos        Lists all UTXO's for ALL users");
-	console.log(
-		'--new-addr=user    Creates 10 new addresses for the given user',
-	);
+	console.log('--new-addr=user    Creates 10 new addresses for the given user');
 	console.log(
 		'--wallet-cmd=user  Gives you the ability to call dash-cli for the specified user',
 	);
@@ -1575,12 +1564,8 @@ function usage() {
 	console.log(
 		'--grind            Calls generate dash and create denoms in a loop',
 	);
-	console.log(
-		'--hash-byte-order=N  Convert the string N into hash byte order',
-	);
-	console.log(
-		'--split-utxos=USER   Split one big transaction into 0.00100001',
-	);
+	console.log('--hash-byte-order=N  Convert the string N into hash byte order');
+	console.log('--split-utxos=USER   Split one big transaction into 0.00100001');
 	console.log('--make-junk-user     Create a junk user');
 	console.log(
 		'--grind-junk-user    Send a ton of dash to this junk user to give the more important users confirmations',
@@ -1692,9 +1677,7 @@ Bootstrap.run_cli_program = async function () {
 		if (send_to && amt) {
 			let times = extractOption('times', true);
 			if (!times) {
-				console.log(
-					'defaulting to 20 sends. to override, use --times=N',
-				);
+				console.log('defaulting to 20 sends. to override, use --times=N');
 				times = 20;
 			}
 			d(await Bootstrap.send_satoshis_to(send_to, amt, times));
@@ -1734,10 +1717,7 @@ Bootstrap.run_cli_program = async function () {
 				console.log({ [user]: 'start' });
 				line();
 				let addresses = await Bootstrap.user_addresses(user);
-				let utxos = await Bootstrap.user_utxos_from_cli(
-					user,
-					addresses,
-				);
+				let utxos = await Bootstrap.user_utxos_from_cli(user, addresses);
 				for (const u of utxos) {
 					console.log(u);
 				}
@@ -1786,12 +1766,7 @@ Bootstrap.run_cli_program = async function () {
 		let buffer = await fs.readFileSync(
 			'./dsf-7250bb2a2e294f728081f50ee2bdd3a1.dat',
 		);
-		d(
-			await Bootstrap._dsftest1(
-				buffer,
-				'7250bb2a2e294f728081f50ee2bdd3a1',
-			),
-		);
+		d(await Bootstrap._dsftest1(buffer, '7250bb2a2e294f728081f50ee2bdd3a1'));
 		process.exit(0);
 	}
 	let denom = extractOption('denom-amt', true);
@@ -2043,10 +2018,7 @@ Bootstrap.extract_unique_users = async function (
 		let rando = await Bootstrap.getRandomPayee(user);
 		choices.push({
 			user,
-			utxos: await Bootstrap.get_denominated_utxos(
-				user,
-				denominatedAmount,
-			),
+			utxos: await Bootstrap.get_denominated_utxos(user, denominatedAmount),
 			changeAddress: await Bootstrap.get_change_address_from_cli(user),
 			randomPayee: rando,
 		});

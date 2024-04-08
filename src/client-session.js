@@ -47,9 +47,7 @@ function ClientSession() {
 			rep.push(`address: ${i.address}`);
 			rep.push(`vout: ${i.vout ?? '?'}`);
 			rep.push(`outputIndex: ${i.outputIndex ?? '?'}`);
-			rep.push(
-				'=============================================================',
-			);
+			rep.push('=============================================================');
 		}
 		return rep.join('\n');
 	};

@@ -30,10 +30,7 @@ async function write_json(rel_path, data) {
 	rel_path = rel_path.replace('#DATE#', date());
 	rel_path = rel_path.replace(/[^a-z0-9_-]+/gi, '');
 	fn += rel_path + '.json';
-	return await fs.writeFileSync(
-		fn,
-		bigint_safe_json_stringify(data, 2) + '\n',
-	);
+	return await fs.writeFileSync(fn, bigint_safe_json_stringify(data, 2) + '\n');
 }
 
 Lib.write_json = write_json;

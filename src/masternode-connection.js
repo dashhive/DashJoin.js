@@ -297,10 +297,7 @@ function MasterNode({
 
 	self.processCoinJoinRecvBuffer = function () {
 		self.debugFunction('[+] processCoinJoinRecvBuffer');
-		let i = PacketParser.extractItems(self.buffer, [
-			'command',
-			'payloadSize',
-		]);
+		let i = PacketParser.extractItems(self.buffer, ['command', 'payloadSize']);
 		let command = i[0];
 		let payloadSize = i[1];
 		self.debugFunction({ command, payloadSize });
@@ -361,10 +358,7 @@ function MasterNode({
 	};
 	self.processHandshakeBuffer = function () {
 		self.debug('[+] processHandshakeBuffer');
-		let i = PacketParser.extractItems(self.buffer, [
-			'command',
-			'payloadSize',
-		]);
+		let i = PacketParser.extractItems(self.buffer, ['command', 'payloadSize']);
 		let command = i[0];
 		let payloadSize = i[1];
 
@@ -453,9 +447,7 @@ function MasterNode({
 						self.client.write(
 							Network.packet.pong({
 								chosen_network: network,
-								nonce: PacketParser.extractPingNonce(
-									self.buffer,
-								),
+								nonce: PacketParser.extractPingNonce(self.buffer),
 							}),
 						);
 						break;
@@ -533,10 +525,7 @@ function MasterNode({
 				command = PacketParser.commandName(self.buffer);
 			}
 		}
-		if (
-			self.handshakePhase1Completed() &&
-			self.status === 'EXPECT_VERACK'
-		) {
+		if (self.handshakePhase1Completed() && self.status === 'EXPECT_VERACK') {
 			self.debug('handshakePhase1Completed. EXPECT_VERACK is next');
 			self.debugFunction('buffer before clear: ', self.buffer);
 			self.clearBuffer();

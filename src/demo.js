@@ -102,9 +102,7 @@ async function onDSSUChanged(parsed, masterNode) {
 			client_session.username,
 			masterNode.collateralTx.txid,
 		);
-		debug(
-			`marked collateral input: ${masterNode.collateralTx.txid} as used`,
-		);
+		debug(`marked collateral input: ${masterNode.collateralTx.txid} as used`);
 		debug('input: ', masterNode.collateralTx);
 		await masterNodeConnection.disconnect(function () {
 			done = true;
@@ -263,10 +261,7 @@ async function preInit(
 				let utxo = {
 					txId: u.txid,
 					outputIndex: detail.vout,
-					satoshis: parseInt(
-						parseFloat(detail.amount, 10) * COIN,
-						10,
-					),
+					satoshis: parseInt(parseFloat(detail.amount, 10) * COIN, 10),
 					scriptPubKey: Script.buildPublicKeyHashOut(
 						address,
 						Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY,
@@ -275,10 +270,7 @@ async function preInit(
 				};
 				let txn = new Transaction().from(utxo);
 				let pk = await dboot.get_private_key(username, detail.address);
-				txn.sign(
-					pk,
-					Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY,
-				);
+				txn.sign(pk, Signature.SIGHASH_ALL | Signature.SIGHASH_ANYONECANPAY);
 				d(txn.inputs[0]._script.toHex());
 				keep.push({
 					signed: txn,

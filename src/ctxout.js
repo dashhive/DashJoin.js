@@ -43,9 +43,7 @@ function CTxOut(
 
 	this.equals = function (b) {
 		let a = self;
-		return (
-			a.nValue.equals(b.nValue) && a.scriptPubKey.equals(b.scriptPubKey)
-		);
+		return a.nValue.equals(b.nValue) && a.scriptPubKey.equals(b.scriptPubKey);
 	};
 
 	this.ToString = function () {

@@ -63,12 +63,11 @@ function stateChanged(obj) {
 
 # `dsa` TODO's:
 
--   Write a function that can
-    -   [x] Create the correct transaction data bytes from an existing
-            transaction
-    -   [x] Can encode the bytes to be sent within a `dsa` message
+- Write a function that can
+  - [x] Create the correct transaction data bytes from an existing transaction
+  - [x] Can encode the bytes to be sent within a `dsa` message
 
 # `dssu` TODO's:
 
--   Write a function that can
-    -   [ ] Parse all fields of a `dssu` message
+- Write a function that can
+  - [ ] Parse all fields of a `dssu` message
