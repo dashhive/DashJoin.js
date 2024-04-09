@@ -270,9 +270,7 @@ db.junk_name = function () {
 };
 db.make_junk_wallet = async function () {
 	let wallet_name = await db.junk_name();
-	await db.user_create(wallet_name).catch(function (error) {
-		console.error('ERROR: ', error);
-	});
+	await db.user_create(wallet_name);
 	console.info(`[ok]: user "${wallet_name}" created`);
 	await db.run([
 		'createwallet',
@@ -519,6 +517,9 @@ Bootstrap.alias_users = async function () {
 Bootstrap.alias_check = function (user) {
 	if (user === 'junk') {
 		user = Bootstrap.get_junk_username();
+		if (!user) {
+			return 'junk';
+		}
 	}
 	if (xt(user, 'clazz') === 'ClientSession') {
 		user = user.username;
