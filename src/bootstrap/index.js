@@ -1309,6 +1309,7 @@ Bootstrap.create_wallets = async function (count = 3) {
 	await Bootstrap.unlock_all_wallets();
 };
 Bootstrap.grind = async function () {
+	await Bootstrap.unlock_all_wallets();
 	for (let i = 0; i < 100; i++) {
 		if (i % 10 === 0) {
 			await Bootstrap.generate_dash_to_all();
@@ -1463,7 +1464,6 @@ Bootstrap.dump_private_key = async function (username, address) {
 
 Bootstrap.generate_dash_to_all = async function (iterations = 1) {
 	for (let i = 0; i < iterations; i++) {
-		await Bootstrap.unlock_all_wallets();
 		const users = await Bootstrap.user_list();
 		for (const user of users) {
 			let address = await mkudb(user).main_address();
@@ -1484,7 +1484,6 @@ Bootstrap.generate_dash_to_all = async function (iterations = 1) {
 
 Bootstrap.generate_dash_to = async function (username) {
 	username = Bootstrap.alias_check(username);
-	await Bootstrap.unlock_all_wallets();
 	let address = await mkudb(username).main_address();
 	if (address === null) {
 		address = await Bootstrap.generate_new_addresses(username, 1);
@@ -1876,6 +1875,7 @@ Bootstrap.run_cli_program = async function () {
 			config.generateTo,
 			'...',
 		);
+		await Bootstrap.unlock_all_wallets();
 		d(await Bootstrap.generate_dash_to(config.generateTo));
 		console.log('[DONE]');
 		process.exit(0);
@@ -1897,6 +1897,7 @@ Bootstrap.run_cli_program = async function () {
 		process.exit(0);
 	}
 	if (config.dash_for_all) {
+		await Bootstrap.unlock_all_wallets();
 		d(await Bootstrap.generate_dash_to_all(100));
 		process.exit(0);
 	}
