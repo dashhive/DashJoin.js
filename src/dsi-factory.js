@@ -20,6 +20,7 @@ const { bigint_safe_json_stringify } = require('./array-utils.js');
 let client_session;
 function setClientSession(c) {
 	client_session = c;
+	console.log('[DEBUG] client_session', c);
 }
 let dboot;
 
@@ -27,6 +28,13 @@ async function makeDSICollateralTx(masterNode, client_session) {
 	return masterNode.makeCollateralTx({ no_serialize: true });
 }
 async function createDSIPacket(masterNode, username, denominatedAmount, count) {
+	console.log(
+		'[DEBUG] createDSIPacket',
+		masterNode,
+		username,
+		denominatedAmount,
+		count,
+	);
 	let collateralTxn = await makeDSICollateralTx(masterNode, client_session);
 	assert.equal(
 		client_session.mixing_inputs.length,

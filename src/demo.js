@@ -39,9 +39,28 @@ let INPUTS = 1;
 let client_session;
 let mainUser;
 let masterNodeConnection;
+
+let PATTERN = 100001;
+let MAX = 200000; // the next significant digit after PATTERN
+let SHIFT = 0;
+//let SHIFT = 1000;
+
 function getDemoDenomination() {
-	return parseInt(COIN / 1000 + 1, 10);
+	let denom = PATTERN * Math.pow(10, SHIFT);
+	return denom;
 }
+
+function getDemoMaxCoin() {
+	let max = MAX * Math.pow(10, SHIFT);
+	return max;
+}
+
+function getDemoSat() {
+	let sat_pattern = 9990; // not sure why
+	let sat = sat_pattern * Math.pow(10, SHIFT);
+	return sat;
+}
+
 //function getDenominatedOutput(txn, amount) {
 //	let vout = 0;
 //	for (let output of txn.outputs) {
@@ -169,10 +188,14 @@ async function stateChanged(obj) {
 			break;
 	}
 }
-const AMOUNT = 0.00100001;
-const SATOSHIS = parseInt(COIN * parseFloat(AMOUNT, 10), 10);
+
+// const AMOUNT = 0.00100001;
+// const SATOSHIS = parseInt(COIN * parseFloat(AMOUNT, 10), 10);
+const SATOSHIS = getDemoDenomination(); // 100001000;
+const AMOUNT = parseInt((SATOSHIS / COIN).toFixed(8), 10);
+
 async function preInit(
-	_in_instanceName,
+	_in_instanceName = 'base',
 	_in_username,
 	_in_nickname,
 	_in_count,
@@ -182,21 +205,7 @@ async function preInit(
 ) {
 	let nickName = _in_username;
 	let id = {};
-	let config = require('./.mn0-config.json');
-	switch (_in_mn_choice) {
-		default:
-		case 'local_1':
-			config = require('./.mn0-config.json');
-			id.mn = 0;
-			break;
-		case 'local_2':
-			config = require('./.mn1-config.json');
-			id.mn = 1;
-			break;
-		case 'local_3':
-			config = require('./.mn2-config.json');
-			id.mn = 2;
-	}
+	let config = _in_mn_choice;
 	nickName += `(${_in_mn_choice})`;
 	DebugLib.setNickname(nickName);
 	if (String(_in_verbose).toLowerCase() === 'true') {
@@ -244,7 +253,8 @@ async function preInit(
   txid: '010cef7befeb498eeac48080cf6263f76a9a8837ee4603c79aa9b01f4cc95638',
   outputIndex: 156,
   script: '76a914361a95ab2dd6be825e9aca6a54b6ccb2c6a09ee088ac',
-  satoshis: 100001,
+  //satoshis: 100001,
+  satoshis: 100001000,
   height: 1846
 
 		*/
@@ -360,18 +370,39 @@ async function preInit(
 	}
 	debug('exiting main function');
 }
-preInit(
-	extractOption('instance', true),
-	extractOption('username', true),
-	extractOption('nickname', true),
-	extractOption('count', true),
-	extractOption('senddsi', true),
-	extractOption('verbose', true),
-	extractOption('mn', true),
-);
+
+{
+	let _in_mn_choice = extractOption('mn', true); // local_1, local_2, local_3, etc
+	let mnConfig = require('./.mn0-config.json');
+	switch (_in_mn_choice) {
+		default:
+		case 'local_1':
+			mnConfig = require('./.mn0-config.json');
+			id.mn = 0;
+			break;
+		case 'local_2':
+			mnConfig = require('./.mn1-config.json');
+			id.mn = 1;
+			break;
+		case 'local_3':
+			mnConfig = require('./.mn2-config.json');
+			id.mn = 2;
+	}
+	preInit(
+		extractOption('instance', true),
+		extractOption('username', true),
+		extractOption('nickname', true),
+		extractOption('count', true),
+		extractOption('senddsi', true),
+		extractOption('verbose', true),
+		mnConfig,
+	);
+}
+
 async function psbt_main(dboot, client_session) {
 	const quota = 3;
-	const SAT = 0.00109991;
+	//const SAT = 0.00109991;
+	const SAT = 109991000;
 	let cs = client_session;
 	let wallet_exec = await dboot.auto.build_executor(cs);
 	/**
@@ -381,7 +412,7 @@ async function psbt_main(dboot, client_session) {
 	let address = await dboot.nth_address(cs, 1);
 	let unspent = await dboot.list_unspent_by_address(cs, address, {
 		minimumAmount: SAT,
-		maximumAmount: 0.002,
+		maximumAmount: getDemoMaxCoin(),
 	});
 	for (const tx of unspent) {
 		if (tx.amount === SAT) {
@@ -422,8 +453,8 @@ async function psbt_main(dboot, client_session) {
 	cs.payee = payee;
 	cs.payouts = [];
 	for (const address of payee) {
-		out_json.push({ [address]: 0.00100001 });
-		cs.payouts.push([address, 0.00100001]);
+		out_json.push({ [address]: AMOUNT });
+		cs.payouts.push([address, AMOUNT]);
 	}
 	let outputs = JSON.stringify(out_json);
 	let { out, err } = await wallet_exec('createpsbt', inputs, outputs);

@@ -46,6 +46,7 @@ const MSG_HEADER = {
 	PAYLOAD: 4,
 	CHECKSUM: 4,
 };
+const EMPTY_CHECKSUM = [0x5d, 0xf6, 0xe0, 0xe2];
 
 let POOL_STATE_VALUES = {
 	IDLE: 0,
@@ -351,18 +352,16 @@ const compute_checksum = (payload) => {
 	return hashOfHash.slice(0, 4);
 };
 
+const SIZES = {
+	MAGIC_BYTES: 4,
+	COMMAND_NAME: 12,
+	PAYLOAD_SIZE: 4,
+	CHECKSUM: 4,
+};
+const TOTAL_HEADER_SIZE =
+	SIZES.MAGIC_BYTES + SIZES.COMMAND_NAME + SIZES.PAYLOAD_SIZE + SIZES.CHECKSUM;
 const wrap_packet = (net, command_name, payload, payload_size) => {
-	const SIZES = {
-		MAGIC_BYTES: 4,
-		COMMAND_NAME: 12,
-		PAYLOAD_SIZE: 4,
-		CHECKSUM: 4,
-	};
-	let TOTAL_SIZE = 0;
-	for (const key in SIZES) {
-		TOTAL_SIZE += SIZES[key];
-	}
-	TOTAL_SIZE += payload_size;
+	let TOTAL_SIZE = TOTAL_HEADER_SIZE + payload_size;
 
 	let packet = new Uint8Array(TOTAL_SIZE);
 	packet.set(NETWORKS[net].magic, 0);
@@ -371,16 +370,19 @@ const wrap_packet = (net, command_name, payload, payload_size) => {
 	 * Set command_name (char[12])
 	 */
 	let COMMAND_NAME_OFFSET = SIZES.MAGIC_BYTES;
-	packet.set(str2uint8(command_name), COMMAND_NAME_OFFSET);
+	let textEncoder = new TextEncoder();
+	let nameBytes = textEncoder.encode(command_name);
+	packet.set(nameBytes, COMMAND_NAME_OFFSET);
 
 	let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
 	let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
 	if (payload_size === 0 || payload === null) {
-		packet.set([0x5d, 0xf6, 0xe0, 0xe2], CHECKSUM_OFFSET);
+		packet.set(EMPTY_CHECKSUM, CHECKSUM_OFFSET);
 		return packet;
 	}
 	packet = setUint32(packet, payload_size, PAYLOAD_SIZE_OFFSET);
 	packet.set(compute_checksum(payload), CHECKSUM_OFFSET);
+
 	/**
 	 * Finally, append the payload to the header
 	 */
@@ -678,10 +680,7 @@ function getaddr() {
 	let cmdArray = str2uint8(cmd);
 	packet.set(cmdArray, MAGIC_BYTES_SIZE);
 
-	packet.set(
-		[0x5d, 0xf6, 0xe0, 0xe2],
-		MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE,
-	);
+	packet.set(EMPTY_CHECKSUM, MAGIC_BYTES_SIZE + COMMAND_SIZE + PAYLOAD_SIZE);
 	return packet;
 }
 
@@ -733,24 +732,22 @@ function isStandardDenomination(d) {
 	return CJDenoms.includes(d);
 }
 
-function dsa(
-	args = {
-		chosen_network: null, // 'testnet'
-		denomination: null, // COIN / 1000 + 1
-		collateral: null, // see: ctransaction.js
-	},
-) {
-	if (!isStandardDenomination(args.denomination)) {
+function dsa({
+	chosen_network = null, // 'testnet'
+	denomination = null, // COIN / 1000 + 1
+	collateral = null, // see: ctransaction.js
+}) {
+	if (!isStandardDenomination(denomination)) {
 		throw new Error('Invalid denomination value');
 	}
-	let encodedDenom = CJLib.AmountToDenomination(args.denomination);
+	let encodedDenom = CJLib.AmountToDenomination(denomination);
 	if (encodedDenom === 0) {
 		throw new Error("Couldn't serialize denomination");
 	}
 
 	const SIZES = {
 		DENOMINATION: 4,
-		COLLATERAL: args.collateral.length,
+		COLLATERAL: collateral.length,
 	};
 	let TOTAL_SIZE = 0;
 	for (const key in SIZES) {
@@ -761,20 +758,23 @@ function dsa(
 	/**
 	 * Packet payload
 	 */
-	let packet = new Uint8Array(TOTAL_SIZE);
+	let bytes = new Uint8Array(TOTAL_SIZE);
 
-	packet.set([encodedDenom, 0, 0, 0], offset);
+	bytes.set([encodedDenom, 0, 0, 0], offset);
 
 	offset += SIZES.DENOMINATION;
-	//console.debug("collateral size:", args.collateral.length);
-	packet.set(args.collateral, offset);
+	//console.debug("collateral size:", collateral.length);
+	bytes.set(collateral, offset);
 
 	//console.debug({ packet });
 
-	return wrap_packet(args.chosen_network, 'dsa', packet, packet.length);
+	return wrap_packet(chosen_network, 'dsa', bytes, bytes.length);
 }
+
 function dsc() {}
+
 function dsf() {}
+
 function dsi(
 	args = {
 		chosen_network: null, // 'testnet'

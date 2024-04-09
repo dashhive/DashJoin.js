@@ -251,6 +251,7 @@ Bootstrap.split_utxo = async function (username) {
 	}
 };
 Bootstrap.get_junk_username = function () {
+	console.log('[DEBUG] Bootstrap.user_aliases', Bootstrap.user_aliases);
 	for (const key in Bootstrap.user_aliases) {
 		if (Bootstrap.user_aliases[key].match(/^junk/)) {
 			return Bootstrap.user_aliases[key];
@@ -261,7 +262,9 @@ Bootstrap.get_junk_username = function () {
 Bootstrap.grind_junk_user = async function () {
 	await Bootstrap.load_alias_ram_slots();
 	await Bootstrap.unlock_all_wallets();
-	for (let i = 0; i < 100; i++) {
+	let iters = 100;
+	for (let i = 0; i < iters; i++) {
+		console.log(`[DEBUG] ${i} of ${iters}`);
 		await Bootstrap.generate_dash_to('junk');
 	}
 };
