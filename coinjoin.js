@@ -1,0 +1,53 @@
+'use strict';
+
+let CoinJoin = module.exports;
+
+CoinJoin.STANDARD_DENOMINATIONS = [
+	// 0.00100001
+	100001,
+	// 0.01000010
+	1000010,
+	// 0.10000100
+	10000100,
+	// 1.00001000
+	100001000,
+	// 10.0000100
+	1000010000,
+];
+
+// TODO the spec seems to be more of an ID, though
+// the implementation makes it look more like a mask...
+CoinJoin.STANDARD_DENOMINATION_MASKS = {
+	//  0.00100001
+	100001: 0b00010000,
+	//  0.01000010
+	1000010: 0b00001000,
+	//  0.10000100
+	10000100: 0b00000100,
+	//  1.00001000
+	100001000: 0b00000010,
+	// 10.00010000
+	1000010000: 0b00000001,
+};
+
+CoinJoin.STANDARD_DENOMINATIONS_MAP = {
+	//  0.00100001
+	0b00010000: 100001,
+	//  0.01000010
+	0b00001000: 1000010,
+	//  0.10000100
+	0b00000100: 10000100,
+	//  1.00001000
+	0b00000010: 100001000,
+	// 10.00010000
+	0b00000001: 1000010000,
+};
+
+// (STANDARD_DENOMINATIONS[0] / 10).floor();
+CoinJoin.COLLATERAL = 10000;
+// COLLATERAL * 4
+CoinJoin.MAX_COLLATERAL = 40000;
+
+CoinJoin.isDenominated = function (sats) {
+	return CoinJoin.STANDARD_DENOMINATIONS.includes(sats);
+};
