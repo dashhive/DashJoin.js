@@ -6,6 +6,8 @@ let DotEnv = require('dotenv');
 void DotEnv.config({ path: '.env' });
 void DotEnv.config({ path: '.env.secret' });
 
+let Net = require('node:net');
+
 let RpcClient = require('@dashevo/dashd-rpc/promise');
 require('./rpc-shim.js'); // see https://github.com/dashpay/dashd-rpc/issues/68
 
@@ -34,7 +36,7 @@ async function main() {
 	let rpc = new RpcClient(rpcConfig);
 	rpc.onconnected = rpcConfig.onconnected;
 	await rpc.init(rpc);
-	console.info('[INFO] RPC is ready.');
+	console.info('[debug] rpc server is ready.');
 
 	let evonodes = [];
 	{
@@ -44,7 +46,13 @@ async function main() {
 		for (let id of evonodeProTxIds) {
 			let evonode = evonodesMap[id];
 			if (evonode.status === 'ENABLED') {
-				let evodata = { address: evonode.address, type: evonode.type };
+				let hostParts = evonode.address.split(':');
+				let evodata = {
+					id: evonode.id,
+					hostname: hostParts[0],
+					port: hostParts[1],
+					type: evonode.type,
+				};
 				evonodes.push(evodata);
 			}
 		}
@@ -55,7 +63,39 @@ async function main() {
 
 	void shuffle(evonodes);
 	let evonode = evonodes.at(-1);
+	console.log('[debug] chosen evonode:');
 	console.log(JSON.stringify(evonode, null, 2));
+
+	let conn = Net.createConnection({
+		host: evonode.host,
+		port: evonode.port,
+		keepAlive: true,
+		keepAliveInitialDelay: 3,
+		//localAddress: rpc.host,
+	});
+	conn.on('error', function (err) {
+		console.log('error');
+		console.error(err);
+	});
+	conn.on('connect', function (err) {
+		console.log('connected');
+	});
+	conn.on('readable', function () {
+		console.log('readable');
+		let chunk = conn.read();
+		let str = chunk.toString('utf8');
+		console.log(str);
+	});
+	conn.on('data', function () {
+		console.log('data');
+		let chunk = conn.read();
+		let str = chunk.toString('utf8');
+		console.log(str);
+	});
+	conn.on('end', function () {
+		console.log('[debug] disconnected from server');
+	});
+	console.log('exiting?');
 }
 
 // http://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
@@ -80,6 +120,7 @@ function shuffle(arr) {
 
 main()
 	.then(function () {
+		console.info('Done');
 		process.exit(0);
 	})
 	.catch(function (err) {
