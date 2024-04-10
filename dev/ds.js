@@ -4,6 +4,8 @@ let DarkSend = module.exports;
 
 let Crypto = require('node:crypto');
 
+DarkSend.PROTOCOL_VERSION = 70227;
+
 DarkSend.FIELD_SIZES = {
 	VERSION: 4,
 	SERVICES: 8,
@@ -20,12 +22,15 @@ DarkSend.FIELD_SIZES = {
 	START_HEIGHT: 4,
 	// The following 2 fields are OPTIONAL
 	RELAY: 0,
-	RELAY_MAX: 1,
+	RELAY_NONEMPTY: 1,
 	MNAUTH_CHALLENGE: 0,
-	MNAUTH_CHALLENGE_MAX: 32,
+	MNAUTH_CHALLENGE_NONEMPTY: 32,
 };
 
 DarkSend.RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
+DarkSend.MNAUTH_PROTOCOL_VERSION_INTRODUCTION = 70214;
+
+let textEncoder = new TextEncoder();
 
 let SIZES = {
 	MAGIC_BYTES: 4,
@@ -42,8 +47,8 @@ const EMPTY_CHECKSUM = [0x5d, 0xf6, 0xe0, 0xe2];
  * @typedef {"mainnet"|"testnet"|"regtest"|"devnet"} NetworkName
  */
 
-let NETWORKS = {};
-NETWORKS.mainnet = {
+DarkSend.NETWORKS = {};
+DarkSend.NETWORKS.mainnet = {
 	port: 9999,
 	magic: new Uint8Array([
 		//0xBD6B0CBF,
@@ -52,7 +57,7 @@ NETWORKS.mainnet = {
 	start: 0xbf0c6bbd,
 	nBits: 0x1e0ffff0,
 };
-NETWORKS.testnet = {
+DarkSend.NETWORKS.testnet = {
 	port: 19999,
 	magic: new Uint8Array([
 		//0xFFCAE2CE,
@@ -61,7 +66,7 @@ NETWORKS.testnet = {
 	start: 0xcee2caff,
 	nBits: 0x1e0ffff0,
 };
-NETWORKS.regtest = {
+DarkSend.NETWORKS.regtest = {
 	port: 19899,
 	magic: new Uint8Array([
 		//0xDCB7C1FC,
@@ -70,7 +75,7 @@ NETWORKS.regtest = {
 	start: 0xfcc1b7dc,
 	nBits: 0x207fffff,
 };
-NETWORKS.devnet = {
+DarkSend.NETWORKS.devnet = {
 	port: 19799,
 	magic: new Uint8Array([
 		//0xCEFFCAE2,
@@ -81,17 +86,16 @@ NETWORKS.devnet = {
 };
 
 /**
- * @typedef {0x00|0x01|0x02|0x04|0x400} ServiceIdentifier
+ * @typedef {0x01|0x02|0x04|0x400} ServiceBitmask
+ * @typedef {"NETWORK"|"GETUTXO "|"BLOOM"|"NETWORK_LIMITED"} ServiceName
  */
+
+/** @type {Object.<ServiceName, ServiceBitmask>} */
 let SERVICE_IDENTIFIERS = {};
 
 /**
- * NODE_UNNAMED:
- * 	This node is not a full node. It may not be
- * 	able to provide any data except for the
- * 	transactions it originates.
+ * 0x00 is the default - not a full node, no guarantees
  */
-SERVICE_IDENTIFIERS.UNNAMED = 0x00;
 
 /**
  * NODE_NETWORK:
@@ -134,13 +138,13 @@ SERVICE_IDENTIFIERS.NETWORK_LIMITED = 0x400;
 /**
  * @typedef VersionOpts
  * @prop {NetworkName} chosen_network - "mainnet", "testnet", etc
- * @prop {Uint32} protocol_version - signals which features are available or/or used
- * @prop {Array<ServiceIdentifier>} services - what we support / provide
- * @prop {Array<ServiceIdentifier>} addr_recv_services - what we expect of the server
+ * @prop {Uint32?} [protocol_version] - features (default: DarkSend.PROTOCOL_VERSION)
+ * @prop {Array<ServiceBitmask>?} [addr_recv_services] - default: NETWORK
  * @prop {String} addr_recv_ip - ipv6 address (can be 'ipv4-mapped') of the server
  * @prop {Uint16} addr_recv_port - 9999, 19999, etc (can be arbitrary on testnet)
+ * @prop {Array<ServiceBitmask>?} [addr_trans_services] - default: NONE
  * @prop {String?} [addr_trans_ip]- null, or the external ipv6 or ipv4-mapped address
- * @prop {String?} [addr_trans_port] - null, or the external port (ignored for tcp?)
+ * @prop {Uint16} [addr_trans_port] - null, or the external port (ignored for tcp?)
  * @prop {Uint32} start_height - start height of your best block
  * @prop {Uint8Array?} [nonce] - 8 random bytes to identify this transmission
  * @prop {String?} [user_agent] - ex: "DashJoin/1.0 request/1.0 node/20.0.0 macos/14.0"
@@ -158,28 +162,28 @@ SERVICE_IDENTIFIERS.NETWORK_LIMITED = 0x400;
 /* jshint maxcomplexity: 9001 */
 DarkSend.version = function ({
 	chosen_network,
-	protocol_version,
-	services,
-	addr_recv_services,
+	protocol_version = DarkSend.PROTOCOL_VERSION,
+	// alias of addr_trans_services
+	//services,
+	addr_recv_services = [SERVICE_IDENTIFIERS.NETWORK],
 	addr_recv_ip,
 	addr_recv_port,
-	// alias of services
-	//addr_trans_services,
-	addr_trans_ip = null,
-	addr_trans_port = null,
+	addr_trans_services = [],
+	addr_trans_ip = '127.0.0.1',
+	addr_trans_port = 65535,
 	start_height,
 	nonce = null,
 	user_agent = null,
-	relay = false,
+	relay = null,
 	mnauth_challenge = null,
 }) {
 	let args = {
 		chosen_network,
 		protocol_version,
-		services,
 		addr_recv_services,
 		addr_recv_ip,
 		addr_recv_port,
+		addr_trans_services,
 		addr_trans_ip,
 		addr_trans_port,
 		start_height,
@@ -191,74 +195,102 @@ DarkSend.version = function ({
 	let SIZES = Object.assign({}, DarkSend.FIELD_SIZES);
 
 	if (!DarkSend.NETWORKS[args.chosen_network]) {
-		throw new Error('"chosen_network" is invalid.');
+		throw new Error(`"chosen_network" '${args.chosen_network}' is invalid.`);
 	}
-	if (!Array.isArray(args.services)) {
-		throw new Error('"services" needs to be an array');
+	if (!Array.isArray(args.addr_recv_services)) {
+		throw new Error('"addr_recv_services" must be an array');
 	}
 	if (
 		args.protocol_version < DarkSend.RELAY_PROTOCOL_VERSION_INTRODUCTION &&
-		'undefined' !== typeof args.relay
+		args.relay !== null
 	) {
 		throw new Error(
 			`"relay" field is not supported in protocol versions prior to ${DarkSend.RELAY_PROTOCOL_VERSION_INTRODUCTION}`,
 		);
 	}
 	if (
-		args.protocol_version < MNAUTH_PROTOCOL_VERSION_INTRODUCTION &&
-		'undefined' !== typeof args.mnauth_challenge
+		args.protocol_version < DarkSend.MNAUTH_PROTOCOL_VERSION_INTRODUCTION &&
+		args.mnauth_challenge !== null
 	) {
 		throw new Error(
 			'"mnauth_challenge" field is not supported in protocol versions prior to MNAUTH_CHALLENGE_OFFSET',
 		);
 	}
-	if ('undefined' !== typeof args.mnauth_challenge) {
+	if (args.mnauth_challenge !== null) {
 		if (!(args.mnauth_challenge instanceof Uint8Array)) {
 			throw new Error('"mnauth_challenge" field must be a Uint8Array');
 		}
-		if (args.mnauth_challenge.length !== DarkSend.SIZES.MNAUTH_CHALLENGE_MAX) {
+		if (
+			args.mnauth_challenge.length !== DarkSend.SIZES.MNAUTH_CHALLENGE_NONEMPTY
+		) {
 			throw new Error(
-				`"mnauth_challenge" field must be ${DarkSend.SIZES.MNAUTH_CHALLENGE_MAX} bytes long`,
+				`"mnauth_challenge" field must be ${DarkSend.SIZES.MNAUTH_CHALLENGE_NONEMPTY} bytes long`,
 			);
 		}
 	}
-	if ('undefined' !== typeof args.relay) {
-		SIZES.RELAY = DarkSend.SIZES.RELAY_MAX;
+	if (args.relay !== null) {
+		SIZES.RELAY = DarkSend.SIZES.RELAY_NONEMPTY;
 	}
-	if ('undefined' !== typeof args.mnauth_challenge) {
-		SIZES.MNAUTH_CHALLENGE = DarkSend.SIZES.MNAUTH_CHALLENGE_MAX;
+	if (args.mnauth_challenge !== null) {
+		SIZES.MNAUTH_CHALLENGE = DarkSend.SIZES.MNAUTH_CHALLENGE_NONEMPTY;
 	}
-	if (
-		'undefined' !== typeof args.user_agent &&
-		'string' === typeof args.user_agent
-	) {
+	if (args.user_agent !== null) {
 		SIZES.USER_AGENT_STRING = args.user_agent.length;
 	}
 
-	let TOTAL_SIZE = 0;
-
-	for (const key in SIZES) {
-		TOTAL_SIZE += SIZES[key];
-	}
+	let TOTAL_SIZE =
+		SIZES.VERSION +
+		SIZES.SERVICES +
+		SIZES.TIMESTAMP +
+		SIZES.ADDR_RECV_SERVICES +
+		SIZES.ADDR_RECV_IP +
+		SIZES.ADDR_RECV_PORT +
+		SIZES.ADDR_TRANS_SERVICES +
+		SIZES.ADDR_TRANS_IP +
+		SIZES.ADDR_TRANS_PORT +
+		SIZES.NONCE +
+		SIZES.USER_AGENT_BYTES +
+		SIZES.USER_AGENT_STRING +
+		SIZES.START_HEIGHT +
+		SIZES.RELAY +
+		SIZES.MNAUTH_CHALLENGE;
 	let packet = new Uint8Array(TOTAL_SIZE);
 	// Protocol version
 
-	void setUint32(packet, args.protocol_version, 0);
+	let versionBytes = uint32ToBytesLE(args.protocol_version);
+	packet.set(versionBytes, 0);
+
 	/**
 	 * Set services to NODE_NETWORK (1) + NODE_BLOOM (4)
 	 */
 	const SERVICES_OFFSET = SIZES.VERSION;
-	let services = 0;
-	for (const service of args.services) {
-		services += service;
+	let senderServicesBytes;
+	{
+		let senderServicesMask = 0n;
+		for (const serviceBit of addr_trans_services) {
+			senderServicesMask += BigInt(serviceBit);
+		}
+		let senderServices64 = new BigInt64Array([senderServicesMask]); // jshint ignore:line
+		senderServicesBytes = new Uint8Array(senderServices64.buffer);
+		packet.set(senderServicesBytes, SERVICES_OFFSET);
 	}
-	packet.set([services], SERVICES_OFFSET);
 
 	const TIMESTAMP_OFFSET = SERVICES_OFFSET + SIZES.SERVICES;
-	void setUint32(packet, Date.now(), TIMESTAMP_OFFSET);
+	{
+		let tsBytes = uint32ToBytesLE(Date.now());
+		packet.set(tsBytes, TIMESTAMP_OFFSET);
+	}
 
 	let ADDR_RECV_SERVICES_OFFSET = TIMESTAMP_OFFSET + SIZES.TIMESTAMP;
-	packet.set([services], ADDR_RECV_SERVICES_OFFSET);
+	{
+		let serverServicesMask = 0n;
+		for (const serviceBit of addr_recv_services) {
+			serverServicesMask += BigInt(serviceBit);
+		}
+		let serverServices64 = new BigInt64Array([serverServicesMask]); // jshint ignore:line
+		let serverServicesBytes = new Uint8Array(serverServices64.buffer);
+		packet.set(serverServicesBytes, ADDR_RECV_SERVICES_OFFSET);
+	}
 
 	/**
 	 * "ADDR_RECV" means the host that we're sending this traffic to.
@@ -266,47 +298,60 @@ DarkSend.version = function ({
 	 */
 	let ADDR_RECV_IP_OFFSET =
 		ADDR_RECV_SERVICES_OFFSET + SIZES.ADDR_RECV_SERVICES;
-	let ipBytes = dot2num(args.addr_recv_ip);
-	let inv = htonl(ipBytes);
-	void setUint32(packet, inv, ADDR_RECV_IP_OFFSET);
+	{
+		let ipBytesBE = ipv4ToBytesBE(args.addr_recv_ip);
+		packet.set(ipBytesBE, ADDR_RECV_IP_OFFSET);
+	}
 
 	/**
 	 * Copy address recv port
 	 */
 	let ADDR_RECV_PORT_OFFSET = ADDR_RECV_IP_OFFSET + SIZES.ADDR_RECV_IP;
-	let portBuffer = new Uint8Array(2);
-	htons(portBuffer, 0, args.addr_recv_port);
-	packet.set(portBuffer, ADDR_RECV_PORT_OFFSET);
+	{
+		let portBytes16 = Uint16Array.from([args.addr_recv_port]);
+		let portBytes = new Uint8Array(portBytes16.buffer);
+		portBytes.reverse();
+		packet.set(portBytes, ADDR_RECV_PORT_OFFSET);
+	}
 
 	/**
 	 * Copy address transmitted services
 	 */
 	let ADDR_TRANS_SERVICES_OFFSET = ADDR_RECV_PORT_OFFSET + SIZES.ADDR_RECV_PORT;
-	packet.set([services], ADDR_TRANS_SERVICES_OFFSET);
+	packet.set(senderServicesBytes, ADDR_TRANS_SERVICES_OFFSET);
 
 	/**
 	 * We add the extra 10, so that we can encode an ipv4-mapped ipv6 address
 	 */
 	let ADDR_TRANS_IP_OFFSET =
 		ADDR_TRANS_SERVICES_OFFSET + SIZES.ADDR_TRANS_SERVICES;
-	let transmittingIP = args.addr_trans_ip;
-	if (is_ipv6_mapped_ipv4(transmittingIP)) {
-		let ipBytes = dot2num(transmittingIP.split(':').reverse()[0]);
-		let inv = htonl(ipBytes);
-		void setUint32(packet, inv, ADDR_TRANS_IP_OFFSET + 12);
-		packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
-	} else {
-		/** TODO: */
+	{
+		if (is_ipv6_mapped_ipv4(args.addr_trans_ip)) {
+			let ipv6Parts = args.addr_trans_ip.split(':');
+			let ipv4Str = ipv6Parts.at(-1);
+			let ipBytesBE = ipv4ToBytesBE(ipv4Str);
+			packet.set(ipBytesBE, ADDR_TRANS_IP_OFFSET + 12);
+			packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
+		} else {
+			/** TODO: ipv4-only & ipv6-only */
+			let ipBytesBE = ipv4ToBytesBE(args.addr_trans_ip);
+			packet.set(ipBytesBE, ADDR_TRANS_IP_OFFSET + 12);
+			packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
+		}
 	}
 
 	let ADDR_TRANS_PORT_OFFSET = ADDR_TRANS_IP_OFFSET + SIZES.ADDR_TRANS_IP;
-	portBuffer = new Uint8Array(2);
-	htons(portBuffer, 0, args.addr_trans_port);
-	packet.set(portBuffer, ADDR_TRANS_PORT_OFFSET);
+	{
+		let portBytes16 = Uint16Array.from([args.addr_trans_port]);
+		let portBytes = new Uint8Array(portBytes16.buffer);
+		portBytes.reverse();
+		packet.set(portBytes, ADDR_TRANS_PORT_OFFSET);
+	}
 
+	// TODO we should set this to prevent duplicate broadcast
 	// this can be left zero
 	let NONCE_OFFSET = ADDR_TRANS_PORT_OFFSET + SIZES.ADDR_TRANS_PORT;
-	if ('undefined' !== typeof args.nonce) {
+	if (args.nonce !== null) {
 		if (args.nonce instanceof Uint8Array) {
 			packet.set(args.nonce, NONCE_OFFSET);
 		} else {
@@ -320,55 +365,55 @@ DarkSend.version = function ({
 	if (null !== args.user_agent && typeof args.user_agent === 'string') {
 		let userAgentSize = args.user_agent.length;
 		packet.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
-		packet.set(str2uint8(args.user_agent), USER_AGENT_BYTES_OFFSET + 1);
+		let uaBytes = textEncoder.encode(args.user_agent);
+		packet.set(uaBytes, USER_AGENT_BYTES_OFFSET + 1);
 	} else {
 		packet.set([0x0], USER_AGENT_BYTES_OFFSET);
 	}
 
-	// Skipping user agent. it can be zero
 	let START_HEIGHT_OFFSET =
 		USER_AGENT_BYTES_OFFSET + SIZES.USER_AGENT_BYTES + SIZES.USER_AGENT_STRING;
-	void setUint32(packet, args.start_height, START_HEIGHT_OFFSET);
+	{
+		let heightBytes = uint32ToBytesLE(args.start_height);
+		packet.set(heightBytes, START_HEIGHT_OFFSET);
+	}
 
 	let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
-	if ('undefined' !== typeof args.relay) {
+	if (args.relay !== null) {
 		packet.set([args.relay ? 0x01 : 0x00], RELAY_OFFSET);
 	}
 
 	let MNAUTH_CHALLENGE_OFFSET = RELAY_OFFSET + SIZES.RELAY;
-	if ('undefined' !== typeof args.mnauth_challenge) {
+	if (args.mnauth_challenge !== null) {
 		packet.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
 	}
-	packet = wrap_packet(args.chosen_network, 'version', packet, TOTAL_SIZE);
+	packet = wrap_packet(args.chosen_network, 'version', packet);
 	return packet;
 };
 
-function wrap_packet(net, command_name, payload, payload_size) {
-	let TOTAL_SIZE = TOTAL_HEADER_SIZE + payload_size;
+function wrap_packet(net, command_name, payload) {
+	let TOTAL_SIZE = TOTAL_HEADER_SIZE + payload.byteLength;
 
 	let packet = new Uint8Array(TOTAL_SIZE);
-	packet.set(NETWORKS[net].magic, 0);
+	packet.set(DarkSend.NETWORKS[net].magic, 0);
 
-	/**
-	 * Set command_name (char[12])
-	 */
+	// Set command_name (char[12])
 	let COMMAND_NAME_OFFSET = SIZES.MAGIC_BYTES;
-	let textEncoder = new TextEncoder();
 	let nameBytes = textEncoder.encode(command_name);
 	packet.set(nameBytes, COMMAND_NAME_OFFSET);
 
+	// Finally, append the payload to the header
 	let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
 	let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
-	if (payload_size === 0 || payload === null) {
+	if (payload.byteLength === 0 || payload === null) {
 		packet.set(EMPTY_CHECKSUM, CHECKSUM_OFFSET);
 		return packet;
 	}
-	packet = setUint32(packet, payload_size, PAYLOAD_SIZE_OFFSET);
+
+	let payloadSizeBytes = uint32ToBytesLE(payload.byteLength);
+	packet.set(payloadSizeBytes, PAYLOAD_SIZE_OFFSET);
 	packet.set(compute_checksum(payload), CHECKSUM_OFFSET);
 
-	/**
-	 * Finally, append the payload to the header
-	 */
 	let ACTUAL_PAYLOAD_OFFSET = CHECKSUM_OFFSET + SIZES.CHECKSUM;
 	packet.set(payload, ACTUAL_PAYLOAD_OFFSET);
 	return packet;
@@ -383,13 +428,34 @@ function compute_checksum(payload) {
 	return hashOfHash.slice(0, 4);
 }
 
-function setUint32(bytes, data, at) {
-	let u32 = new Uint32Array([data]);
+/**
+ * @param {String} ipv4
+ */
+function ipv4ToBytesBE(ipv4) {
+	let u8s = [];
+
+	let octets = ipv4.split('.');
+	for (let octet of octets) {
+		let int8 = parseInt(octet);
+		u8s.unshift(int8);
+	}
+
+	let bytes = Uint8Array.from(u8s);
+	return bytes;
+}
+
+function uint32ToBytesLE(n) {
+	let u32 = new Uint32Array([n]);
 	let u8 = new Uint8Array(u32.buffer);
-	bytes.set(u8, at);
+	return u8;
+}
+
+function is_ipv6_mapped_ipv4(ip) {
+	return !!ip.match(/^[:]{2}[f]{4}[:]{1}.*$/);
 }
 
 /**
+ * @typedef {Number} Uint64
  * @typedef {Number} Uint32
  * @typedef {Number} Uint16
  */

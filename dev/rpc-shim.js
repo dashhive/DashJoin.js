@@ -6,22 +6,33 @@ RpcClient.E_IN_WARMUP = -28;
 
 RpcClient.prototype.init = async function (opts) {
 	let rpc = this;
+	rpc._connected = false;
+
 	let retry = opts?.retry || 5000;
 
-	rpc._connected = false;
+	let height = 0;
 	for (;;) {
-		let ready = await RpcClient._isReady(rpc);
-		if (ready) {
+		height = await RpcClient._getHeight(rpc);
+		if (height) {
 			break;
 		}
 		await sleep(retry);
 	}
+
+	return height;
 };
 
-RpcClient._isReady = async function (rpc) {
+function sleep(ms) {
+	return new Promise(function (resolve) {
+		setTimeout(resolve, ms);
+	});
+}
+
+RpcClient._getHeight = async function (rpc) {
 	let warn = null;
-	let ready = await rpc
-		.getBestBlockHash()
+	let tip = await rpc
+		.getChainTips()
+		//.getBestBlockHash()
 		.then(function (result) {
 			// { id, error, result }
 			if (result.error) {
@@ -29,12 +40,17 @@ RpcClient._isReady = async function (rpc) {
 				throw new Error(result.error);
 			}
 
-			return true;
+			if (!result.result?.[0].height) {
+				// also impossible, and we still check anyway
+				throw new Error('Sanity Fail: missing tip');
+			}
+
+			return result.result[0].height;
 		})
 		.catch(function (e) {
 			if (e.code === RpcClient.E_IN_WARMUP) {
 				warn = e;
-				return false;
+				return 0;
 			}
 
 			throw e;
@@ -46,7 +62,7 @@ RpcClient._isReady = async function (rpc) {
 		void onconnected.call(rpc, warn);
 	}
 
-	return ready;
+	return tip;
 };
 
 RpcClient._onconnected = function () {

@@ -1,12 +1,14 @@
 'use strict';
 
-let Rpc = module.exports;
+// let Rpc = module.exports;
 
 let DotEnv = require('dotenv');
 void DotEnv.config({ path: '.env' });
 void DotEnv.config({ path: '.env.secret' });
 
 let Net = require('node:net');
+
+let DarkSend = require('./ds.js');
 
 let RpcClient = require('@dashevo/dashd-rpc/promise');
 require('./rpc-shim.js'); // see https://github.com/dashpay/dashd-rpc/issues/68
@@ -24,9 +26,6 @@ if (process.env.DASHD_RPC_TIMEOUT) {
 	rpcConfig.timeout = rpcTimeoutSec * 1000;
 }
 
-const E_RPC_IN_WARMUP = -28;
-let rpcConnected = false;
-
 async function main() {
 	rpcConfig.onconnected = async function () {
 		let rpc = this;
@@ -35,8 +34,8 @@ async function main() {
 
 	let rpc = new RpcClient(rpcConfig);
 	rpc.onconnected = rpcConfig.onconnected;
-	await rpc.init(rpc);
-	console.info('[debug] rpc server is ready.');
+	let height = await rpc.init(rpc);
+	console.info(`[debug] rpc server is ready. Height = ${height}`);
 
 	let evonodes = [];
 	{
@@ -66,34 +65,52 @@ async function main() {
 	console.log('[debug] chosen evonode:');
 	console.log(JSON.stringify(evonode, null, 2));
 
-	let conn = Net.createConnection({
-		host: evonode.host,
-		port: evonode.port,
-		keepAlive: true,
-		keepAliveInitialDelay: 3,
-		//localAddress: rpc.host,
-	});
-	conn.on('error', function (err) {
-		console.log('error');
-		console.error(err);
-	});
-	conn.on('connect', function (err) {
-		console.log('connected');
-	});
-	conn.on('readable', function () {
-		console.log('readable');
-		let chunk = conn.read();
-		let str = chunk.toString('utf8');
-		console.log(str);
-	});
-	conn.on('data', function () {
-		console.log('data');
-		let chunk = conn.read();
-		let str = chunk.toString('utf8');
-		console.log(str);
-	});
-	conn.on('end', function () {
-		console.log('[debug] disconnected from server');
+	await new Promise(function (resolve) {
+		let conn = Net.createConnection({
+			host: evonode.hostname,
+			port: evonode.port,
+			keepAlive: true,
+			keepAliveInitialDelay: 3,
+			//localAddress: rpc.host,
+		});
+		conn.on('error', function (err) {
+			console.log('error');
+			console.error(err);
+		});
+		conn.on('connect', function (err) {
+			console.log('connected');
+			let versionMsg = DarkSend.version({
+				chosen_network: 'regtest', // DarkSend.NETWORKS.regtest,
+				//protocol_version: DarkSend.PROTOCOL_VERSION,
+				//addr_recv_services: [DarkSend.IDENTIFIER_SERVICES.NETWORK],
+				addr_recv_ip: evonode.hostname,
+				addr_recv_port: evonode.port,
+				//addr_trans_services: [],
+				//addr_trans_ip = '127.0.01',
+				//addr_trans_port = null,
+				start_height: height,
+				//nonce = null,
+				//user_agent = null,
+				//relay = false,
+				//mnauth_challenge = null,
+			});
+			conn.write(versionMsg);
+		});
+		conn.on('readable', function () {
+			console.log('readable');
+			let chunk = conn.read();
+			let str = chunk.toString('utf8');
+			console.log(str);
+		});
+		// conn.on('data', function () {
+		// 	console.log('data');
+		// 	let chunk = conn.read();
+		// 	let str = chunk.toString('utf8');
+		// 	console.log(str);
+		// });
+		conn.on('end', function () {
+			console.log('[debug] disconnected from server');
+		});
 	});
 	console.log('exiting?');
 }
