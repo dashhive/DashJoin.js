@@ -6,6 +6,8 @@ let DotEnv = require('dotenv');
 void DotEnv.config({ path: '.env' });
 void DotEnv.config({ path: '.env.secret' });
 
+let pkg = require('../package.json');
+
 let Net = require('node:net');
 
 let DarkSend = require('./ds.js'); // TODO rename packer
@@ -91,12 +93,17 @@ async function main() {
 	}
 	conn.on('error', onError);
 	conn.once('end', onEnd);
+	conn.on('data', function (data) {
+		console.log('[DEBUG] data');
+		console.log(data);
+	});
 
 	// connect / connected
 	// TODO setTimeout
 	await new Promise(function (_resolve, _reject) {
 		function cleanup() {
 			conn.removeListener('readable', onReadable);
+			conn.removeListener('data', onReadable);
 		}
 
 		function resolve() {
@@ -122,7 +129,8 @@ async function main() {
 
 		errReject = reject;
 		conn.once('connect', onConnect);
-		conn.on('readable', onReadable);
+		//conn.on('readable', onReadable);
+		conn.on('data', onReadable);
 	});
 
 	// version / verack
@@ -133,91 +141,132 @@ async function main() {
 		addr_recv_ip: evonode.hostname,
 		addr_recv_port: evonode.port,
 		//addr_trans_services: [],
-		//addr_trans_ip = '127.0.01',
-		//addr_trans_port = null,
+		//addr_trans_ip: '127.0.01',
+		//addr_trans_port: null,
+		// addr_trans_ip: conn.localAddress,
+		// addr_trans_port: conn.localPort,
 		start_height: height,
-		//nonce = null,
-		//user_agent = null,
-		//relay = false,
-		//mnauth_challenge = null,
+		//nonce: null,
+		user_agent: `DashJoin.js/${pkg.version}`,
+		// optional-ish
+		relay: false,
+		mnauth_challenge: null,
+		mn_connection: false,
 	});
+	let versionBuffer = Buffer.from(versionMsg);
+	console.log('version', versionBuffer.toString('hex'));
 	conn.write(versionMsg);
-	// TODO setTimeout
-	await new Promise(function (_resolve, _reject) {
-		let header;
-		let verack;
+	console.log(Parser.parseHeader(versionBuffer.slice(0, 24)));
+	console.log(Parser.parseVerack(versionBuffer.slice(24)));
 
-		function cleanup() {
-			conn.removeListener('readable', onReadableHeader);
-			conn.removeListener('readable', onReadableVerack);
-		}
+	for (;;) {
+		// TODO setTimeout
+		await new Promise(function (_resolve, _reject) {
+			let header;
+			let verack;
 
-		function resolve() {
-			cleanup();
-			_resolve();
-		}
+			function cleanup() {
+				conn.removeListener('data', onReadableHeader);
+				conn.removeListener('data', onReadableVerack);
+				conn.removeListener('readable', onReadableHeader);
+				conn.removeListener('readable', onReadableVerack);
+			}
 
-		function reject() {
-			cleanup();
-			_reject();
-		}
+			function resolve() {
+				cleanup();
+				_resolve();
+			}
 
-		function onReadableHeader() {
-			console.log('readable header');
-			let chunk = conn.read();
-			chunks.push(chunk);
-			chunksLength += chunk.byteLength;
-			if (chunksLength < 24) {
-				return;
+			function reject() {
+				cleanup();
+				_reject();
 			}
-			if (chunks.length > 1) {
-				chunk = Buffer.concat(chunks, chunk.byteLength);
-			}
-			chunks = [];
-			chunksLength = 0;
-			if (chunk.byteLength > 24) {
-				let extra = chunk.slice(24);
-				chunks.push(extra);
-				chunk = chunk.slice(0, 24);
-			}
-			header = Parser.parseHeader(chunk);
-			console.log('DEBUG header', header);
-			conn.removeListener('readable', onReadableHeader);
-			conn.on('readable', onReadableVerack);
-		}
 
-		function onReadableVerack() {
-			console.log('readable verack');
-			let chunk = conn.read();
-			chunks.push(chunk);
-			chunksLength += chunk.byteLength;
-			if (chunksLength < header.payloadSize) {
-				return;
+			function onReadableHeader(data) {
+				console.log('readable header');
+				let chunk;
+				for (;;) {
+					chunk = data;
+					// chunk = conn.read(); // TODO reenable
+					if (!chunk) {
+						break;
+					}
+					chunks.push(chunk);
+					chunksLength += chunk.byteLength;
+					if (chunksLength < 24) {
+						return;
+					}
+					data = null; // TODO nix
+				}
+				if (chunks.length > 1) {
+					chunk = Buffer.concat(chunks, chunksLength);
+				} else {
+					chunk = chunks[0];
+				}
+				chunks = [];
+				chunksLength = 0;
+				if (chunk.byteLength > 24) {
+					let extra = chunk.slice(24);
+					chunks.push(extra);
+					chunksLength += chunk.byteLength;
+					chunk = chunk.slice(0, 24);
+				}
+				header = Parser.parseHeader(chunk);
+				console.log('DEBUG header', header);
+				conn.removeListener('readable', onReadableHeader);
+				conn.removeListener('data', onReadableHeader);
+				//conn.on('readable', onReadableVerack);
+				conn.on('data', onReadableVerack);
+				onReadableVerack(null);
 			}
-			if (chunks.length > 1) {
-				chunk = Buffer.concat(chunks, chunk.byteLength);
-			}
-			chunks = [];
-			chunksLength = 0;
-			if (chunk.byteLength > header.payloadSize) {
-				let extra = chunk.slice(24);
-				chunks.push(extra);
-				chunk = chunk.slice(0, 24);
-			}
-			verack = Parser.parseVerack(chunk);
-			console.log('DEBUG verack', verack);
-			conn.removeListener('readable', onReadableVerack);
-			resolve();
-		}
 
-		errReject = reject;
-		conn.on('readable', onReadableHeader);
-	});
+			function onReadableVerack(data) {
+				console.log('readable verack');
+				let chunk;
+				for (;;) {
+					chunk = data;
+					// chunk = conn.read(); // TODO revert
+					if (!chunk) {
+						break;
+					}
+					chunks.push(chunk);
+					chunksLength += chunk.byteLength;
+					if (chunksLength < header.payloadSize) {
+						return;
+					}
+					data = null; // TODO nx
+				}
+				if (chunks.length > 1) {
+					chunk = Buffer.concat(chunks, chunksLength);
+				} else {
+					chunk = chunks[0];
+				}
+				chunks = [];
+				chunksLength = 0;
+				if (chunk.byteLength > header.payloadSize) {
+					let extra = chunk.slice(header.payloadSize);
+					chunks.push(extra);
+					chunksLength += chunk.byteLength;
+					chunk = chunk.slice(0, header.payloadSize);
+				}
+				verack = Parser.parseVerack(chunk);
+				console.log('DEBUG verack', verack);
+				conn.removeListener('readable', onReadableVerack);
+				conn.removeListener('data', onReadableVerack);
+				resolve();
+			}
+
+			errReject = reject;
+			//conn.on('readable', onReadableHeader);
+			conn.on('data', onReadableHeader);
+		});
+	}
 
 	// dsa / dssu + dsq
 	// TODO setTimeout
 	await new Promise(function (_resolve, _reject) {
 		//
+		_resolve();
 	});
 
 	console.log('exiting?');

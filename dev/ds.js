@@ -25,6 +25,8 @@ DarkSend.FIELD_SIZES = {
 	RELAY_NONEMPTY: 1,
 	MNAUTH_CHALLENGE: 0,
 	MNAUTH_CHALLENGE_NONEMPTY: 32,
+	MN_CONNECTION: 0,
+	MN_CONNECTION_NONEMPTY: 1,
 };
 
 DarkSend.RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
@@ -228,15 +230,14 @@ DarkSend.version = function ({
 			);
 		}
 	}
+	SIZES.USER_AGENT_STRING = args.user_agent?.length || 0;
 	if (args.relay !== null) {
-		SIZES.RELAY = DarkSend.SIZES.RELAY_NONEMPTY;
+		SIZES.RELAY = DarkSend.FIELD_SIZES.RELAY_NONEMPTY;
 	}
-	if (args.mnauth_challenge !== null) {
-		SIZES.MNAUTH_CHALLENGE = DarkSend.SIZES.MNAUTH_CHALLENGE_NONEMPTY;
-	}
-	if (args.user_agent !== null) {
-		SIZES.USER_AGENT_STRING = args.user_agent.length;
-	}
+	// if (args.mnauth_challenge !== null) {
+	SIZES.MNAUTH_CHALLENGE = DarkSend.FIELD_SIZES.MNAUTH_CHALLENGE_NONEMPTY;
+	// }
+	SIZES.MN_CONNECTION = DarkSend.FIELD_SIZES.MN_CONNECTION_NONEMPTY;
 
 	let TOTAL_SIZE =
 		SIZES.VERSION +
@@ -253,7 +254,8 @@ DarkSend.version = function ({
 		SIZES.USER_AGENT_STRING +
 		SIZES.START_HEIGHT +
 		SIZES.RELAY +
-		SIZES.MNAUTH_CHALLENGE;
+		SIZES.MNAUTH_CHALLENGE +
+		SIZES.MN_CONNECTION;
 	let packet = new Uint8Array(TOTAL_SIZE);
 	// Protocol version
 
@@ -300,7 +302,8 @@ DarkSend.version = function ({
 		ADDR_RECV_SERVICES_OFFSET + SIZES.ADDR_RECV_SERVICES;
 	{
 		let ipBytesBE = ipv4ToBytesBE(args.addr_recv_ip);
-		packet.set(ipBytesBE, ADDR_RECV_IP_OFFSET);
+		packet.set([0xff, 0xff], ADDR_RECV_IP_OFFSET + 10);
+		packet.set(ipBytesBE, ADDR_RECV_IP_OFFSET + 12);
 	}
 
 	/**
@@ -351,15 +354,11 @@ DarkSend.version = function ({
 	// TODO we should set this to prevent duplicate broadcast
 	// this can be left zero
 	let NONCE_OFFSET = ADDR_TRANS_PORT_OFFSET + SIZES.ADDR_TRANS_PORT;
-	if (args.nonce !== null) {
-		if (args.nonce instanceof Uint8Array) {
-			packet.set(args.nonce, NONCE_OFFSET);
-		} else {
-			throw new Error('"nonce" field must be an array of 8 bytes');
-		}
-	} else {
-		packet.set(new Uint8Array(SIZES.NONCE), NONCE_OFFSET);
+	if (!args.nonce) {
+		args.nonce = new Uint8Array(SIZES.NONCE);
+		Crypto.getRandomValues(args.nonce);
 	}
+	packet.set(args.nonce, NONCE_OFFSET);
 
 	let USER_AGENT_BYTES_OFFSET = NONCE_OFFSET + SIZES.NONCE;
 	if (null !== args.user_agent && typeof args.user_agent === 'string') {
@@ -384,9 +383,18 @@ DarkSend.version = function ({
 	}
 
 	let MNAUTH_CHALLENGE_OFFSET = RELAY_OFFSET + SIZES.RELAY;
-	if (args.mnauth_challenge !== null) {
-		packet.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
+	if (!args.mnauth_challenge) {
+		let rnd = new Uint8Array(32);
+		Crypto.getRandomValues(rnd);
+		args.mnauth_challenge = rnd;
 	}
+	packet.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
+
+	let MNAUTH_CONNECTION_OFFSET = MNAUTH_CHALLENGE_OFFSET + SIZES.MN_CONNECTION;
+	if (args.mn_connection) {
+		packet.set(0x01, MNAUTH_CONNECTION_OFFSET);
+	}
+
 	packet = wrap_packet(args.chosen_network, 'version', packet);
 	return packet;
 };
@@ -433,11 +441,12 @@ function compute_checksum(payload) {
  */
 function ipv4ToBytesBE(ipv4) {
 	let u8s = [];
+	// let u8s = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff /*,0,0,0,0*/];
 
 	let octets = ipv4.split('.');
 	for (let octet of octets) {
 		let int8 = parseInt(octet);
-		u8s.unshift(int8);
+		u8s.push(int8);
 	}
 
 	let bytes = Uint8Array.from(u8s);
