@@ -86,7 +86,7 @@ async function main() {
 		console.log('error');
 		console.error(err);
 		conn.removeListener('error', onError);
-		errReject();
+		errReject(err);
 	}
 	function onEnd() {
 		console.log('[debug] disconnected from server');
@@ -106,14 +106,14 @@ async function main() {
 			conn.removeListener('data', onReadable);
 		}
 
-		function resolve() {
+		function resolve(data) {
 			cleanup();
-			_resolve();
+			_resolve(data);
 		}
 
-		function reject() {
+		function reject(err) {
 			cleanup();
-			_reject();
+			_reject(err);
 		}
 
 		function onConnect() {
@@ -159,27 +159,23 @@ async function main() {
 	console.log(Parser.parseHeader(versionBuffer.slice(0, 24)));
 	console.log(Parser.parseVerack(versionBuffer.slice(24)));
 
-	for (;;) {
-		// TODO setTimeout
-		await new Promise(function (_resolve, _reject) {
-			let header;
-			let verack;
+	let verackBytes = DarkSend.header(network, 'verack', null);
 
+	async function readHeader() {
+		let header = await new Promise(function (_resolve, _reject) {
 			function cleanup() {
 				conn.removeListener('data', onReadableHeader);
-				conn.removeListener('data', onReadableVerack);
 				conn.removeListener('readable', onReadableHeader);
-				conn.removeListener('readable', onReadableVerack);
 			}
 
-			function resolve() {
+			function resolve(data) {
 				cleanup();
-				_resolve();
+				_resolve(data);
 			}
 
-			function reject() {
+			function reject(err) {
 				cleanup();
-				_reject();
+				_reject(err);
 			}
 
 			function onReadableHeader(data) {
@@ -211,55 +207,129 @@ async function main() {
 					chunksLength += chunk.byteLength;
 					chunk = chunk.slice(0, 24);
 				}
-				header = Parser.parseHeader(chunk);
-				console.log('DEBUG header', header);
 				conn.removeListener('readable', onReadableHeader);
 				conn.removeListener('data', onReadableHeader);
-				//conn.on('readable', onReadableVerack);
-				conn.on('data', onReadableVerack);
-				onReadableVerack(null);
-			}
 
-			function onReadableVerack(data) {
-				console.log('readable verack');
-				let chunk;
-				for (;;) {
-					chunk = data;
-					// chunk = conn.read(); // TODO revert
-					if (!chunk) {
-						break;
-					}
-					chunks.push(chunk);
-					chunksLength += chunk.byteLength;
-					if (chunksLength < header.payloadSize) {
-						return;
-					}
-					data = null; // TODO nx
-				}
-				if (chunks.length > 1) {
-					chunk = Buffer.concat(chunks, chunksLength);
-				} else {
-					chunk = chunks[0];
-				}
-				chunks = [];
-				chunksLength = 0;
-				if (chunk.byteLength > header.payloadSize) {
-					let extra = chunk.slice(header.payloadSize);
-					chunks.push(extra);
-					chunksLength += chunk.byteLength;
-					chunk = chunk.slice(0, header.payloadSize);
-				}
-				verack = Parser.parseVerack(chunk);
-				console.log('DEBUG verack', verack);
-				conn.removeListener('readable', onReadableVerack);
-				conn.removeListener('data', onReadableVerack);
-				resolve();
+				let header = Parser.parseHeader(chunk);
+				console.log('DEBUG header', header);
+				resolve(header);
 			}
 
 			errReject = reject;
 			//conn.on('readable', onReadableHeader);
 			conn.on('data', onReadableHeader);
 		});
+
+		return header;
+	}
+
+	// TODO setTimeout
+	await new Promise(function (_resolve, _reject) {
+		let header;
+		let verack;
+
+		function cleanup() {
+			conn.removeListener('data', onReadableHeader);
+			conn.removeListener('data', onReadableVerack);
+			conn.removeListener('readable', onReadableHeader);
+			conn.removeListener('readable', onReadableVerack);
+		}
+
+		function resolve(data) {
+			cleanup();
+			_resolve(data);
+		}
+
+		function reject(err) {
+			cleanup();
+			_reject(err);
+		}
+
+		function onReadableHeader(data) {
+			console.log('readable header');
+			let chunk;
+			for (;;) {
+				chunk = data;
+				// chunk = conn.read(); // TODO reenable
+				if (!chunk) {
+					break;
+				}
+				chunks.push(chunk);
+				chunksLength += chunk.byteLength;
+				if (chunksLength < 24) {
+					return;
+				}
+				data = null; // TODO nix
+			}
+			if (chunks.length > 1) {
+				chunk = Buffer.concat(chunks, chunksLength);
+			} else {
+				chunk = chunks[0];
+			}
+			chunks = [];
+			chunksLength = 0;
+			if (chunk.byteLength > 24) {
+				let extra = chunk.slice(24);
+				chunks.push(extra);
+				chunksLength += chunk.byteLength;
+				chunk = chunk.slice(0, 24);
+			}
+			header = Parser.parseHeader(chunk);
+			console.log('DEBUG header', header);
+			conn.removeListener('readable', onReadableHeader);
+			conn.removeListener('data', onReadableHeader);
+			//conn.on('readable', onReadableVerack);
+			conn.on('data', onReadableVerack);
+			onReadableVerack(null);
+		}
+
+		function onReadableVerack(data) {
+			console.log('readable verack');
+			let chunk;
+			for (;;) {
+				chunk = data;
+				// chunk = conn.read(); // TODO revert
+				if (!chunk) {
+					break;
+				}
+				chunks.push(chunk);
+				chunksLength += chunk.byteLength;
+				if (chunksLength < header.payloadSize) {
+					return;
+				}
+				data = null; // TODO nx
+			}
+			if (chunks.length > 1) {
+				chunk = Buffer.concat(chunks, chunksLength);
+			} else {
+				chunk = chunks[0];
+			}
+			chunks = [];
+			chunksLength = 0;
+			if (chunk.byteLength > header.payloadSize) {
+				let extra = chunk.slice(header.payloadSize);
+				chunks.push(extra);
+				chunksLength += chunk.byteLength;
+				chunk = chunk.slice(0, header.payloadSize);
+			}
+			verack = Parser.parseVerack(chunk);
+			console.log('DEBUG verack', verack);
+			conn.removeListener('readable', onReadableVerack);
+			conn.removeListener('data', onReadableVerack);
+			resolve();
+		}
+
+		errReject = reject;
+		//conn.on('readable', onReadableHeader);
+		conn.on('data', onReadableHeader);
+	});
+
+	conn.write(verackBytes);
+
+	let verack = await readHeader();
+	console.log(verack);
+	if (verack.command !== 'verack') {
+		throw new Error('expected verack but got something else');
 	}
 
 	// dsa / dssu + dsq

@@ -400,7 +400,8 @@ DarkSend.version = function ({
 };
 
 function wrap_packet(net, command_name, payload) {
-	let TOTAL_SIZE = TOTAL_HEADER_SIZE + payload.byteLength;
+	let payloadLength = payload?.byteLength || 0;
+	let TOTAL_SIZE = TOTAL_HEADER_SIZE + payloadLength;
 
 	let packet = new Uint8Array(TOTAL_SIZE);
 	packet.set(DarkSend.NETWORKS[net].magic, 0);
@@ -413,12 +414,12 @@ function wrap_packet(net, command_name, payload) {
 	// Finally, append the payload to the header
 	let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
 	let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
-	if (payload.byteLength === 0 || payload === null) {
+	if (payloadLength === 0) {
 		packet.set(EMPTY_CHECKSUM, CHECKSUM_OFFSET);
 		return packet;
 	}
 
-	let payloadSizeBytes = uint32ToBytesLE(payload.byteLength);
+	let payloadSizeBytes = uint32ToBytesLE(payloadLength);
 	packet.set(payloadSizeBytes, PAYLOAD_SIZE_OFFSET);
 	packet.set(compute_checksum(payload), CHECKSUM_OFFSET);
 
@@ -426,6 +427,7 @@ function wrap_packet(net, command_name, payload) {
 	packet.set(payload, ACTUAL_PAYLOAD_OFFSET);
 	return packet;
 }
+DarkSend.header = wrap_packet;
 
 /**
  * First 4 bytes of SHA256(SHA256(payload)) in internal byte order.
