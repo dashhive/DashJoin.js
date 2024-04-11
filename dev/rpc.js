@@ -98,141 +98,48 @@ async function main() {
 		console.log(data);
 	});
 
-	// connect / connected
-	// TODO setTimeout
-	await new Promise(function (_resolve, _reject) {
-		function cleanup() {
-			conn.removeListener('readable', onReadable);
-			conn.removeListener('data', onReadable);
-		}
-
-		function resolve(data) {
-			cleanup();
-			_resolve(data);
-		}
-
-		function reject(err) {
-			cleanup();
-			_reject(err);
-		}
-
-		function onConnect() {
-			console.log('connected');
-			resolve();
-		}
-
-		function onReadable() {
-			console.log('readable');
-			// checking an impossible condition, just in case
-			throw new Error('unexpected response before request');
-		}
-
-		errReject = reject;
-		conn.once('connect', onConnect);
-		//conn.on('readable', onReadable);
-		conn.on('data', onReadable);
-	});
-
-	// version / verack
-	let versionMsg = DarkSend.version({
-		chosen_network: network, // DarkSend.NETWORKS.regtest,
-		//protocol_version: DarkSend.PROTOCOL_VERSION,
-		//addr_recv_services: [DarkSend.IDENTIFIER_SERVICES.NETWORK],
-		addr_recv_ip: evonode.hostname,
-		addr_recv_port: evonode.port,
-		//addr_trans_services: [],
-		//addr_trans_ip: '127.0.01',
-		//addr_trans_port: null,
-		// addr_trans_ip: conn.localAddress,
-		// addr_trans_port: conn.localPort,
-		start_height: height,
-		//nonce: null,
-		user_agent: `DashJoin.js/${pkg.version}`,
-		// optional-ish
-		relay: false,
-		mnauth_challenge: null,
-		mn_connection: false,
-	});
-	let versionBuffer = Buffer.from(versionMsg);
-	console.log('version', versionBuffer.toString('hex'));
-	conn.write(versionMsg);
-	console.log(Parser.parseHeader(versionBuffer.slice(0, 24)));
-	console.log(Parser.parseVerack(versionBuffer.slice(24)));
-
-	let verackBytes = DarkSend.header(network, 'verack', null);
-
-	async function readHeader() {
-		let header = await new Promise(function (_resolve, _reject) {
-			function cleanup() {
-				conn.removeListener('data', onReadableHeader);
-				conn.removeListener('readable', onReadableHeader);
+	let messages = [];
+	let listenerMap = {};
+	async function goRead() {
+		for (;;) {
+			let msg = await readMessage();
+			console.log('[DEBUG] readMessage', msg);
+			console.log('[DEBUG] msg.command', msg.command);
+			let i = messages.length;
+			messages.push(msg);
+			let listeners = Object.values(listenerMap);
+			for (let ln of listeners) {
+				void ln(msg, i, messages);
 			}
+		}
+	}
+	void goRead();
 
-			function resolve(data) {
-				cleanup();
-				_resolve(data);
-			}
+	/**
+	 * Reads a for a full 24 bytes, parses those bytes as a header,
+	 * and then reads the length of the payload. Any excess bytes will
+	 * be saved for the next cycle - meaning it can handle multiple
+	 * messages in a single packet.
+	 */
+	async function readMessage() {
+		const HEADER_SIZE = 24;
+		const PAYLOAD_SIZE_MAX = 4 * 1024 * 1024;
 
-			function reject(err) {
-				cleanup();
-				_reject(err);
-			}
-
-			function onReadableHeader(data) {
-				console.log('readable header');
-				let chunk;
-				for (;;) {
-					chunk = data;
-					// chunk = conn.read(); // TODO reenable
-					if (!chunk) {
-						break;
-					}
-					chunks.push(chunk);
-					chunksLength += chunk.byteLength;
-					if (chunksLength < 24) {
-						return;
-					}
-					data = null; // TODO nix
-				}
-				if (chunks.length > 1) {
-					chunk = Buffer.concat(chunks, chunksLength);
-				} else {
-					chunk = chunks[0];
-				}
-				chunks = [];
-				chunksLength = 0;
-				if (chunk.byteLength > 24) {
-					let extra = chunk.slice(24);
-					chunks.push(extra);
-					chunksLength += chunk.byteLength;
-					chunk = chunk.slice(0, 24);
-				}
-				conn.removeListener('readable', onReadableHeader);
-				conn.removeListener('data', onReadableHeader);
-
-				let header = Parser.parseHeader(chunk);
-				console.log('DEBUG header', header);
-				resolve(header);
-			}
-
-			errReject = reject;
-			//conn.on('readable', onReadableHeader);
-			conn.on('data', onReadableHeader);
+		// TODO setTimeout
+		let _resolve;
+		let _reject;
+		let p = new Promise(function (__resolve, __reject) {
+			_resolve = __resolve;
+			_reject = __reject;
 		});
 
-		return header;
-	}
-
-	// TODO setTimeout
-	await new Promise(function (_resolve, _reject) {
 		let header;
-		let verack;
 
 		function cleanup() {
 			conn.removeListener('data', onReadableHeader);
-			conn.removeListener('data', onReadableVerack);
+			conn.removeListener('data', onReadablePayload);
 			conn.removeListener('readable', onReadableHeader);
-			conn.removeListener('readable', onReadableVerack);
+			conn.removeListener('readable', onReadablePayload);
 		}
 
 		function resolve(data) {
@@ -256,7 +163,7 @@ async function main() {
 				}
 				chunks.push(chunk);
 				chunksLength += chunk.byteLength;
-				if (chunksLength < 24) {
+				if (chunksLength < HEADER_SIZE) {
 					return;
 				}
 				data = null; // TODO nix
@@ -268,23 +175,26 @@ async function main() {
 			}
 			chunks = [];
 			chunksLength = 0;
-			if (chunk.byteLength > 24) {
-				let extra = chunk.slice(24);
+			if (chunk.byteLength > HEADER_SIZE) {
+				let extra = chunk.slice(HEADER_SIZE);
 				chunks.push(extra);
 				chunksLength += chunk.byteLength;
-				chunk = chunk.slice(0, 24);
+				chunk = chunk.slice(0, HEADER_SIZE);
 			}
 			header = Parser.parseHeader(chunk);
+			if (header.payloadSize > PAYLOAD_SIZE_MAX) {
+				throw new Error('no big you are, handle you I cannot');
+			}
 			console.log('DEBUG header', header);
 			conn.removeListener('readable', onReadableHeader);
 			conn.removeListener('data', onReadableHeader);
-			//conn.on('readable', onReadableVerack);
-			conn.on('data', onReadableVerack);
-			onReadableVerack(null);
+			//conn.on('readable', onReadablePayload);
+			conn.on('data', onReadablePayload);
+			onReadablePayload(null);
 		}
 
-		function onReadableVerack(data) {
-			console.log('readable verack');
+		function onReadablePayload(data) {
+			console.log('readable payload');
 			let chunk;
 			for (;;) {
 				chunk = data;
@@ -301,8 +211,11 @@ async function main() {
 			}
 			if (chunks.length > 1) {
 				chunk = Buffer.concat(chunks, chunksLength);
-			} else {
+			} else if (chunks.length === 1) {
 				chunk = chunks[0];
+			} else {
+				console.log("[warn] 'chunk' is 'null' (probably the debug null)");
+				return;
 			}
 			chunks = [];
 			chunksLength = 0;
@@ -312,25 +225,107 @@ async function main() {
 				chunksLength += chunk.byteLength;
 				chunk = chunk.slice(0, header.payloadSize);
 			}
-			verack = Parser.parseVerack(chunk);
-			console.log('DEBUG verack', verack);
-			conn.removeListener('readable', onReadableVerack);
-			conn.removeListener('data', onReadableVerack);
-			resolve();
+			header.payload = chunk;
+			conn.removeListener('readable', onReadablePayload);
+			conn.removeListener('data', onReadablePayload);
+			resolve(header);
 		}
 
 		errReject = reject;
 		//conn.on('readable', onReadableHeader);
 		conn.on('data', onReadableHeader);
+
+		let msg = await p;
+		return msg;
+	}
+
+	async function waitForConnect() {
+		// connect / connected
+		// TODO setTimeout
+		await new Promise(function (_resolve, _reject) {
+			function cleanup() {
+				conn.removeListener('readable', onReadable);
+				conn.removeListener('data', onReadable);
+			}
+
+			function resolve(data) {
+				cleanup();
+				_resolve(data);
+			}
+
+			function reject(err) {
+				cleanup();
+				_reject(err);
+			}
+
+			function onConnect() {
+				resolve();
+			}
+
+			function onReadable() {
+				// checking an impossible condition, just in case
+				throw new Error('unexpected response before request');
+			}
+
+			errReject = reject;
+			conn.once('connect', onConnect);
+			//conn.on('readable', onReadable);
+			conn.on('data', onReadable);
+		});
+	}
+
+	await waitForConnect();
+	console.log('connected');
+
+	// version / verack
+	let versionMsg = DarkSend.version({
+		chosen_network: network, // DarkSend.NETWORKS.regtest,
+		//protocol_version: DarkSend.PROTOCOL_VERSION,
+		//addr_recv_services: [DarkSend.IDENTIFIER_SERVICES.NETWORK],
+		addr_recv_ip: evonode.hostname,
+		addr_recv_port: evonode.port,
+		//addr_trans_services: [],
+		//addr_trans_ip: '127.0.01',
+		//addr_trans_port: null,
+		// addr_trans_ip: conn.localAddress,
+		// addr_trans_port: conn.localPort,
+		start_height: height,
+		//nonce: null,
+		user_agent: `DashJoin.js/${pkg.version}`,
+		// optional-ish
+		relay: false,
+		mnauth_challenge: null,
+		mn_connection: false,
 	});
 
+	let versionBuffer = Buffer.from(versionMsg);
+	console.log('version', versionBuffer.toString('hex'));
+	console.log(Parser.parseHeader(versionBuffer.slice(0, 24)));
+	console.log(Parser.parseVerack(versionBuffer.slice(24)));
+
+	conn.write(versionMsg);
+
+	await new Promise(function (resolve, reject) {
+		listenerMap['version'] = async function (message) {
+			let version = await Parser.parseVersion(message.payload);
+			console.log('DEBUG version', version);
+			resolve();
+			listenerMap['version'] = null;
+			delete listenerMap['version'];
+		};
+	});
+
+	let verackBytes = DarkSend.header(network, 'verack', null);
 	conn.write(verackBytes);
 
-	let verack = await readHeader();
-	console.log(verack);
-	if (verack.command !== 'verack') {
-		throw new Error('expected verack but got something else');
-	}
+	await new Promise(function (resolve, reject) {
+		listenerMap['verack'] = async function (message) {
+			console.log('DEBUG verack', message);
+			resolve();
+			listenerMap['verack'] = null;
+			delete listenerMap['verack'];
+		};
+	});
 
 	// dsa / dssu + dsq
 	// TODO setTimeout

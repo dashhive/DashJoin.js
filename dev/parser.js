@@ -46,11 +46,12 @@ Parser.parseHeader = function (buffer) {
 	return header;
 };
 
-Parser.parseVersion = function (buffer) {
+Parser.parseVersion = function (bytes) {
+	let buffer = Buffer.from(bytes);
 	console.log('parseVerack', buffer.toString('hex'));
 	console.log(buffer.toString('utf8'));
 
-	let bytes = new Uint8Array(buffer);
+	bytes = new Uint8Array(buffer);
 	let dv = new DataView(bytes.buffer);
 
 	let versionStart = 0;
