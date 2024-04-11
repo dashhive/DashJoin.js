@@ -8,7 +8,8 @@ void DotEnv.config({ path: '.env.secret' });
 
 let Net = require('node:net');
 
-let DarkSend = require('./ds.js');
+let DarkSend = require('./ds.js'); // TODO rename packer
+let Parser = require('./parser.js');
 
 let RpcClient = require('@dashevo/dashd-rpc/promise');
 require('./rpc-shim.js'); // see https://github.com/dashpay/dashd-rpc/issues/68
@@ -27,6 +28,7 @@ if (process.env.DASHD_RPC_TIMEOUT) {
 }
 
 async function main() {
+	let network = 'regtest';
 	rpcConfig.onconnected = async function () {
 		let rpc = this;
 		console.log(`[debug] rpc client connected ${rpc.host}`);
@@ -65,53 +67,159 @@ async function main() {
 	console.log('[debug] chosen evonode:');
 	console.log(JSON.stringify(evonode, null, 2));
 
-	await new Promise(function (resolve) {
-		let conn = Net.createConnection({
-			host: evonode.hostname,
-			port: evonode.port,
-			keepAlive: true,
-			keepAliveInitialDelay: 3,
-			//localAddress: rpc.host,
-		});
-		conn.on('error', function (err) {
-			console.log('error');
-			console.error(err);
-		});
-		conn.on('connect', function (err) {
-			console.log('connected');
-			let versionMsg = DarkSend.version({
-				chosen_network: 'regtest', // DarkSend.NETWORKS.regtest,
-				//protocol_version: DarkSend.PROTOCOL_VERSION,
-				//addr_recv_services: [DarkSend.IDENTIFIER_SERVICES.NETWORK],
-				addr_recv_ip: evonode.hostname,
-				addr_recv_port: evonode.port,
-				//addr_trans_services: [],
-				//addr_trans_ip = '127.0.01',
-				//addr_trans_port = null,
-				start_height: height,
-				//nonce = null,
-				//user_agent = null,
-				//relay = false,
-				//mnauth_challenge = null,
-			});
-			conn.write(versionMsg);
-		});
-		conn.on('readable', function () {
-			console.log('readable');
-			let chunk = conn.read();
-			let str = chunk.toString('utf8');
-			console.log(str);
-		});
-		// conn.on('data', function () {
-		// 	console.log('data');
-		// 	let chunk = conn.read();
-		// 	let str = chunk.toString('utf8');
-		// 	console.log(str);
-		// });
-		conn.on('end', function () {
-			console.log('[debug] disconnected from server');
-		});
+	let conn = Net.createConnection({
+		host: evonode.hostname,
+		port: evonode.port,
+		keepAlive: true,
+		keepAliveInitialDelay: 3,
+		//localAddress: rpc.host,
 	});
+
+	/** @type {Array<Buffer>} */
+	let chunks = [];
+	let chunksLength = 0;
+	let errReject;
+
+	function onError(err) {
+		console.log('error');
+		console.error(err);
+		conn.removeListener('error', onError);
+		errReject();
+	}
+	function onEnd() {
+		console.log('[debug] disconnected from server');
+	}
+	conn.on('error', onError);
+	conn.once('end', onEnd);
+
+	// connect / connected
+	// TODO setTimeout
+	await new Promise(function (_resolve, _reject) {
+		function cleanup() {
+			conn.removeListener('readable', onReadable);
+		}
+
+		function resolve() {
+			cleanup();
+			_resolve();
+		}
+
+		function reject() {
+			cleanup();
+			_reject();
+		}
+
+		function onConnect() {
+			console.log('connected');
+			resolve();
+		}
+
+		function onReadable() {
+			console.log('readable');
+			// checking an impossible condition, just in case
+			throw new Error('unexpected response before request');
+		}
+
+		errReject = reject;
+		conn.once('connect', onConnect);
+		conn.on('readable', onReadable);
+	});
+
+	// version / verack
+	let versionMsg = DarkSend.version({
+		chosen_network: network, // DarkSend.NETWORKS.regtest,
+		//protocol_version: DarkSend.PROTOCOL_VERSION,
+		//addr_recv_services: [DarkSend.IDENTIFIER_SERVICES.NETWORK],
+		addr_recv_ip: evonode.hostname,
+		addr_recv_port: evonode.port,
+		//addr_trans_services: [],
+		//addr_trans_ip = '127.0.01',
+		//addr_trans_port = null,
+		start_height: height,
+		//nonce = null,
+		//user_agent = null,
+		//relay = false,
+		//mnauth_challenge = null,
+	});
+	conn.write(versionMsg);
+	// TODO setTimeout
+	await new Promise(function (_resolve, _reject) {
+		let header;
+		let verack;
+
+		function cleanup() {
+			conn.removeListener('readable', onReadableHeader);
+			conn.removeListener('readable', onReadableVerack);
+		}
+
+		function resolve() {
+			cleanup();
+			_resolve();
+		}
+
+		function reject() {
+			cleanup();
+			_reject();
+		}
+
+		function onReadableHeader() {
+			console.log('readable header');
+			let chunk = conn.read();
+			chunks.push(chunk);
+			chunksLength += chunk.byteLength;
+			if (chunksLength < 24) {
+				return;
+			}
+			if (chunks.length > 1) {
+				chunk = Buffer.concat(chunks, chunk.byteLength);
+			}
+			chunks = [];
+			chunksLength = 0;
+			if (chunk.byteLength > 24) {
+				let extra = chunk.slice(24);
+				chunks.push(extra);
+				chunk = chunk.slice(0, 24);
+			}
+			header = Parser.parseHeader(chunk);
+			console.log('DEBUG header', header);
+			conn.removeListener('readable', onReadableHeader);
+			conn.on('readable', onReadableVerack);
+		}
+
+		function onReadableVerack() {
+			console.log('readable verack');
+			let chunk = conn.read();
+			chunks.push(chunk);
+			chunksLength += chunk.byteLength;
+			if (chunksLength < header.payloadSize) {
+				return;
+			}
+			if (chunks.length > 1) {
+				chunk = Buffer.concat(chunks, chunk.byteLength);
+			}
+			chunks = [];
+			chunksLength = 0;
+			if (chunk.byteLength > header.payloadSize) {
+				let extra = chunk.slice(24);
+				chunks.push(extra);
+				chunk = chunk.slice(0, 24);
+			}
+			verack = Parser.parseVerack(chunk);
+			console.log('DEBUG verack', verack);
+			conn.removeListener('readable', onReadableVerack);
+			resolve();
+		}
+
+		errReject = reject;
+		conn.on('readable', onReadableHeader);
+	});
+
+	// dsa / dssu + dsq
+	// TODO setTimeout
+	await new Promise(function (_resolve, _reject) {
+		//
+	});
+
 	console.log('exiting?');
 }
 
