@@ -15,179 +15,207 @@ let Parser = require('./parser.js');
 
 let DashHd = require('dashhd');
 let DashRpc = require('dashrpc');
-let DashTx = require('dashtx');
+//let DashTx = require('dashtx');
+
+const DENOM_MOD = 100001;
 
 let rpcConfig = {
-	protocol: 'http', // https for remote, http for local / private networking
-	user: process.env.DASHD_RPC_USER,
-	pass: process.env.DASHD_RPC_PASS || process.env.DASHD_RPC_PASSWORD,
-	host: process.env.DASHD_RPC_HOST || '127.0.0.1',
-	port: process.env.DASHD_RPC_PORT || '19898', // mainnet=9998, testnet=19998, regtest=19898
-	timeout: 10 * 1000, // bump default from 5s to 10s for up to 10k addresses
+    protocol: 'http', // https for remote, http for local / private networking
+    user: process.env.DASHD_RPC_USER,
+    pass: process.env.DASHD_RPC_PASS || process.env.DASHD_RPC_PASSWORD,
+    host: process.env.DASHD_RPC_HOST || '127.0.0.1',
+    port: process.env.DASHD_RPC_PORT || '19898', // mainnet=9998, testnet=19998, regtest=19898
+    timeout: 10 * 1000, // bump default from 5s to 10s for up to 10k addresses
 };
 if (process.env.DASHD_RPC_TIMEOUT) {
-	let rpcTimeoutSec = parseFloat(process.env.DASHD_RPC_TIMEOUT);
-	rpcConfig.timeout = rpcTimeoutSec * 1000;
+    let rpcTimeoutSec = parseFloat(process.env.DASHD_RPC_TIMEOUT);
+    rpcConfig.timeout = rpcTimeoutSec * 1000;
 }
 
 async function main() {
-	let network = 'regtest';
-	rpcConfig.onconnected = async function () {
-		let rpc = this;
-		console.log(`[debug] rpc client connected ${rpc.host}`);
-	};
+    let network = 'regtest';
+    rpcConfig.onconnected = async function () {
+        let rpc = this;
+        console.info(`[info] rpc client connected ${rpc.host}`);
+    };
 
-	let rpc = new DashRpc(rpcConfig);
-	rpc.onconnected = rpcConfig.onconnected;
-	let height = await rpc.init(rpc);
-	console.info(`[debug] rpc server is ready. Height = ${height}`);
+    let rpc = new DashRpc(rpcConfig);
+    rpc.onconnected = rpcConfig.onconnected;
+    let height = await rpc.init(rpc);
+    console.info(`[debug] rpc server is ready. Height = ${height}`);
 
-	let seedHex = process.env.DASH_WALLET_SEED || '';
-	let seedBuffer = Buffer.from(seedHex, 'hex');
-	let seedBytes = new Uint8Array(seedBuffer);
-	let walletKey = await DashHd.fromSeed(seedBytes, '');
-	let walletId = DashHd.toId(walletKey);
+    let seedHex = process.env.DASH_WALLET_SEED || '';
+    let seedBuffer = Buffer.from(seedHex, 'hex');
+    let seedBytes = new Uint8Array(seedBuffer);
+    let testCoin = '1';
+    let walletKey = await DashHd.fromSeed(seedBytes, {
+        coinType: testCoin,
+        versions: DashHd.TESTNET,
+    });
+    let walletId = await DashHd.toId(walletKey);
 
-	let xprvHdpath = `m/44'/5'/0'/0`;
-	let accountKey = await walletKey.deriveAccount(0);
-	let xprvKey = await accountKey.deriveXKey(walletKey, 0);
-	// let xprvHdpath = `m/44'/5'/0'/0`;
-	// let xprvKey = await DashHd.derivePath(walletKey, xprvHdpath);
+    let xprvHdpath = `m/44'/1'/0'/0`;
+    let accountKey = await walletKey.deriveAccount(0);
+    let xreceiveKey = await accountKey.deriveXKey(walletKey, 0);
+    // let xchangeKey = await accountKey.deriveXKey(walletKey, 1);
+    // let xprvHdpath = `m/44'/5'/0'/0`;
+    // let xprvKey = await DashHd.derivePath(walletKey, xprvHdpath);
 
-	// generate bunches of keys
-	// remove the leading `m/` or `m'/`
-	let partialPath = xprvHdpath.replace(/^m'?\//, '');
-	let lastUsedIndex = 0;
-	let keysMap = {};
-	let used = [];
-	for (;;) {
-		let index = 0;
-		let addresses = [];
-		for (let i = 0; i < 10; i += 1) {
-			let addressKey = await xprvKey.deriveAddress(index, {
-				version: 'testnet',
-			});
-			index += 1;
+    // generate bunches of keys
+    // remove the leading `m/` or `m'/`
+    let partialPath = xprvHdpath.replace(/^m'?\//, '');
+        let totalBalance = 0;
+        let keysMap = {};
+        let used = [];
+        for (;;) {
+            let index = 0;
+            let addresses = [];
+            let numAddresses = 100;
+            for (let i = 0; i < numAddresses; i += 1) {
+                let addressKey = await xreceiveKey.deriveAddress(index);
 
-			// Descriptors are in the form of
-			//   - pkh(xpub123...abc/2) - for the 3rd address of a receiving or change xpub
-			//   - pkh(xpub456...def/0/2) - for the 3rd receive address of an account xpub
-			//   - pkh([walletid/44'/0'/0']xpub123...abc/0/2) - same, plus wallet & hd info
-			//   - pkh([walletid/44'/0'/0'/0/2]Xaddr...#checksum) - same, but the address
-			// See also: https://github.com/dashpay/dash/blob/master/doc/descriptors.md
-			// TODO sort out sha vs double-sha vs fingerprint
-			let descriptor = `pkh([${walletId}/${partialPath}/${index}])`;
-			let address = await DashHd.toAddr(addressKey.publicKey);
-			let data = { index, descriptor, address };
-			keysMap[index] = data;
-			keysMap[address] = data;
-			addresses.push(address);
-			console.log(address);
-		}
-		let mempooldeltas = await rpc.getAddressMempool({ addresses: addresses });
-		console.log('mempooldeltas.length', mempooldeltas.length);
-		for (let delta of mempooldeltas) {
-			let data = keysMap[delta.address];
-			data.used = true;
-			used.push(data);
-		}
-		let deltas = await rpc.getAddressDeltas({ addresses: addresses });
-		console.log('deltas.length', deltas.length);
-		for (let delta of deltas) {
-			let data = keysMap[delta.address];
-			data.used = true;
-			used.push(data);
-		}
+                // Descriptors are in the form of
+                //   - pkh(xpub123...abc/2) - for the 3rd address of a receiving or change xpub
+                //   - pkh(xpub456...def/0/2) - for the 3rd receive address of an account xpub
+                //   - pkh([walletid/44'/0'/0']xpub123...abc/0/2) - same, plus wallet & hd info
+                //   - pkh([walletid/44'/0'/0'/0/2]Xaddr...#checksum) - same, but the address
+                // See also: https://github.com/dashpay/dash/blob/master/doc/descriptors.md
+                // TODO sort out sha vs double-sha vs fingerprint
+                let descriptor = `pkh([${walletId}/${partialPath}/0/${index}])`;
+                let address = await DashHd.toAddr(addressKey.publicKey, {
+                    version: 'testnet',
+                });
+                // let utxosRpc = await rpc.getAddressUtxos({ addresses: [address] });
+                // let utxos = utxosRpc.result;
+                // console.log('utxosRpc.result.length', utxosRpc.result.length);
 
-		console.log(keysMap);
-		// TODO check for unused
-		console.log(used);
-		process.exit(1);
-	}
+                let data = {
+                    index: index,
+                    descriptor: descriptor,
+                    address: address,
+                    // uxtos: utxos,
+                    used: false,
+                    satoshis: 0,
+                };
+                keysMap[index] = data;
+                keysMap[address] = data;
+                addresses.push(address);
+                // console.log('[DEBUG] address:', address);
 
-	let evonodes = [];
-	{
-		let resp = await rpc.masternodelist();
-		let evonodesMap = resp.result;
-		let evonodeProTxIds = Object.keys(evonodesMap);
-		for (let id of evonodeProTxIds) {
-			let evonode = evonodesMap[id];
-			if (evonode.status === 'ENABLED') {
-				let hostParts = evonode.address.split(':');
-				let evodata = {
-					id: evonode.id,
-					hostname: hostParts[0],
-					port: hostParts[1],
-					type: evonode.type,
-				};
-				evonodes.push(evodata);
-			}
-		}
-		if (!evonodes.length) {
-			throw new Error('Sanity Fail: no evonodes online');
-		}
-	}
+                index += 1;
+            }
+            console.log('[debug] addresses.length', addresses.length);
 
-	void shuffle(evonodes);
-	let evonode = evonodes.at(-1);
-	console.log('[debug] chosen evonode:');
-	console.log(JSON.stringify(evonode, null, 2));
+            let mempooldeltas = await rpc.getAddressMempool({ addresses: addresses });
+            console.log('[debug] mempooldeltas.result.length', mempooldeltas.result.length);
+            for (let delta of mempooldeltas.result) {
+                totalBalance += delta.satoshis;
 
-	let conn = Net.createConnection({
-		host: evonode.hostname,
-		port: evonode.port,
-		keepAlive: true,
-		keepAliveInitialDelay: 3,
-		//localAddress: rpc.host,
-	});
+                let data = keysMap[delta.address];
+                data.balance += delta.satoshis;
+                data.used = true;
+                used.push(data);
+            }
 
-	/** @type {Array<Buffer>} */
-	let chunks = [];
-	let chunksLength = 0;
-	let errReject;
+            let deltas = await rpc.getAddressDeltas({ addresses: addresses });
+            console.log('[debug] deltas.result.length', deltas.result.length);
+            for (let delta of deltas.result) {
+                totalBalance += delta.satoshis;
 
-	function onError(err) {
-		console.log('error');
-		console.error(err);
-		conn.removeListener('error', onError);
-		errReject(err);
-	}
-	function onEnd() {
-		console.log('[debug] disconnected from server');
-	}
-	conn.on('error', onError);
-	conn.once('end', onEnd);
-	conn.on('data', function (data) {
-		console.log('[DEBUG] data');
-		console.log(data);
-	});
+                let data = keysMap[delta.address];
+                data.balance += delta.satoshis;
+                data.used = true;
+                used.push(data);
+            }
 
-	let messages = [];
-	let listenerMap = {};
-	async function goRead() {
-		for (;;) {
-			let msg = await readMessage();
-			console.log('[DEBUG] readMessage', msg);
-			console.log('[DEBUG] msg.command', msg.command);
-			let i = messages.length;
-			messages.push(msg);
-			let listeners = Object.values(listenerMap);
-			for (let ln of listeners) {
-				void ln(msg, i, messages);
-			}
-		}
-	}
-	void goRead();
+            // console.log(keysMap);
+            // console.log(used);
+            process.exit(1);
+        }
 
-	/**
-	 * Reads a for a full 24 bytes, parses those bytes as a header,
-	 * and then reads the length of the payload. Any excess bytes will
-	 * be saved for the next cycle - meaning it can handle multiple
-	 * messages in a single packet.
-	 */
-	async function readMessage() {
-		const HEADER_SIZE = 24;
-		const PAYLOAD_SIZE_MAX = 4 * 1024 * 1024;
+    let evonodes = [];
+    {
+        let resp = await rpc.masternodelist();
+        let evonodesMap = resp.result;
+        let evonodeProTxIds = Object.keys(evonodesMap);
+        for (let id of evonodeProTxIds) {
+            let evonode = evonodesMap[id];
+            if (evonode.status === 'ENABLED') {
+                let hostParts = evonode.address.split(':');
+                let evodata = {
+                    id: evonode.id,
+                    hostname: hostParts[0],
+                    port: hostParts[1],
+                    type: evonode.type,
+                };
+                evonodes.push(evodata);
+            }
+        }
+        if (!evonodes.length) {
+            throw new Error('Sanity Fail: no evonodes online');
+        }
+    }
+
+    void shuffle(evonodes);
+    let evonode = evonodes.at(-1);
+    console.log('[debug] chosen evonode:');
+    console.log(JSON.stringify(evonode, null, 2));
+
+    let conn = Net.createConnection({
+        host: evonode.hostname,
+        port: evonode.port,
+        keepAlive: true,
+        keepAliveInitialDelay: 3,
+        //localAddress: rpc.host,
+    });
+
+    /** @type {Array<Buffer>} */
+    let chunks = [];
+    let chunksLength = 0;
+    let errReject;
+
+    function onError(err) {
+        console.log('error');
+        console.error(err);
+        conn.removeListener('error', onError);
+        errReject(err);
+    }
+    function onEnd() {
+        console.log('[debug] disconnected from server');
+    }
+    conn.on('error', onError);
+    conn.once('end', onEnd);
+    conn.on('data', function (data) {
+        console.log('[DEBUG] data');
+        console.log(data);
+    });
+
+    let messages = [];
+    let listenerMap = {};
+    async function goRead() {
+        for (;;) {
+            let msg = await readMessage();
+            console.log('[DEBUG] readMessage', msg);
+            console.log('[DEBUG] msg.command', msg.command);
+            let i = messages.length;
+            messages.push(msg);
+            let listeners = Object.values(listenerMap);
+            for (let ln of listeners) {
+                void ln(msg, i, messages);
+            }
+        }
+    }
+    void goRead();
+
+    /**
+     * Reads a for a full 24 bytes, parses those bytes as a header,
+     * and then reads the length of the payload. Any excess bytes will
+     * be saved for the next cycle - meaning it can handle multiple
+     * messages in a single packet.
+     */
+    async function readMessage() {
+        const HEADER_SIZE = 24;
+        const PAYLOAD_SIZE_MAX = 4 * 1024 * 1024;
 
 		// TODO setTimeout
 		let _resolve;
