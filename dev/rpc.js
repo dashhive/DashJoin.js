@@ -19,6 +19,7 @@ let DashRpc = require('dashrpc');
 
 // const DENOM_MOD = 100001;
 const MIN_UNUSED = 2500;
+// const MIN_UNUSED = 200;
 const MIN_BALANCE = 100001 * 10000;
 
 let rpcConfig = {
@@ -35,6 +36,15 @@ if (process.env.DASHD_RPC_TIMEOUT) {
 }
 
 async function main() {
+	/* jshint maxstatements: 1000 */
+
+	// let cache = {};
+	// try {
+	//     cache = require('./cache.json');
+	// } catch(e) {
+	//     cache = {}
+	// }
+
 	let network = 'regtest';
 	rpcConfig.onconnected = async function () {
 		let rpc = this;
@@ -47,9 +57,9 @@ async function main() {
 	console.info(`[debug] rpc server is ready. Height = ${height}`);
 
 	let seedHex = process.env.DASH_WALLET_SEED || '';
-    if (!seedHex) {
-        throw new Error('missing DASH_WALLET_SEED');
-    }
+	if (!seedHex) {
+		throw new Error('missing DASH_WALLET_SEED');
+	}
 	let seedBuffer = Buffer.from(seedHex, 'hex');
 	let seedBytes = new Uint8Array(seedBuffer);
 	let testCoin = '1';
@@ -77,6 +87,7 @@ async function main() {
 	let index = 0;
 	let numAddresses = 100;
 	for (;;) {
+		let uncheckedAddresses = [];
 		for (let i = 0; i < numAddresses; i += 1) {
 			let addressKey = await xreceiveKey.deriveAddress(index);
 
@@ -105,8 +116,9 @@ async function main() {
 					used: false,
 					satoshis: 0,
 				};
-                // console.log('[debug] addr info', data);
+				// console.log('[debug] addr info', data);
 				addresses.push(address);
+				uncheckedAddresses.push(address);
 			}
 			keysMap[index] = data;
 			keysMap[address] = data;
@@ -118,13 +130,15 @@ async function main() {
 			index += 1;
 		}
 		console.log('[debug] addresses.length', addresses.length);
+		console.log('[debug] uncheckedAddresses.length', uncheckedAddresses.length);
 
 		// TODO segment unused addresses
-		let unusedAddresses = Object.keys(unusedMap);
-		console.log('[debug] unusedAddresses.length', addresses.length);
+		// let unusedAddresses = Object.keys(unusedMap);
+		// console.log('[debug] unusedAddresses.length', unusedAddresses.length);
 
 		let mempooldeltas = await rpc.getAddressMempool({
-			addresses: unusedAddresses,
+			addresses: uncheckedAddresses,
+			// addresses: unusedAddresses,
 		});
 		console.log(
 			'[debug] mempooldeltas.result.length',
@@ -140,10 +154,12 @@ async function main() {
 			if (!used.includes(data)) {
 				used.push(data);
 			}
-			delete unusedAddresses[data.address];
+			delete unusedMap[data.address];
 		}
 
-		let deltas = await rpc.getAddressDeltas({ addresses: unusedAddresses });
+		let deltas = await rpc.getAddressDeltas({
+			addresses: uncheckedAddresses,
+		});
 		console.log('[debug] deltas.result.length', deltas.result.length);
 		for (let delta of deltas.result) {
 			totalBalance += delta.satoshis;
@@ -154,20 +170,29 @@ async function main() {
 			if (!used.includes(data)) {
 				used.push(data);
 			}
-			delete unusedAddresses[data.address];
+			delete unusedMap[data.address];
 		}
 
 		let numUnused = addresses.length - used.length;
 		if (numUnused >= MIN_UNUSED) {
+			console.log('[debug] addresses.length', addresses.length);
+			console.log('[debug] used.length', used.length);
 			break;
 		}
 	}
+	console.log('t:', totalBalance);
 
 	// TODO sort denominated
 	// for (let addr of addresses) { ... }
 
+	let largest = { balance: 0 };
 	for (let addr of addresses) {
-		if (keysMap[addr].used) {
+		let data = keysMap[addr];
+		if (data.balance > largest.balance) {
+			largest = data;
+			console.log('[debug] new largest:', largest);
+		}
+		if (data.used) {
 			continue;
 		}
 
@@ -176,8 +201,10 @@ async function main() {
 			break;
 		}
 
-		let blocksRpc = await rpc.generateToAddress(1, addr);
-		console.log('[debug] blocksRpc', blocksRpc);
+		void await rpc.generateToAddress(1, addr);
+		// let blocksRpc = await rpc.generateToAddress(1, addr);
+		// console.log('[debug] blocksRpc', blocksRpc);
+
 		// let deltas = await rpc.getAddressMempool({ addresses: [addr] });
 		// console.log('[debug] generatetoaddress mempool', deltas);
 		// let deltas2 = await rpc.getAddressDeltas({ addresses: [addr] });
@@ -188,15 +215,17 @@ async function main() {
 		// 	keysMap[delta.address].used = true;
 		// 	delete unusedMap[delta.address];
 		// }
+
 		let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
 		let utxos = utxosRpc.result;
 		for (let utxo of utxos) {
-			console.log('[debug] utxo', utxo);
+			console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
 			totalBalance += utxo.satoshis;
 			keysMap[utxo.address].used = true;
 			delete unusedMap[utxo.address];
 		}
 	}
+	console.log('[debug] absolute largest:', largest);
 	process.exit(1);
 
 	let evonodes = [];
