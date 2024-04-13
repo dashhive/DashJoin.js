@@ -31,13 +31,28 @@ if (process.env.DASHD_RPC_TIMEOUT) {
 }
 
 async function main() {
+	let network = 'regtest';
+	rpcConfig.onconnected = async function () {
+		let rpc = this;
+		console.log(`[debug] rpc client connected ${rpc.host}`);
+	};
+
+	let rpc = new DashRpc(rpcConfig);
+	rpc.onconnected = rpcConfig.onconnected;
+	let height = await rpc.init(rpc);
+	console.info(`[debug] rpc server is ready. Height = ${height}`);
+
 	let seedHex = process.env.DASH_WALLET_SEED || '';
 	let seedBuffer = Buffer.from(seedHex, 'hex');
 	let seedBytes = new Uint8Array(seedBuffer);
 	let walletKey = await DashHd.fromSeed(seedBytes, '');
 	let walletId = DashHd.toId(walletKey);
+
 	let xprvHdpath = `m/44'/5'/0'/0`;
-	let xprvKey = await DashHd.derivePath(walletKey, xprvHdpath);
+	let accountKey = await walletKey.deriveAccount(0);
+	let xprvKey = await accountKey.deriveXKey(walletKey, 0);
+	// let xprvHdpath = `m/44'/5'/0'/0`;
+	// let xprvKey = await DashHd.derivePath(walletKey, xprvHdpath);
 
 	// generate bunches of keys
 	// remove the leading `m/` or `m'/`
@@ -48,8 +63,10 @@ async function main() {
 	for (;;) {
 		let index = 0;
 		let addresses = [];
-		for (let i = 0; i < 1000; i += 1) {
-			let addressKey = await xprvKey.deriveAddress(index);
+		for (let i = 0; i < 10; i += 1) {
+			let addressKey = await xprvKey.deriveAddress(index, {
+				version: 'testnet',
+			});
 			index += 1;
 
 			// Descriptors are in the form of
@@ -60,19 +77,22 @@ async function main() {
 			// See also: https://github.com/dashpay/dash/blob/master/doc/descriptors.md
 			// TODO sort out sha vs double-sha vs fingerprint
 			let descriptor = `pkh([${walletId}/${partialPath}/${index}])`;
-			let address = await DashHd.toAddr(addressKey);
+			let address = await DashHd.toAddr(addressKey.publicKey);
 			let data = { index, descriptor, address };
 			keysMap[index] = data;
 			keysMap[address] = data;
 			addresses.push(address);
+			console.log(address);
 		}
-		let mempooldeltas = await rpc.getAddressMempool({ addresses });
+		let mempooldeltas = await rpc.getAddressMempool({ addresses: addresses });
+		console.log('mempooldeltas.length', mempooldeltas.length);
 		for (let delta of mempooldeltas) {
 			let data = keysMap[delta.address];
 			data.used = true;
 			used.push(data);
 		}
-		let deltas = await rpc.getAddressDeltas({ addresses });
+		let deltas = await rpc.getAddressDeltas({ addresses: addresses });
+		console.log('deltas.length', deltas.length);
 		for (let delta of deltas) {
 			let data = keysMap[delta.address];
 			data.used = true;
@@ -84,17 +104,6 @@ async function main() {
 		console.log(used);
 		process.exit(1);
 	}
-
-	let network = 'regtest';
-	rpcConfig.onconnected = async function () {
-		let rpc = this;
-		console.log(`[debug] rpc client connected ${rpc.host}`);
-	};
-
-	let rpc = new DashRpc(rpcConfig);
-	rpc.onconnected = rpcConfig.onconnected;
-	let height = await rpc.init(rpc);
-	console.info(`[debug] rpc server is ready. Height = ${height}`);
 
 	let evonodes = [];
 	{
