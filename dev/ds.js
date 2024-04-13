@@ -4,6 +4,8 @@ let DarkSend = module.exports;
 
 let Crypto = require('node:crypto');
 
+let CoinJoin = require('./coinjoin.js');
+
 DarkSend.PROTOCOL_VERSION = 70227;
 
 DarkSend.FIELD_SIZES = {
@@ -139,7 +141,7 @@ SERVICE_IDENTIFIERS.NETWORK_LIMITED = 0x400;
 
 /**
  * @typedef VersionOpts
- * @prop {NetworkName} chosen_network - "mainnet", "testnet", etc
+ * @prop {NetworkName} network - "mainnet", "testnet", etc
  * @prop {Uint32?} [protocol_version] - features (default: DarkSend.PROTOCOL_VERSION)
  * @prop {Array<ServiceBitmask>?} [addr_recv_services] - default: NETWORK
  * @prop {String} addr_recv_ip - ipv6 address (can be 'ipv4-mapped') of the server
@@ -155,7 +157,7 @@ SERVICE_IDENTIFIERS.NETWORK_LIMITED = 0x400;
  */
 
 /**
- * Constructs a version packet, with fields in the correct byte order.
+ * Constructs a version message, with fields in the correct byte order.
  * @param {VersionOpts} opts
  *
  * See also:
@@ -163,7 +165,7 @@ SERVICE_IDENTIFIERS.NETWORK_LIMITED = 0x400;
  */
 /* jshint maxcomplexity: 9001 */
 DarkSend.version = function ({
-	chosen_network,
+	network,
 	protocol_version = DarkSend.PROTOCOL_VERSION,
 	// alias of addr_trans_services
 	//services,
@@ -180,7 +182,7 @@ DarkSend.version = function ({
 	mnauth_challenge = null,
 }) {
 	let args = {
-		chosen_network,
+		network,
 		protocol_version,
 		addr_recv_services,
 		addr_recv_ip,
@@ -196,8 +198,8 @@ DarkSend.version = function ({
 	};
 	let SIZES = Object.assign({}, DarkSend.FIELD_SIZES);
 
-	if (!DarkSend.NETWORKS[args.chosen_network]) {
-		throw new Error(`"chosen_network" '${args.chosen_network}' is invalid.`);
+	if (!DarkSend.NETWORKS[args.network]) {
+		throw new Error(`"network" '${args.network}' is invalid.`);
 	}
 	if (!Array.isArray(args.addr_recv_services)) {
 		throw new Error('"addr_recv_services" must be an array');
@@ -256,11 +258,11 @@ DarkSend.version = function ({
 		SIZES.RELAY +
 		SIZES.MNAUTH_CHALLENGE +
 		SIZES.MN_CONNECTION;
-	let packet = new Uint8Array(TOTAL_SIZE);
+	let payload = new Uint8Array(TOTAL_SIZE);
 	// Protocol version
 
 	let versionBytes = uint32ToBytesLE(args.protocol_version);
-	packet.set(versionBytes, 0);
+	payload.set(versionBytes, 0);
 
 	/**
 	 * Set services to NODE_NETWORK (1) + NODE_BLOOM (4)
@@ -274,13 +276,13 @@ DarkSend.version = function ({
 		}
 		let senderServices64 = new BigInt64Array([senderServicesMask]); // jshint ignore:line
 		senderServicesBytes = new Uint8Array(senderServices64.buffer);
-		packet.set(senderServicesBytes, SERVICES_OFFSET);
+		payload.set(senderServicesBytes, SERVICES_OFFSET);
 	}
 
 	const TIMESTAMP_OFFSET = SERVICES_OFFSET + SIZES.SERVICES;
 	{
 		let tsBytes = uint32ToBytesLE(Date.now());
-		packet.set(tsBytes, TIMESTAMP_OFFSET);
+		payload.set(tsBytes, TIMESTAMP_OFFSET);
 	}
 
 	let ADDR_RECV_SERVICES_OFFSET = TIMESTAMP_OFFSET + SIZES.TIMESTAMP;
@@ -291,7 +293,7 @@ DarkSend.version = function ({
 		}
 		let serverServices64 = new BigInt64Array([serverServicesMask]); // jshint ignore:line
 		let serverServicesBytes = new Uint8Array(serverServices64.buffer);
-		packet.set(serverServicesBytes, ADDR_RECV_SERVICES_OFFSET);
+		payload.set(serverServicesBytes, ADDR_RECV_SERVICES_OFFSET);
 	}
 
 	/**
@@ -302,8 +304,8 @@ DarkSend.version = function ({
 		ADDR_RECV_SERVICES_OFFSET + SIZES.ADDR_RECV_SERVICES;
 	{
 		let ipBytesBE = ipv4ToBytesBE(args.addr_recv_ip);
-		packet.set([0xff, 0xff], ADDR_RECV_IP_OFFSET + 10);
-		packet.set(ipBytesBE, ADDR_RECV_IP_OFFSET + 12);
+		payload.set([0xff, 0xff], ADDR_RECV_IP_OFFSET + 10);
+		payload.set(ipBytesBE, ADDR_RECV_IP_OFFSET + 12);
 	}
 
 	/**
@@ -314,14 +316,14 @@ DarkSend.version = function ({
 		let portBytes16 = Uint16Array.from([args.addr_recv_port]);
 		let portBytes = new Uint8Array(portBytes16.buffer);
 		portBytes.reverse();
-		packet.set(portBytes, ADDR_RECV_PORT_OFFSET);
+		payload.set(portBytes, ADDR_RECV_PORT_OFFSET);
 	}
 
 	/**
 	 * Copy address transmitted services
 	 */
 	let ADDR_TRANS_SERVICES_OFFSET = ADDR_RECV_PORT_OFFSET + SIZES.ADDR_RECV_PORT;
-	packet.set(senderServicesBytes, ADDR_TRANS_SERVICES_OFFSET);
+	payload.set(senderServicesBytes, ADDR_TRANS_SERVICES_OFFSET);
 
 	/**
 	 * We add the extra 10, so that we can encode an ipv4-mapped ipv6 address
@@ -333,13 +335,13 @@ DarkSend.version = function ({
 			let ipv6Parts = args.addr_trans_ip.split(':');
 			let ipv4Str = ipv6Parts.at(-1);
 			let ipBytesBE = ipv4ToBytesBE(ipv4Str);
-			packet.set(ipBytesBE, ADDR_TRANS_IP_OFFSET + 12);
-			packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
+			payload.set(ipBytesBE, ADDR_TRANS_IP_OFFSET + 12);
+			payload.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
 		} else {
 			/** TODO: ipv4-only & ipv6-only */
 			let ipBytesBE = ipv4ToBytesBE(args.addr_trans_ip);
-			packet.set(ipBytesBE, ADDR_TRANS_IP_OFFSET + 12);
-			packet.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
+			payload.set(ipBytesBE, ADDR_TRANS_IP_OFFSET + 12);
+			payload.set([0xff, 0xff], ADDR_TRANS_IP_OFFSET + 10); // we add the 10 so that we can fill the latter 6 bytes
 		}
 	}
 
@@ -348,7 +350,7 @@ DarkSend.version = function ({
 		let portBytes16 = Uint16Array.from([args.addr_trans_port]);
 		let portBytes = new Uint8Array(portBytes16.buffer);
 		portBytes.reverse();
-		packet.set(portBytes, ADDR_TRANS_PORT_OFFSET);
+		payload.set(portBytes, ADDR_TRANS_PORT_OFFSET);
 	}
 
 	// TODO we should set this to prevent duplicate broadcast
@@ -358,28 +360,28 @@ DarkSend.version = function ({
 		args.nonce = new Uint8Array(SIZES.NONCE);
 		Crypto.getRandomValues(args.nonce);
 	}
-	packet.set(args.nonce, NONCE_OFFSET);
+	payload.set(args.nonce, NONCE_OFFSET);
 
 	let USER_AGENT_BYTES_OFFSET = NONCE_OFFSET + SIZES.NONCE;
 	if (null !== args.user_agent && typeof args.user_agent === 'string') {
 		let userAgentSize = args.user_agent.length;
-		packet.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
+		payload.set([userAgentSize], USER_AGENT_BYTES_OFFSET);
 		let uaBytes = textEncoder.encode(args.user_agent);
-		packet.set(uaBytes, USER_AGENT_BYTES_OFFSET + 1);
+		payload.set(uaBytes, USER_AGENT_BYTES_OFFSET + 1);
 	} else {
-		packet.set([0x0], USER_AGENT_BYTES_OFFSET);
+		payload.set([0x0], USER_AGENT_BYTES_OFFSET);
 	}
 
 	let START_HEIGHT_OFFSET =
 		USER_AGENT_BYTES_OFFSET + SIZES.USER_AGENT_BYTES + SIZES.USER_AGENT_STRING;
 	{
 		let heightBytes = uint32ToBytesLE(args.start_height);
-		packet.set(heightBytes, START_HEIGHT_OFFSET);
+		payload.set(heightBytes, START_HEIGHT_OFFSET);
 	}
 
 	let RELAY_OFFSET = START_HEIGHT_OFFSET + SIZES.START_HEIGHT;
 	if (args.relay !== null) {
-		packet.set([args.relay ? 0x01 : 0x00], RELAY_OFFSET);
+		payload.set([args.relay ? 0x01 : 0x00], RELAY_OFFSET);
 	}
 
 	let MNAUTH_CHALLENGE_OFFSET = RELAY_OFFSET + SIZES.RELAY;
@@ -388,46 +390,70 @@ DarkSend.version = function ({
 		Crypto.getRandomValues(rnd);
 		args.mnauth_challenge = rnd;
 	}
-	packet.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
+	payload.set(args.mnauth_challenge, MNAUTH_CHALLENGE_OFFSET);
 
 	let MNAUTH_CONNECTION_OFFSET = MNAUTH_CHALLENGE_OFFSET + SIZES.MN_CONNECTION;
 	if (args.mn_connection) {
-		packet.set(0x01, MNAUTH_CONNECTION_OFFSET);
+		payload.set(0x01, MNAUTH_CONNECTION_OFFSET);
 	}
 
-	packet = wrap_packet(args.chosen_network, 'version', packet);
-	return packet;
+	let command = 'version';
+	payload = DarkSend.packMessage({ network, command, payload });
+	return payload;
 };
 
-function wrap_packet(net, command_name, payload) {
+DarkSend.allow = function ({ network, denomination, collateralTx }) {
+	const DENOMINATION_SIZE = 4;
+
+	let denomMask = CoinJoin.STANDARD_DENOMINATION_MASKS[denomination];
+	if (!denomMask) {
+		throw new Error(
+			`contact your local Dash representative to vote for denominations of '${denomination}'`,
+		);
+	}
+
+	let totalLength = DENOMINATION_SIZE + collateralTx.length;
+	let payload = new Uint8Array(totalLength);
+	let dv = new DataView(payload.buffer);
+
+	let offset = 0;
+	dv.setUint32(denomMask, offset);
+
+	offset += SIZES.DENOMINATION;
+	payload.set(collateralTx, offset);
+
+	let message = DarkSend.packMessage(network, 'dsa', payload);
+	return message;
+};
+
+DarkSend.packMessage = function ({ network, command, payload }) {
 	let payloadLength = payload?.byteLength || 0;
 	let TOTAL_SIZE = TOTAL_HEADER_SIZE + payloadLength;
 
-	let packet = new Uint8Array(TOTAL_SIZE);
-	packet.set(DarkSend.NETWORKS[net].magic, 0);
+	let message = new Uint8Array(TOTAL_SIZE);
+	message.set(DarkSend.NETWORKS[network].magic, 0);
 
 	// Set command_name (char[12])
 	let COMMAND_NAME_OFFSET = SIZES.MAGIC_BYTES;
-	let nameBytes = textEncoder.encode(command_name);
-	packet.set(nameBytes, COMMAND_NAME_OFFSET);
+	let nameBytes = textEncoder.encode(command);
+	message.set(nameBytes, COMMAND_NAME_OFFSET);
 
 	// Finally, append the payload to the header
 	let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
 	let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
 	if (payloadLength === 0) {
-		packet.set(EMPTY_CHECKSUM, CHECKSUM_OFFSET);
-		return packet;
+		message.set(EMPTY_CHECKSUM, CHECKSUM_OFFSET);
+		return message;
 	}
 
 	let payloadSizeBytes = uint32ToBytesLE(payloadLength);
-	packet.set(payloadSizeBytes, PAYLOAD_SIZE_OFFSET);
-	packet.set(compute_checksum(payload), CHECKSUM_OFFSET);
+	message.set(payloadSizeBytes, PAYLOAD_SIZE_OFFSET);
+	message.set(compute_checksum(payload), CHECKSUM_OFFSET);
 
 	let ACTUAL_PAYLOAD_OFFSET = CHECKSUM_OFFSET + SIZES.CHECKSUM;
-	packet.set(payload, ACTUAL_PAYLOAD_OFFSET);
-	return packet;
-}
-DarkSend.header = wrap_packet;
+	message.set(payload, ACTUAL_PAYLOAD_OFFSET);
+	return message;
+};
 
 /**
  * First 4 bytes of SHA256(SHA256(payload)) in internal byte order.

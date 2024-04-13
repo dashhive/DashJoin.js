@@ -13,8 +13,9 @@ let Net = require('node:net');
 let DarkSend = require('./ds.js'); // TODO rename packer
 let Parser = require('./parser.js');
 
-let RpcClient = require('@dashevo/dashd-rpc/promise');
-require('./rpc-shim.js'); // see https://github.com/dashpay/dashd-rpc/issues/68
+let DashHd = require('dashhd');
+let DashRpc = require('dashrpc');
+let DashTx = require('dashtx');
 
 let rpcConfig = {
 	protocol: 'http', // https for remote, http for local / private networking
@@ -30,13 +31,67 @@ if (process.env.DASHD_RPC_TIMEOUT) {
 }
 
 async function main() {
+	let seedHex = process.env.DASH_WALLET_SEED || '';
+	let seedBuffer = Buffer.from(seedHex, 'hex');
+	let seedBytes = new Uint8Array(seedBuffer);
+	let walletKey = await DashHd.fromSeed(seedBytes, '');
+	let walletId = DashHd.toId(walletKey);
+	let xprvHdpath = `m/44'/5'/0'/0`;
+	let xprvKey = await DashHd.derivePath(walletKey, xprvHdpath);
+
+	// generate bunches of keys
+	// remove the leading `m/` or `m'/`
+	let partialPath = xprvHdpath.replace(/^m'?\//, '');
+	let lastUsedIndex = 0;
+	let keysMap = {};
+	let used = [];
+	for (;;) {
+		let index = 0;
+		let addresses = [];
+		for (let i = 0; i < 1000; i += 1) {
+			let addressKey = await xprvKey.deriveAddress(index);
+			index += 1;
+
+			// Descriptors are in the form of
+			//   - pkh(xpub123...abc/2) - for the 3rd address of a receiving or change xpub
+			//   - pkh(xpub456...def/0/2) - for the 3rd receive address of an account xpub
+			//   - pkh([walletid/44'/0'/0']xpub123...abc/0/2) - same, plus wallet & hd info
+			//   - pkh([walletid/44'/0'/0'/0/2]Xaddr...#checksum) - same, but the address
+			// See also: https://github.com/dashpay/dash/blob/master/doc/descriptors.md
+			// TODO sort out sha vs double-sha vs fingerprint
+			let descriptor = `pkh([${walletId}/${partialPath}/${index}])`;
+			let address = await DashHd.toAddr(addressKey);
+			let data = { index, descriptor, address };
+			keysMap[index] = data;
+			keysMap[address] = data;
+			addresses.push(address);
+		}
+		let mempooldeltas = await rpc.getAddressMempool({ addresses });
+		for (let delta of mempooldeltas) {
+			let data = keysMap[delta.address];
+			data.used = true;
+			used.push(data);
+		}
+		let deltas = await rpc.getAddressDeltas({ addresses });
+		for (let delta of deltas) {
+			let data = keysMap[delta.address];
+			data.used = true;
+			used.push(data);
+		}
+
+		console.log(keysMap);
+		// TODO check for unused
+		console.log(used);
+		process.exit(1);
+	}
+
 	let network = 'regtest';
 	rpcConfig.onconnected = async function () {
 		let rpc = this;
 		console.log(`[debug] rpc client connected ${rpc.host}`);
 	};
 
-	let rpc = new RpcClient(rpcConfig);
+	let rpc = new DashRpc(rpcConfig);
 	rpc.onconnected = rpcConfig.onconnected;
 	let height = await rpc.init(rpc);
 	console.info(`[debug] rpc server is ready. Height = ${height}`);
@@ -315,7 +370,7 @@ async function main() {
 		};
 	});
 
-	let verackBytes = DarkSend.header(network, 'verack', null);
+	let verackBytes = DarkSend.packMessage(network, 'verack', null);
 	conn.write(verackBytes);
 
 	await new Promise(function (resolve, reject) {
