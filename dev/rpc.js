@@ -15,11 +15,11 @@ let Parser = require('./parser.js');
 
 let DashHd = require('dashhd');
 let DashRpc = require('dashrpc');
-//let DashTx = require('dashtx');
+let DashTx = require('dashtx');
 
 // const DENOM_MOD = 100001;
-const MIN_UNUSED = 2500;
-// const MIN_UNUSED = 200;
+// const MIN_UNUSED = 2500;
+const MIN_UNUSED = 200;
 const MIN_BALANCE = 100001 * 10000;
 
 let rpcConfig = {
@@ -149,7 +149,7 @@ async function main() {
 			totalBalance += delta.satoshis;
 
 			let data = keysMap[delta.address];
-			data.balance += delta.satoshis;
+			data.satoshis += delta.satoshis;
 			data.used = true;
 			if (!used.includes(data)) {
 				used.push(data);
@@ -165,7 +165,7 @@ async function main() {
 			totalBalance += delta.satoshis;
 
 			let data = keysMap[delta.address];
-			data.balance += delta.satoshis;
+			data.satoshis += delta.satoshis;
 			data.used = true;
 			if (!used.includes(data)) {
 				used.push(data);
@@ -185,10 +185,11 @@ async function main() {
 	// TODO sort denominated
 	// for (let addr of addresses) { ... }
 
-	let largest = { balance: 0 };
+	let largest = { satoshis: 0 };
 	for (let addr of addresses) {
 		let data = keysMap[addr];
-		if (data.balance > largest.balance) {
+        console.log(data);
+		if (data.satoshis > largest.satoshis) {
 			largest = data;
 			console.log('[debug] new largest:', largest);
 		}
@@ -201,7 +202,7 @@ async function main() {
 			break;
 		}
 
-		void await rpc.generateToAddress(1, addr);
+		void (await rpc.generateToAddress(1, addr));
 		// let blocksRpc = await rpc.generateToAddress(1, addr);
 		// console.log('[debug] blocksRpc', blocksRpc);
 
@@ -220,6 +221,7 @@ async function main() {
 		let utxos = utxosRpc.result;
 		for (let utxo of utxos) {
 			console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
+			data.satoshis += utxo.satoshis;
 			totalBalance += utxo.satoshis;
 			keysMap[utxo.address].used = true;
 			delete unusedMap[utxo.address];
