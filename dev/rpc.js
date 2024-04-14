@@ -10,12 +10,15 @@ let pkg = require('../package.json');
 
 let Net = require('node:net');
 
+let CoinJoin = require('./coinjoin.js');
 let DarkSend = require('./ds.js'); // TODO rename packer
 let Parser = require('./parser.js');
 
 let DashHd = require('dashhd');
+let DashKeys = require('dashkeys');
 let DashRpc = require('dashrpc');
 let DashTx = require('dashtx');
+let Secp256k1 = require('@dashincubator/secp256k1');
 
 // const DENOM_MOD = 100001;
 // const MIN_UNUSED = 2500;
@@ -109,6 +112,10 @@ async function main() {
 			let data = keysMap[address];
 			if (!data) {
 				data = {
+					walletId: walletId,
+					prefix: "m/44'/1'",
+					account: 0,
+					usage: 0,
 					index: index,
 					descriptor: descriptor,
 					address: address,
@@ -186,15 +193,19 @@ async function main() {
 	// for (let addr of addresses) { ... }
 
 	let largest = { satoshis: 0 };
+	let change;
 	for (let addr of addresses) {
 		let data = keysMap[addr];
-        console.log(data);
+		console.log(data);
 		if (data.satoshis > largest.satoshis) {
 			largest = data;
 			console.log('[debug] new largest:', largest);
 		}
 		if (data.used) {
 			continue;
+		}
+		if (!change) {
+			change = data;
 		}
 
 		console.log('[debug] totalBalance:', totalBalance);
@@ -227,7 +238,65 @@ async function main() {
 			delete unusedMap[utxo.address];
 		}
 	}
+
+	let dashTx = DashTx.create({ sign: sign });
+
+	async function sign(privateKey, hash) {
+		// TODO update DashTx docs arguments from object to 2 args
+		let sigOpts = { canonical: true, extraEntropy: true };
+		let sigBytes = await Secp256k1.sign(hash, privateKey, sigOpts);
+		// TODO update DashTx docs return from hex to bytes
+		//return DashTx.utils.u8ToHex(sigBytes);
+		return sigBytes;
+	}
+
 	console.log('[debug] absolute largest:', largest);
+
+	{
+		let addr = largest.address;
+		let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
+		let utxos = utxosRpc.result;
+		let fee = CoinJoin.COLLATERAL;
+		for (let utxo of utxos) {
+			console.log('[debug] utxo', utxo);
+			// utxo.sigHashType = 0x01;
+			utxo.address = addr;
+			if (utxo.txid) {
+				// TODO fix in dashtx
+				utxo.txId = utxo.txid;
+			}
+		}
+		let output = Object.assign({}, change);
+		let pubKeyHashBytes = await DashKeys.addrToPkh(change.address, {
+			version: 'testnet',
+		});
+		output.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+		output.satoshis = largest.satoshis - fee;
+		// TODO
+		// if (collateralUtxoIsDust) {
+		//     output = { memo: '', satoshis: 0 };
+		// }
+		console.log('[debug] change', change);
+		let txInfo = {
+			version: 3,
+			inputs: utxos,
+			outputs: [output],
+			locktime: 0,
+		};
+		txInfo.inputs.sort(DashTx.sortInputs);
+		txInfo.outputs.sort(DashTx.sortOutputs);
+
+		let keys = [];
+		for (let input of txInfo.inputs) {
+			let data = keysMap[input.address];
+			let addressKey = await xreceiveKey.deriveAddress(data.index);
+			keys.push(addressKey.privateKey);
+		}
+		console.log(keys);
+		let txInfoSigned = await dashTx.hashAndSignAll(txInfo, keys);
+		console.log(txInfoSigned);
+	}
+
 	process.exit(1);
 
 	let evonodes = [];
