@@ -57,7 +57,7 @@ async function main() {
 	let rpc = new DashRpc(rpcConfig);
 	rpc.onconnected = rpcConfig.onconnected;
 	let height = await rpc.init(rpc);
-	console.info(`[debug] rpc server is ready. Height = ${height}`);
+	console.info(`[info] rpc server is ready. Height = ${height}`);
 
 	let seedHex = process.env.DASH_WALLET_SEED || '';
 	if (!seedHex) {
@@ -136,8 +136,8 @@ async function main() {
 
 			index += 1;
 		}
-		console.log('[debug] addresses.length', addresses.length);
-		console.log('[debug] uncheckedAddresses.length', uncheckedAddresses.length);
+		// console.log('[debug] addresses.length', addresses.length);
+		// console.log('[debug] uncheckedAddresses.length', uncheckedAddresses.length);
 
 		// TODO segment unused addresses
 		// let unusedAddresses = Object.keys(unusedMap);
@@ -147,10 +147,10 @@ async function main() {
 			addresses: uncheckedAddresses,
 			// addresses: unusedAddresses,
 		});
-		console.log(
-			'[debug] mempooldeltas.result.length',
-			mempooldeltas.result.length,
-		);
+		// console.log(
+		// 	'[debug] mempooldeltas.result.length',
+		// 	mempooldeltas.result.length,
+		// );
 		// TODO check that we have a duplicate in both deltas by using txid, vin/vout
 		for (let delta of mempooldeltas.result) {
 			totalBalance += delta.satoshis;
@@ -167,7 +167,7 @@ async function main() {
 		let deltas = await rpc.getAddressDeltas({
 			addresses: uncheckedAddresses,
 		});
-		console.log('[debug] deltas.result.length', deltas.result.length);
+		// console.log('[debug] deltas.result.length', deltas.result.length);
 		for (let delta of deltas.result) {
 			totalBalance += delta.satoshis;
 
@@ -182,12 +182,12 @@ async function main() {
 
 		let numUnused = addresses.length - used.length;
 		if (numUnused >= MIN_UNUSED) {
-			console.log('[debug] addresses.length', addresses.length);
-			console.log('[debug] used.length', used.length);
+			// console.log('[debug] addresses.length', addresses.length);
+			// console.log('[debug] used.length', used.length);
 			break;
 		}
 	}
-	console.log('t:', totalBalance);
+	console.log('[debug] wallet balance:', totalBalance);
 
 	// TODO sort denominated
 	// for (let addr of addresses) { ... }
@@ -196,10 +196,10 @@ async function main() {
 	let change;
 	for (let addr of addresses) {
 		let data = keysMap[addr];
-		console.log(data);
+		// console.log(data);
 		if (data.satoshis > largest.satoshis) {
 			largest = data;
-			console.log('[debug] new largest:', largest);
+			// console.log('[debug] new largest:', largest);
 		}
 		if (data.used) {
 			continue;
@@ -208,7 +208,7 @@ async function main() {
 			change = data;
 		}
 
-		console.log('[debug] totalBalance:', totalBalance);
+		// console.log('[debug] totalBalance:', totalBalance);
 		if (totalBalance >= MIN_BALANCE) {
 			break;
 		}
@@ -231,7 +231,7 @@ async function main() {
 		let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
 		let utxos = utxosRpc.result;
 		for (let utxo of utxos) {
-			console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
+			// console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
 			data.satoshis += utxo.satoshis;
 			totalBalance += utxo.satoshis;
 			keysMap[utxo.address].used = true;
@@ -250,15 +250,16 @@ async function main() {
 		return sigBytes;
 	}
 
-	console.log('[debug] absolute largest:', largest);
+	console.log('[debug] largest coin:', largest);
 
+	let collateralTx;
 	{
 		let addr = largest.address;
 		let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
 		let utxos = utxosRpc.result;
 		let fee = CoinJoin.COLLATERAL;
 		for (let utxo of utxos) {
-			console.log('[debug] utxo', utxo);
+			console.log('[debug] input utxo', utxo);
 			// utxo.sigHashType = 0x01;
 			utxo.address = addr;
 			if (utxo.txid) {
@@ -292,12 +293,11 @@ async function main() {
 			let addressKey = await xreceiveKey.deriveAddress(data.index);
 			keys.push(addressKey.privateKey);
 		}
-		console.log(keys);
-		let txInfoSigned = await dashTx.hashAndSignAll(txInfo, keys);
-		console.log(txInfoSigned);
-	}
 
-	process.exit(1);
+		let txInfoSigned = await dashTx.hashAndSignAll(txInfo, keys);
+		collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
+	}
+	console.log('[debug] dsa collateral tx', collateralTx);
 
 	let evonodes = [];
 	{
@@ -324,7 +324,7 @@ async function main() {
 
 	void shuffle(evonodes);
 	let evonode = evonodes.at(-1);
-	console.log('[debug] chosen evonode:');
+	console.info('[info] chosen evonode:');
 	console.log(JSON.stringify(evonode, null, 2));
 
 	let conn = Net.createConnection({
@@ -341,19 +341,21 @@ async function main() {
 	let errReject;
 
 	function onError(err) {
-		console.log('error');
+		console.error('Error:');
 		console.error(err);
 		conn.removeListener('error', onError);
 		errReject(err);
 	}
 	function onEnd() {
-		console.log('[debug] disconnected from server');
+		console.info('[info] disconnected from server');
 	}
 	conn.on('error', onError);
 	conn.once('end', onEnd);
+	let dataCount = 0;
 	conn.on('data', function (data) {
 		console.log('[DEBUG] data');
-		console.log(data);
+		console.log(dataCount, data);
+		dataCount += 1;
 	});
 
 	let messages = [];
@@ -361,8 +363,8 @@ async function main() {
 	async function goRead() {
 		for (;;) {
 			let msg = await readMessage();
-			console.log('[DEBUG] readMessage', msg);
-			console.log('[DEBUG] msg.command', msg.command);
+			// console.log('[DEBUG] readMessage', msg);
+			// console.log('[DEBUG] msg.command', msg.command);
 			let i = messages.length;
 			messages.push(msg);
 			let listeners = Object.values(listenerMap);
@@ -411,7 +413,7 @@ async function main() {
 		}
 
 		function onReadableHeader(data) {
-			console.log('readable header');
+			console.log('State: reading header');
 			let chunk;
 			for (;;) {
 				chunk = data;
@@ -421,10 +423,10 @@ async function main() {
 				}
 				chunks.push(chunk);
 				chunksLength += chunk.byteLength;
-				if (chunksLength < HEADER_SIZE) {
-					return;
-				}
 				data = null; // TODO nix
+			}
+			if (chunksLength < HEADER_SIZE) {
+				return;
 			}
 			if (chunks.length > 1) {
 				chunk = Buffer.concat(chunks, chunksLength);
@@ -441,18 +443,24 @@ async function main() {
 			}
 			header = Parser.parseHeader(chunk);
 			if (header.payloadSize > PAYLOAD_SIZE_MAX) {
-				throw new Error('no big you are, handle you I cannot');
+				throw new Error('too big you are, handle you I cannot');
 			}
-			console.log('DEBUG header', header);
+			// console.log('DEBUG header', header);
 			conn.removeListener('readable', onReadableHeader);
 			conn.removeListener('data', onReadableHeader);
 			//conn.on('readable', onReadablePayload);
+
+			if (header.payloadSize === 0) {
+				resolve(header);
+				return;
+			}
+
 			conn.on('data', onReadablePayload);
 			onReadablePayload(null);
 		}
 
 		function onReadablePayload(data) {
-			console.log('readable payload');
+			console.log('State: reading payload');
 			let chunk;
 			for (;;) {
 				chunk = data;
@@ -462,10 +470,10 @@ async function main() {
 				}
 				chunks.push(chunk);
 				chunksLength += chunk.byteLength;
-				if (chunksLength < header.payloadSize) {
-					return;
-				}
-				data = null; // TODO nx
+				data = null; // TODO nix
+			}
+			if (chunksLength < header.payloadSize) {
+				return;
 			}
 			if (chunks.length > 1) {
 				chunk = Buffer.concat(chunks, chunksLength);
@@ -491,6 +499,10 @@ async function main() {
 
 		errReject = reject;
 		//conn.on('readable', onReadableHeader);
+
+		if (chunks.length) {
+			onReadableHeader(null);
+		}
 		conn.on('data', onReadableHeader);
 
 		let msg = await p;
@@ -535,9 +547,11 @@ async function main() {
 	await waitForConnect();
 	console.log('connected');
 
+	//
 	// version / verack
+	//
 	let versionMsg = DarkSend.version({
-		chosen_network: network, // DarkSend.NETWORKS.regtest,
+		network: network, // DarkSend.NETWORKS.regtest,
 		//protocol_version: DarkSend.PROTOCOL_VERSION,
 		//addr_recv_services: [DarkSend.IDENTIFIER_SERVICES.NETWORK],
 		addr_recv_ip: evonode.hostname,
@@ -556,10 +570,10 @@ async function main() {
 		mn_connection: false,
 	});
 
-	let versionBuffer = Buffer.from(versionMsg);
-	console.log('version', versionBuffer.toString('hex'));
-	console.log(Parser.parseHeader(versionBuffer.slice(0, 24)));
-	console.log(Parser.parseVerack(versionBuffer.slice(24)));
+	// let versionBuffer = Buffer.from(versionMsg);
+	// console.log('version', versionBuffer.toString('hex'));
+	// console.log(Parser.parseHeader(versionBuffer.slice(0, 24)));
+	// console.log(Parser.parseVerack(versionBuffer.slice(24)));
 
 	conn.write(versionMsg);
 
@@ -573,11 +587,19 @@ async function main() {
 		};
 	});
 
-	let verackBytes = DarkSend.packMessage(network, 'verack', null);
+	let verackBytes = DarkSend.packMessage({
+		network,
+		command: 'verack',
+		payload: null,
+	});
 	conn.write(verackBytes);
 
 	await new Promise(function (resolve, reject) {
 		listenerMap['verack'] = async function (message) {
+			if (message.command !== 'verack') {
+				return;
+			}
+
 			console.log('DEBUG verack', message);
 			resolve();
 			listenerMap['verack'] = null;
@@ -585,11 +607,47 @@ async function main() {
 		};
 	});
 
+	//
 	// dsa / dssu + dsq
+	//
+	let denomination = 100001 * 100;
+	let dsaMsg = await DarkSend.packAllow({
+		network,
+		denomination,
+		collateralTx,
+	});
+	conn.write(dsaMsg);
+	let dsaBuf = Buffer.from(dsaMsg);
+	// console.log('[debug] dsa', dsaBuf.toString('hex'));
+
 	// TODO setTimeout
-	await new Promise(function (_resolve, _reject) {
-		//
-		_resolve();
+	await new Promise(function (resolve, reject) {
+		listenerMap['dssu'] = async function (message) {
+			if (message.command !== 'dssu') {
+				return;
+			}
+
+			let dssu = await Parser.parseDssu(message.payload);
+			console.log('DEBUG dssu', dssu);
+
+			resolve();
+			listenerMap['dssu'] = null;
+			delete listenerMap['dssu'];
+		};
+	});
+	await new Promise(function (resolve, reject) {
+		listenerMap['dsq'] = async function (message) {
+			if (message.command !== 'dsq') {
+				return;
+			}
+
+			let dsq = await Parser.parseDsq(message.payload);
+			console.log('DEBUG dsq', dsq);
+
+			resolve();
+			listenerMap['dsq'] = null;
+			delete listenerMap['dsq'];
+		};
 	});
 
 	console.log('exiting?');

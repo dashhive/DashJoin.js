@@ -3,7 +3,7 @@
 let Parser = module.exports;
 
 const DV_LITTLE_ENDIAN = true;
-const DV_BIG_ENDIAN = true;
+const DV_BIG_ENDIAN = false;
 //let EMPTY_HASH = Buffer.from('5df6e0e2', 'hex');
 
 /**
@@ -16,8 +16,18 @@ const DV_BIG_ENDIAN = true;
  * See also:
  *     - https://docs.dash.org/projects/core/en/stable/docs/reference/p2p-network-message-headers.html#message-headers
  */
-Parser.parseHeader = function (buffer) {
-	console.log(buffer);
+Parser.parseHeader = function (bytes) {
+	let buffer = Buffer.from(bytes);
+	console.log(
+		'[debug] parseHeader(bytes)',
+		buffer.length,
+		buffer.toString('hex'),
+	);
+	console.log(buffer.toString('utf8'));
+
+	bytes = new Uint8Array(buffer);
+	let dv = new DataView(bytes.buffer);
+
 	let commandStart = 4;
 	let payloadSizeStart = 16;
 	let checksumStart = 20;
@@ -31,24 +41,28 @@ Parser.parseHeader = function (buffer) {
 	let commandBuf = buffer.slice(commandStart, commandEnd);
 	let command = commandBuf.toString('utf8');
 
-	let bytes = new Uint8Array(buffer);
-	let dv = new DataView(bytes.buffer);
 	let payloadSize = dv.getUint32(payloadSizeStart, DV_LITTLE_ENDIAN);
 	let checksum = buffer.slice(checksumStart, checksumStart + 4);
 
-	let header = {
+	let headerMessage = {
 		magicBytes,
 		command,
 		payloadSize,
 		checksum,
 	};
 
-	return header;
+	console.log(headerMessage);
+	console.log();
+	return headerMessage;
 };
 
 Parser.parseVersion = function (bytes) {
 	let buffer = Buffer.from(bytes);
-	console.log('parseVerack', buffer.toString('hex'));
+	console.log(
+		'[debug] parseVersion(bytpes)',
+		buffer.length,
+		buffer.toString('hex'),
+	);
 	console.log(buffer.toString('utf8'));
 
 	bytes = new Uint8Array(buffer);
@@ -61,7 +75,7 @@ Parser.parseVersion = function (bytes) {
 	let servicesMask = dv.getBigUint64(servicesStart, DV_LITTLE_ENDIAN);
 
 	let timestampStart = servicesStart + 8; // + SIZES.SERVICES (8)
-	let timestamp64n = dv.getBigUint64(timestampStart, DV_LITTLE_ENDIAN);
+	let timestamp64n = dv.getBigInt64(timestampStart, DV_LITTLE_ENDIAN);
 	let timestamp64 = Number(timestamp64n);
 	let timestampMs = timestamp64 * 1000;
 	let timestamp = new Date(timestampMs);
@@ -130,7 +144,7 @@ Parser.parseVersion = function (bytes) {
 		mnConn = buffer[mnConnStart] > 0;
 	}
 
-	let verack = {
+	let versionMessage = {
 		version,
 		servicesMask,
 		timestamp,
@@ -147,6 +161,165 @@ Parser.parseVersion = function (bytes) {
 		mnAuthChallenge,
 		mnConn,
 	};
-	return verack;
+
+	console.log(versionMessage);
+	console.log();
+	return version;
 };
-Parser.parseVerack = Parser.parseVersion;
+
+let DSSU_MESSAGE_IDS = {
+	0x00: 'ERR_ALREADY_HAVE',
+	0x01: 'ERR_DENOM',
+	0x02: 'ERR_ENTRIES_FULL',
+	0x03: 'ERR_EXISTING_TX',
+	0x04: 'ERR_FEES',
+	0x05: 'ERR_INVALID_COLLATERAL',
+	0x06: 'ERR_INVALID_INPUT',
+	0x07: 'ERR_INVALID_SCRIPT',
+	0x08: 'ERR_INVALID_TX',
+	0x09: 'ERR_MAXIMUM',
+	0x0a: 'ERR_MN_LIST', // <--
+	0x0b: 'ERR_MODE',
+	0x0c: 'ERR_NON_STANDARD_PUBKEY', //	 (Not used)
+	0x0d: 'ERR_NOT_A_MN', //(Not used)
+	0x0e: 'ERR_QUEUE_FULL',
+	0x0f: 'ERR_RECENT',
+	0x10: 'ERR_SESSION',
+	0x11: 'ERR_MISSING_TX',
+	0x12: 'ERR_VERSION',
+	0x13: 'MSG_NOERR',
+	0x14: 'MSG_SUCCESS',
+	0x15: 'MSG_ENTRIES_ADDED',
+	0x16: 'ERR_SIZE_MISMATCH',
+};
+
+let DSSU_STATES = {
+	0x00: 'IDLE',
+	0x01: 'QUEUE',
+	0x02: 'ACCEPTING_ENTRIES',
+	0x03: 'SIGNING',
+	0x04: 'ERROR',
+	0x05: 'SUCCESS',
+};
+
+let DSSU_STATUSES = {
+	0x00: 'REJECTED',
+	0x01: 'ACCEPTED',
+};
+
+Parser.parseDssu = function (bytes) {
+	let buffer = Buffer.from(bytes);
+
+	bytes = new Uint8Array(buffer);
+	let dv = new DataView(bytes.buffer);
+	console.log('[debug] parseDssu(bytes)', bytes.length, buffer.toString('hex'));
+	console.log(buffer.toString('utf8'));
+
+	/**
+	 * 4	nMsgSessionID		- Required		- Session ID
+	 * 4	nMsgState			- Required		- Current state of processing
+	 * 4	nMsgEntriesCount	- Required		- Number of entries in the pool (deprecated)
+	 * 4	nMsgStatusUpdate	- Required		- Update state and/or signal if entry was accepted or not
+	 * 4	nMsgMessageID		- Required		- ID of the typical masternode reply message
+	 */
+	const SIZES = {
+		SESSION_ID: 4,
+		STATE: 4,
+		ENTRIES_COUNT: 4,
+		STATUS_UPDATE: 4,
+		MESSAGE_ID: 4,
+	};
+
+	let offset = 0;
+
+	let session_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+	offset += SIZES.SESSION_ID;
+
+	let state_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+	offset += SIZES.STATE;
+
+	///**
+	// * Grab the entries count
+	// * Not parsed because apparently master nodes no longer send
+	// * the entries count.
+	// */
+	//parsed.entries_count = dv.getUint32(offset, DV_BIG_ENDIAN);
+	//offset += SIZES.ENTRIES_COUNT;
+
+	let status_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+	offset += SIZES.STATUS_UPDATE;
+
+	let message_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+
+	let dssuMessage = {
+		session_id: session_id,
+		state: DSSU_STATES[state_id],
+		// entries_count: 0,
+		status: DSSU_STATUSES[status_id],
+		message: DSSU_MESSAGE_IDS[message_id],
+	};
+
+	console.log(dssuMessage);
+	console.log();
+	return dssuMessage;
+};
+
+Parser.parseDsq = function (bytes) {
+	let buffer = Buffer.from(bytes);
+
+	bytes = new Uint8Array(buffer);
+	let dv = new DataView(bytes.buffer);
+	console.log('[debug] parseDsq(bytes)', bytes.length, buffer.toString('hex'));
+	console.log(buffer.toString('utf8'));
+
+	const SIZES = {
+		DENOM: 4,
+		PROTX: 32,
+		TIME: 8,
+		READY: 1,
+		SIG: 97,
+	};
+
+	let offset = 0;
+
+	/**
+	 * Grab the denomination
+	 */
+	let denomination = dv.getUint32(offset, DV_BIG_ENDIAN);
+	offset += SIZES.DENOM;
+
+	/**
+	 * Grab the protxhash
+	 */
+	let proTxHash = bytes.slice(offset, offset + SIZES.PROTX);
+	offset += SIZES.PROTX;
+
+	/**
+	 * Grab the time
+	 */
+	let timestamp64n = dv.getBigInt64(offset, DV_LITTLE_ENDIAN);
+	offset += SIZES.TIME;
+	let timestampSec = Number(timestamp64n);
+	let timestampMs = timestampSec * 1000;
+	let timestamp = new Date(timestampMs);
+
+	/**
+	 * Grab the fReady
+	 */
+	let ready = bytes[offset] > 0x00;
+	offset += SIZES.READY;
+
+	let signature = bytes.slice(offset, offset + SIZES.SIG);
+
+	let dsqMessage = {
+		denomination,
+		proTxHash,
+		timestamp,
+		ready,
+		signature,
+	};
+
+	console.log(dsqMessage);
+	console.log();
+	return dsqMessage;
+};

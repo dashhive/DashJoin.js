@@ -181,6 +181,8 @@ DarkSend.version = function ({
 	relay = null,
 	mnauth_challenge = null,
 }) {
+	const command = 'version';
+
 	let args = {
 		network,
 		protocol_version,
@@ -397,12 +399,12 @@ DarkSend.version = function ({
 		payload.set(0x01, MNAUTH_CONNECTION_OFFSET);
 	}
 
-	let command = 'version';
 	payload = DarkSend.packMessage({ network, command, payload });
 	return payload;
 };
 
-DarkSend.allow = function ({ network, denomination, collateralTx }) {
+DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
+	const command = 'dsa';
 	const DENOMINATION_SIZE = 4;
 
 	let denomMask = CoinJoin.STANDARD_DENOMINATION_MASKS[denomination];
@@ -417,12 +419,19 @@ DarkSend.allow = function ({ network, denomination, collateralTx }) {
 	let dv = new DataView(payload.buffer);
 
 	let offset = 0;
+	console.log(
+		'[debug]',
+		totalLength,
+		payload.length,
+		payload.buffer.byteLength,
+		offset,
+	);
 	dv.setUint32(denomMask, offset);
 
 	offset += SIZES.DENOMINATION;
 	payload.set(collateralTx, offset);
 
-	let message = DarkSend.packMessage(network, 'dsa', payload);
+	let message = DarkSend.packMessage({ network, command, payload });
 	return message;
 };
 
