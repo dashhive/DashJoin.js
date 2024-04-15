@@ -51,7 +51,9 @@ Parser.parseHeader = function (bytes) {
 		checksum,
 	};
 
-	console.log(headerMessage);
+	if (command !== 'inv') {
+		console.log(headerMessage);
+	}
 	console.log();
 	return headerMessage;
 };
@@ -59,7 +61,7 @@ Parser.parseHeader = function (bytes) {
 Parser.parseVersion = function (bytes) {
 	let buffer = Buffer.from(bytes);
 	console.log(
-		'[debug] parseVersion(bytpes)',
+		'[debug] parseVersion(bytes)',
 		buffer.length,
 		buffer.toString('hex'),
 	);

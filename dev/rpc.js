@@ -351,10 +351,11 @@ async function main() {
 	}
 	conn.on('error', onError);
 	conn.once('end', onEnd);
+	conn.setMaxListeners(2);
 	let dataCount = 0;
 	conn.on('data', function (data) {
 		console.log('[DEBUG] data');
-		console.log(dataCount, data);
+		console.log(dataCount, data.length, data);
 		dataCount += 1;
 	});
 
@@ -362,6 +363,7 @@ async function main() {
 	let listenerMap = {};
 	async function goRead() {
 		for (;;) {
+			console.log('[debug] readMessage()');
 			let msg = await readMessage();
 			// console.log('[DEBUG] readMessage', msg);
 			// console.log('[DEBUG] msg.command', msg.command);
@@ -396,9 +398,12 @@ async function main() {
 		let header;
 
 		function cleanup() {
+			console.log("[debug] readMessage handlers: remove 'onReadableHeader'");
 			conn.removeListener('data', onReadableHeader);
-			conn.removeListener('data', onReadablePayload);
 			conn.removeListener('readable', onReadableHeader);
+
+			console.log("[debug] readMessage handlers: remove 'onReadablePayload'");
+			conn.removeListener('data', onReadablePayload);
 			conn.removeListener('readable', onReadablePayload);
 		}
 
@@ -413,7 +418,8 @@ async function main() {
 		}
 
 		function onReadableHeader(data) {
-			console.log('State: reading header');
+			let size = data?.length || 0;
+			console.log('State: reading header', size);
 			let chunk;
 			for (;;) {
 				chunk = data;
@@ -448,19 +454,21 @@ async function main() {
 			// console.log('DEBUG header', header);
 			conn.removeListener('readable', onReadableHeader);
 			conn.removeListener('data', onReadableHeader);
-			//conn.on('readable', onReadablePayload);
 
 			if (header.payloadSize === 0) {
 				resolve(header);
 				return;
 			}
 
+			console.log("[debug] readMessage handlers: add 'onReadablePayload'");
+			//conn.on('readable', onReadablePayload);
 			conn.on('data', onReadablePayload);
 			onReadablePayload(null);
 		}
 
 		function onReadablePayload(data) {
-			console.log('State: reading payload');
+			let size = data?.length || 0;
+			console.log('State: reading payload', size);
 			let chunk;
 			for (;;) {
 				chunk = data;
@@ -498,12 +506,14 @@ async function main() {
 		}
 
 		errReject = reject;
+
+		console.log("[debug] readMessage handlers: add 'onReadableHeader'");
 		//conn.on('readable', onReadableHeader);
+		conn.on('data', onReadableHeader);
 
 		if (chunks.length) {
 			onReadableHeader(null);
 		}
-		conn.on('data', onReadableHeader);
 
 		let msg = await p;
 		return msg;
@@ -606,6 +616,28 @@ async function main() {
 			delete listenerMap['verack'];
 		};
 	});
+	await new Promise(function (resolve, reject) {
+		listenerMap['mnauth'] = async function (message) {
+			if (message.command !== 'mnauth') {
+				return;
+			}
+
+			resolve();
+			listenerMap['mnauth'] = null;
+			delete listenerMap['mnauth'];
+		};
+	});
+	await new Promise(function (resolve, reject) {
+		listenerMap['senddsq'] = async function (message) {
+			if (message.command !== 'senddsq') {
+				return;
+			}
+
+			resolve();
+			listenerMap['senddsq'] = null;
+			delete listenerMap['senddsq'];
+		};
+	});
 
 	//
 	// dsa / dssu + dsq
@@ -618,7 +650,7 @@ async function main() {
 	});
 	conn.write(dsaMsg);
 	let dsaBuf = Buffer.from(dsaMsg);
-	// console.log('[debug] dsa', dsaBuf.toString('hex'));
+	console.log('[debug] dsa', dsaBuf.toString('hex'));
 
 	// TODO setTimeout
 	await new Promise(function (resolve, reject) {
