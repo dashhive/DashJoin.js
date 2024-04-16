@@ -416,19 +416,43 @@ DarkSend.version = function ({
  * Use a .subarray(offset) to define an offset.
  * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
  */
-DarkSend.packPong = function pong({ bytes = null, nonce = null }) {
-	if (!bytes) {
-		bytes = new Uint8Array(DarkSend.PING_SIZE);
+DarkSend.packPing = function ({ network, message = null, nonce = null }) {
+	const command = 'ping';
+
+	if (!message) {
+		let pingSize = DarkSend.HEADER_SIZE + DarkSend.PING_SIZE;
+		message = new Uint8Array(pingSize);
 	}
+	let payload = message.subarray(DarkSend.HEADER_SIZE);
 
 	if (!nonce) {
-		nonce = bytes;
+		nonce = payload;
 		Crypto.getRandomValues(nonce);
-	} else if (bytes !== nonce) {
-		bytes.set(nonce, 0);
+	} else {
+		payload.set(nonce, 0);
 	}
 
-	return bytes;
+	void DarkSend.packMessage({ network, command, bytes: message });
+	return message;
+};
+
+/**
+ * In this case the only bytes are the nonce
+ * Use a .subarray(offset) to define an offset.
+ * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
+ */
+DarkSend.packPong = function ({ network, message = null, nonce }) {
+	const command = 'pong';
+
+	if (!message) {
+		let pongSize = DarkSend.HEADER_SIZE + DarkSend.PING_SIZE;
+		message = new Uint8Array(pongSize);
+	}
+	let payload = message.subarray(DarkSend.HEADER_SIZE);
+	payload.set(nonce, 0);
+
+	void DarkSend.packMessage({ network, command, bytes: message });
+	return message;
 };
 
 /**
