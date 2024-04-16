@@ -49,6 +49,7 @@ async function main() {
 	// }
 
 	let network = 'regtest';
+	let minimumParticipants = DarkSend.NETWORKS[network].minimumParticiparts;
 	rpcConfig.onconnected = async function () {
 		let rpc = this;
 		console.info(`[info] rpc client connected ${rpc.host}`);
@@ -192,51 +193,99 @@ async function main() {
 	// TODO sort denominated
 	// for (let addr of addresses) { ... }
 
-	let largest = { satoshis: 0 };
-	let change;
-	for (let addr of addresses) {
-		let data = keysMap[addr];
-		// console.log(data);
-		if (data.satoshis > largest.satoshis) {
-			largest = data;
-			// console.log('[debug] new largest:', largest);
-		}
-		if (data.used) {
-			continue;
-		}
-		if (!change) {
-			change = data;
-		}
+	async function getCollateralTx({ denomination }) {
+		let largest = { satoshis: 0 };
+		let change;
+		for (let addr of addresses) {
+			let data = keysMap[addr];
+			// console.log(data);
+			if (data.reserved) {
+				continue;
+			}
+			if (data.satoshis > largest.satoshis) {
+				largest = data;
+				largest.reserved = Date.now();
+				// console.log('[debug] new largest:', largest);
+			}
+			if (data.used) {
+				continue;
+			}
+			if (!change) {
+				change = data;
+				data.used = true;
+			}
 
-		// console.log('[debug] totalBalance:', totalBalance);
-		if (totalBalance >= MIN_BALANCE) {
-			break;
+			// console.log('[debug] totalBalance:', totalBalance);
+			if (totalBalance >= MIN_BALANCE) {
+				break;
+			}
+
+			void (await rpc.generateToAddress(1, addr));
+			// let blocksRpc = await rpc.generateToAddress(1, addr);
+			// console.log('[debug] blocksRpc', blocksRpc);
+
+			// let deltas = await rpc.getAddressMempool({ addresses: [addr] });
+			// console.log('[debug] generatetoaddress mempool', deltas);
+			// let deltas2 = await rpc.getAddressDeltas({ addresses: [addr] });
+			// console.log('[debug] generatetoaddress deltas', deltas);
+			// let results = deltas.result.concat(deltas2.result);
+			// for (let delta of results) {
+			// 	totalBalance += delta.satoshis;
+			// 	keysMap[delta.address].used = true;
+			// 	delete unusedMap[delta.address];
+			// }
+
+			let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
+			let utxos = utxosRpc.result;
+			for (let utxo of utxos) {
+				// console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
+				data.satoshis += utxo.satoshis;
+				totalBalance += utxo.satoshis;
+				keysMap[utxo.address].used = true;
+				delete unusedMap[utxo.address];
+			}
 		}
+		console.log('[debug] largest coin:', largest);
 
-		void (await rpc.generateToAddress(1, addr));
-		// let blocksRpc = await rpc.generateToAddress(1, addr);
-		// console.log('[debug] blocksRpc', blocksRpc);
+		let collateralTxInfo;
+		{
+			let addr = largest.address;
+			let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
+			let utxos = utxosRpc.result;
+			let fee = CoinJoin.COLLATERAL;
+			for (let utxo of utxos) {
+				console.log('[debug] input utxo', utxo);
+				// utxo.sigHashType = 0x01;
+				utxo.address = addr;
+				if (utxo.txid) {
+					// TODO fix in dashtx
+					utxo.txId = utxo.txid;
+				}
+			}
+			let output = Object.assign({}, change);
+			let pubKeyHashBytes = await DashKeys.addrToPkh(change.address, {
+				version: 'testnet',
+			});
+			output.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+			output.satoshis = largest.satoshis - fee;
+			// TODO
+			// if (collateralUtxoIsDust) {
+			//     output = { memo: '', satoshis: 0 };
+			// }
+			console.log('[debug] change', change);
+			let txInfo = {
+				version: 3,
+				inputs: utxos,
+				outputs: [output],
+				locktime: 0,
+			};
+			txInfo.inputs.sort(DashTx.sortInputs);
+			txInfo.outputs.sort(DashTx.sortOutputs);
 
-		// let deltas = await rpc.getAddressMempool({ addresses: [addr] });
-		// console.log('[debug] generatetoaddress mempool', deltas);
-		// let deltas2 = await rpc.getAddressDeltas({ addresses: [addr] });
-		// console.log('[debug] generatetoaddress deltas', deltas);
-		// let results = deltas.result.concat(deltas2.result);
-		// for (let delta of results) {
-		// 	totalBalance += delta.satoshis;
-		// 	keysMap[delta.address].used = true;
-		// 	delete unusedMap[delta.address];
-		// }
-
-		let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
-		let utxos = utxosRpc.result;
-		for (let utxo of utxos) {
-			// console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
-			data.satoshis += utxo.satoshis;
-			totalBalance += utxo.satoshis;
-			keysMap[utxo.address].used = true;
-			delete unusedMap[utxo.address];
+			collateralTxInfo = txInfo;
 		}
+		console.log('[debug] dsa collateral tx', collateralTxInfo);
+		return collateralTxInfo;
 	}
 
 	let dashTx = DashTx.create({ sign: sign });
@@ -249,55 +298,6 @@ async function main() {
 		//return DashTx.utils.u8ToHex(sigBytes);
 		return sigBytes;
 	}
-
-	console.log('[debug] largest coin:', largest);
-
-	let collateralTx;
-	{
-		let addr = largest.address;
-		let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
-		let utxos = utxosRpc.result;
-		let fee = CoinJoin.COLLATERAL;
-		for (let utxo of utxos) {
-			console.log('[debug] input utxo', utxo);
-			// utxo.sigHashType = 0x01;
-			utxo.address = addr;
-			if (utxo.txid) {
-				// TODO fix in dashtx
-				utxo.txId = utxo.txid;
-			}
-		}
-		let output = Object.assign({}, change);
-		let pubKeyHashBytes = await DashKeys.addrToPkh(change.address, {
-			version: 'testnet',
-		});
-		output.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
-		output.satoshis = largest.satoshis - fee;
-		// TODO
-		// if (collateralUtxoIsDust) {
-		//     output = { memo: '', satoshis: 0 };
-		// }
-		console.log('[debug] change', change);
-		let txInfo = {
-			version: 3,
-			inputs: utxos,
-			outputs: [output],
-			locktime: 0,
-		};
-		txInfo.inputs.sort(DashTx.sortInputs);
-		txInfo.outputs.sort(DashTx.sortOutputs);
-
-		let keys = [];
-		for (let input of txInfo.inputs) {
-			let data = keysMap[input.address];
-			let addressKey = await xreceiveKey.deriveAddress(data.index);
-			keys.push(addressKey.privateKey);
-		}
-
-		let txInfoSigned = await dashTx.hashAndSignAll(txInfo, keys);
-		collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
-	}
-	console.log('[debug] dsa collateral tx', collateralTx);
 
 	let evonodes = [];
 	{
@@ -646,6 +646,12 @@ async function main() {
 				return;
 			}
 
+			let sendDsqMessage = DarkSend.packSendDsq({
+				network: network,
+				send: true,
+			});
+			conn.write(sendDsqMessage);
+			console.log("[debug] sending 'senddsq':", sendDsqMessage);
 			resolve();
 			listenerMap['senddsq'] = null;
 			delete listenerMap['senddsq'];
@@ -655,15 +661,29 @@ async function main() {
 	//
 	// dsa / dssu + dsq
 	//
-	let denomination = 100001 * 100;
-	let dsaMsg = await DarkSend.packAllow({
-		network,
-		denomination,
-		collateralTx,
-	});
-	conn.write(dsaMsg);
-	let dsaBuf = Buffer.from(dsaMsg);
-	console.log('[debug] dsa', dsaBuf.toString('hex'));
+	for (let i = 0; i < minimumParticipants; i += 1) {
+		let denomination = 100001 * 100;
+		let collateralTx;
+		{
+			let collateralTxInfo = await getCollateralTx({ denomination });
+			let keys = [];
+			for (let input of collateralTxInfo.inputs) {
+				let data = keysMap[input.address];
+				let addressKey = await xreceiveKey.deriveAddress(data.index);
+				keys.push(addressKey.privateKey);
+			}
+			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
+			collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
+		}
+		let dsaMsg = await DarkSend.packAllow({
+			network,
+			denomination,
+			collateralTx,
+		});
+		conn.write(dsaMsg);
+		let dsaBuf = Buffer.from(dsaMsg);
+		console.log('[debug] dsa', i, dsaBuf.toString('hex'));
+	}
 
 	// TODO setTimeout
 	await new Promise(function (resolve, reject) {

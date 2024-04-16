@@ -47,6 +47,7 @@ const TOTAL_HEADER_SIZE =
 DarkSend.HEADER_SIZE = TOTAL_HEADER_SIZE;
 
 DarkSend.PING_SIZE = DarkSend.FIELD_SIZES.NONCE;
+DarkSend.DSQ_SIZE = 1; // bool
 
 const EMPTY_CHECKSUM = [0x5d, 0xf6, 0xe0, 0xe2];
 
@@ -63,6 +64,7 @@ DarkSend.NETWORKS.mainnet = {
 	]),
 	start: 0xbf0c6bbd,
 	nBits: 0x1e0ffff0,
+	minimumParticiparts: 3,
 };
 DarkSend.NETWORKS.testnet = {
 	port: 19999,
@@ -72,6 +74,7 @@ DarkSend.NETWORKS.testnet = {
 	]),
 	start: 0xcee2caff,
 	nBits: 0x1e0ffff0,
+	minimumParticiparts: 2,
 };
 DarkSend.NETWORKS.regtest = {
 	port: 19899,
@@ -81,6 +84,7 @@ DarkSend.NETWORKS.regtest = {
 	]),
 	start: 0xfcc1b7dc,
 	nBits: 0x207fffff,
+	minimumParticiparts: 2,
 };
 DarkSend.NETWORKS.devnet = {
 	port: 19799,
@@ -90,6 +94,7 @@ DarkSend.NETWORKS.devnet = {
 	]),
 	start: 0xe2caffce,
 	nBits: 0x207fffff,
+	minimumParticiparts: 2,
 };
 
 /**
@@ -424,6 +429,29 @@ DarkSend.packPong = function pong({ bytes = null, nonce = null }) {
 	}
 
 	return bytes;
+};
+
+/**
+ * Just a boolean
+ */
+DarkSend.packSendDsq = function ({ network, message = null, send = true }) {
+	const command = 'senddsq';
+
+	if (!message) {
+		let dsqSize = DarkSend.HEADER_SIZE + DarkSend.DSQ_SIZE;
+		message = new Uint8Array(dsqSize);
+	}
+
+	let sendByte = [0x01];
+	if (!send) {
+		sendByte = [0x00];
+	}
+	let payload = message.subarray(DarkSend.HEADER_SIZE);
+	payload.set(sendByte, 0);
+
+	void DarkSend.packMessage({ network, command, bytes: message });
+
+	return message;
 };
 
 DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
