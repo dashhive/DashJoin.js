@@ -44,6 +44,9 @@ let SIZES = {
 };
 const TOTAL_HEADER_SIZE =
 	SIZES.MAGIC_BYTES + SIZES.COMMAND_NAME + SIZES.PAYLOAD_SIZE + SIZES.CHECKSUM;
+DarkSend.HEADER_SIZE = TOTAL_HEADER_SIZE;
+
+DarkSend.PING_SIZE = DarkSend.FIELD_SIZES.NONCE;
 
 const EMPTY_CHECKSUM = [0x5d, 0xf6, 0xe0, 0xe2];
 
@@ -403,6 +406,26 @@ DarkSend.version = function ({
 	return payload;
 };
 
+/**
+ * In this case the only bytes are the nonce
+ * Use a .subarray(offset) to define an offset.
+ * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
+ */
+DarkSend.packPong = function pong({ bytes = null, nonce = null }) {
+	if (!bytes) {
+		bytes = new Uint8Array(DarkSend.PING_SIZE);
+	}
+
+	if (!nonce) {
+		nonce = bytes;
+		Crypto.getRandomValues(nonce);
+	} else if (bytes !== nonce) {
+		bytes.set(nonce, 0);
+	}
+
+	return bytes;
+};
+
 DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
 	const command = 'dsa';
 	const DENOMINATION_SIZE = 4;
@@ -435,32 +458,62 @@ DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
 	return message;
 };
 
-DarkSend.packMessage = function ({ network, command, payload }) {
+DarkSend.packMessage = function ({
+	network,
+	command,
+	bytes = null,
+	payload = null,
+}) {
 	let payloadLength = payload?.byteLength || 0;
-	let TOTAL_SIZE = TOTAL_HEADER_SIZE + payloadLength;
+	let messageSize = DarkSend.HEADER_SIZE + payloadLength;
+	let offset = 0;
 
-	let message = new Uint8Array(TOTAL_SIZE);
-	message.set(DarkSend.NETWORKS[network].magic, 0);
+	let embeddedPayload = false;
+	let message = bytes;
+	if (message) {
+		if (!payload) {
+			payload = message.subarray(DarkSend.HEADER_SIZE);
+			payloadLength = payload.byteLength;
+			messageSize = DarkSend.HEADER_SIZE + payloadLength;
+			embeddedPayload = true;
+		}
+	} else {
+		message = new Uint8Array(messageSize);
+	}
+	if (message.length !== messageSize) {
+		throw new Error(
+			`expected bytes of length ${messageSize}, but got ${message.length}`,
+		);
+	}
+	message.set(DarkSend.NETWORKS[network].magic, offset);
+	offset += SIZES.MAGIC_BYTES;
 
 	// Set command_name (char[12])
-	let COMMAND_NAME_OFFSET = SIZES.MAGIC_BYTES;
 	let nameBytes = textEncoder.encode(command);
-	message.set(nameBytes, COMMAND_NAME_OFFSET);
+	message.set(nameBytes, offset);
+	offset += SIZES.COMMAND_NAME;
 
 	// Finally, append the payload to the header
-	let PAYLOAD_SIZE_OFFSET = COMMAND_NAME_OFFSET + SIZES.COMMAND_NAME;
-	let CHECKSUM_OFFSET = PAYLOAD_SIZE_OFFSET + SIZES.PAYLOAD_SIZE;
-	if (payloadLength === 0) {
-		message.set(EMPTY_CHECKSUM, CHECKSUM_OFFSET);
+	if (!payload) {
+		// skip because it's already initialized to 0
+		//message.set(payloadLength, offset);
+		offset += SIZES.PAYLOAD_SIZE;
+
+		message.set(EMPTY_CHECKSUM, offset);
 		return message;
 	}
 
 	let payloadSizeBytes = uint32ToBytesLE(payloadLength);
-	message.set(payloadSizeBytes, PAYLOAD_SIZE_OFFSET);
-	message.set(compute_checksum(payload), CHECKSUM_OFFSET);
+	message.set(payloadSizeBytes, offset);
+	offset += SIZES.PAYLOAD_SIZE;
 
-	let ACTUAL_PAYLOAD_OFFSET = CHECKSUM_OFFSET + SIZES.CHECKSUM;
-	message.set(payload, ACTUAL_PAYLOAD_OFFSET);
+	let checksum = compute_checksum(payload);
+	message.set(checksum, offset);
+	offset += SIZES.CHECKSUM;
+
+	if (!embeddedPayload) {
+		message.set(payload, offset);
+	}
 	return message;
 };
 
@@ -468,6 +521,7 @@ DarkSend.packMessage = function ({ network, command, payload }) {
  * First 4 bytes of SHA256(SHA256(payload)) in internal byte order.
  */
 function compute_checksum(payload) {
+	// TODO this should be node-specific in node for performance reasons
 	let hash = Crypto.createHash('sha256').update(payload).digest();
 	let hashOfHash = Crypto.createHash('sha256').update(hash).digest();
 	return hashOfHash.slice(0, 4);
