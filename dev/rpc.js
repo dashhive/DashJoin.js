@@ -362,9 +362,22 @@ async function main() {
 	let messages = [];
 	let listenerMap = {};
 	async function goRead() {
+		let pongSize = DarkSend.HEADER_SIZE + DarkSend.PING_SIZE;
+		let pongMessageBytes = new Uint8Array(pongSize);
+		let pongPayloadBytes = pongMessageBytes.subarray(DarkSend.HEADER_SIZE);
 		for (;;) {
 			console.log('[debug] readMessage()');
 			let msg = await readMessage();
+			if (msg.command === 'ping') {
+				void DarkSend.packPong({ bytes: pongPayloadBytes });
+				void DarkSend.packMessage({
+					network: network,
+					bytes: pongMessageBytes,
+				});
+				console.log('[debug] pong', pongMessageBytes);
+				conn.write(pongMessageBytes);
+				continue;
+			}
 			// console.log('[DEBUG] readMessage', msg);
 			// console.log('[DEBUG] msg.command', msg.command);
 			let i = messages.length;
