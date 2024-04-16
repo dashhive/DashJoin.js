@@ -492,18 +492,12 @@ DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
 	let totalLength = DENOMINATION_SIZE + collateralTx.length;
 	let payload = new Uint8Array(totalLength);
 	let dv = new DataView(payload.buffer);
-
 	let offset = 0;
-	console.log(
-		'[debug]',
-		totalLength,
-		payload.length,
-		payload.buffer.byteLength,
-		offset,
-	);
-	dv.setUint32(denomMask, offset);
 
-	offset += SIZES.DENOMINATION;
+	let DV_LITTLE_ENDIAN = true;
+	dv.setUint32(offset, denomMask, DV_LITTLE_ENDIAN);
+	offset += DENOMINATION_SIZE;
+
 	payload.set(collateralTx, offset);
 
 	let message = DarkSend.packMessage({ network, command, payload });
