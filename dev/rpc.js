@@ -364,15 +364,14 @@ async function main() {
 	async function goRead() {
 		let pongSize = DarkSend.HEADER_SIZE + DarkSend.PING_SIZE;
 		let pongMessageBytes = new Uint8Array(pongSize);
-		let pongPayloadBytes = pongMessageBytes.subarray(DarkSend.HEADER_SIZE);
 		for (;;) {
 			console.log('[debug] readMessage()');
 			let msg = await readMessage();
 			if (msg.command === 'ping') {
-				void DarkSend.packPong({ bytes: pongPayloadBytes });
-				void DarkSend.packMessage({
+				void DarkSend.packPong({
 					network: network,
-					bytes: pongMessageBytes,
+					message: pongMessageBytes,
+					nonce: msg.payload,
 				});
 				console.log('[debug] pong', pongMessageBytes);
 				conn.write(pongMessageBytes);
