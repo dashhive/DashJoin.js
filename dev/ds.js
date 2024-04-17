@@ -504,6 +504,47 @@ DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
 	return message;
 };
 
+let DashTx = require('dashtx');
+
+DarkSend.packDsi = function ({ network, inputs, collateralTx, outputs }) {
+	const command = 'dsi';
+
+	let neutered = [];
+	for (let input of inputs) {
+		let _input = {
+			txId: input.txId || input.txid,
+			txid: input.txid || input.txId,
+			outputIndex: input.outputIndex,
+		};
+		neutered.push(_input);
+	}
+
+	let hex = [];
+	void DashTx._packInputs({
+		inputs: neutered,
+		tx: hex,
+	});
+	hex.push(collateralTx);
+	void DashTx._packOutputs({
+		outputs: outputs,
+		tx: hex,
+	});
+
+	let txHex = hex.join('');
+	let len = txHex.length / 2;
+	let bytes = new Uint8Array(DarkSend.HEADER_SIZE + len);
+	let payload = bytes.subarray(DarkSend.HEADER_SIZE);
+
+	for (let i = 0; i < txHex.length; i += 2) {
+		let end = i + 2;
+		let hex = txHex.slice(i, end);
+		payload[i] = parseInt(hex, 16);
+	}
+
+	void DarkSend.packMessage({ network, command, bytes });
+	return bytes;
+};
+
 DarkSend.packMessage = function ({
 	network,
 	command,
