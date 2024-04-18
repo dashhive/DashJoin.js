@@ -3,11 +3,14 @@
 let Parser = module.exports;
 
 const DV_LITTLE_ENDIAN = true;
-const DV_BIG_ENDIAN = false;
+// const DV_BIG_ENDIAN = false;
 //let EMPTY_HASH = Buffer.from('5df6e0e2', 'hex');
 
 Parser.HEADER_SIZE = 24;
 Parser.DSSU_SIZE = 16;
+Parser.DSQ_SIZE = 142;
+
+let CoinJoin = require('./coinjoin.js');
 
 /**
  * Parse the 24-byte P2P Message Header
@@ -284,6 +287,10 @@ Parser.parseDsq = function (bytes) {
 	let buffer = Buffer.from(bytes);
 
 	bytes = new Uint8Array(buffer);
+	if (bytes.length !== Parser.DSQ_SIZE) {
+		let msg = `developer error: 'dsq' messages are ${Parser.DSQ_SIZE} bytes, not ${bytes.length}`;
+		throw new Error(msg);
+	}
 	let dv = new DataView(bytes.buffer);
 	console.log('[debug] parseDsq(bytes)', bytes.length, buffer.toString('hex'));
 	console.log(buffer.toString('utf8'));
@@ -301,13 +308,14 @@ Parser.parseDsq = function (bytes) {
 	/**
 	 * Grab the denomination
 	 */
-	let denomination = dv.getUint32(offset, DV_BIG_ENDIAN);
+	let denomination_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
 	offset += SIZES.DENOM;
+	let denomination = CoinJoin.STANDARD_DENOMINATIONS[denomination_id];
 
 	/**
 	 * Grab the protxhash
 	 */
-	let proTxHash = bytes.slice(offset, offset + SIZES.PROTX);
+	let protxhash_bytes = bytes.slice(offset, offset + SIZES.PROTX);
 	offset += SIZES.PROTX;
 
 	/**
@@ -315,9 +323,10 @@ Parser.parseDsq = function (bytes) {
 	 */
 	let timestamp64n = dv.getBigInt64(offset, DV_LITTLE_ENDIAN);
 	offset += SIZES.TIME;
-	let timestampSec = Number(timestamp64n);
-	let timestampMs = timestampSec * 1000;
-	let timestamp = new Date(timestampMs);
+	let timestamp_unix = Number(timestamp64n);
+	// let timestampMs = timestamp_unix * 1000;
+	// let timestampDate = new Date(timestampMs);
+	// let timestamp = timestampDate.toISOString();
 
 	/**
 	 * Grab the fReady
@@ -325,14 +334,18 @@ Parser.parseDsq = function (bytes) {
 	let ready = bytes[offset] > 0x00;
 	offset += SIZES.READY;
 
-	let signature = bytes.slice(offset, offset + SIZES.SIG);
+	let signature_bytes = bytes.slice(offset, offset + SIZES.SIG);
 
 	let dsqMessage = {
+		denomination_id,
 		denomination,
-		proTxHash,
-		timestamp,
+		protxhash_bytes,
+		// protxhash: '',
+		timestamp_unix,
+		// timestamp,
 		ready,
-		signature,
+		signature_bytes,
+		// signature: '',
 	};
 
 	console.log(dsqMessage);
