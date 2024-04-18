@@ -6,6 +6,9 @@ const DV_LITTLE_ENDIAN = true;
 const DV_BIG_ENDIAN = false;
 //let EMPTY_HASH = Buffer.from('5df6e0e2', 'hex');
 
+Parser.HEADER_SIZE = 24;
+Parser.DSSU_SIZE = 16;
+
 /**
  * Parse the 24-byte P2P Message Header
  *   -  4 byte magic bytes (delimiter) (possibly intended for non-tcp messages?)
@@ -26,6 +29,10 @@ Parser.parseHeader = function (bytes) {
 	console.log(buffer.toString('utf8'));
 
 	bytes = new Uint8Array(buffer);
+	if (bytes.length < Parser.HEADER_SIZE) {
+		let msg = `developer error: header should be ${Parser.HEADER_SIZE}+ bytes (optional payload), not ${bytes.length}`;
+		throw new Error(msg);
+	}
 	let dv = new DataView(bytes.buffer);
 
 	let commandStart = 4;
@@ -169,7 +176,7 @@ Parser.parseVersion = function (bytes) {
 	return version;
 };
 
-let DSSU_MESSAGE_IDS = {
+Parser._DSSU_MESSAGE_IDS = {
 	0x00: 'ERR_ALREADY_HAVE',
 	0x01: 'ERR_DENOM',
 	0x02: 'ERR_ENTRIES_FULL',
@@ -195,7 +202,7 @@ let DSSU_MESSAGE_IDS = {
 	0x16: 'ERR_SIZE_MISMATCH',
 };
 
-let DSSU_STATES = {
+Parser._DSSU_STATES = {
 	0x00: 'IDLE',
 	0x01: 'QUEUE',
 	0x02: 'ACCEPTING_ENTRIES',
@@ -204,7 +211,7 @@ let DSSU_STATES = {
 	0x05: 'SUCCESS',
 };
 
-let DSSU_STATUSES = {
+Parser._DSSU_STATUSES = {
 	0x00: 'REJECTED',
 	0x01: 'ACCEPTED',
 };
@@ -216,6 +223,10 @@ Parser.parseDssu = function (bytes) {
 	let dv = new DataView(bytes.buffer);
 	console.log('[debug] parseDssu(bytes)', bytes.length, buffer.toString('hex'));
 	console.log(buffer.toString('utf8'));
+	if (bytes.length !== Parser.DSSU_SIZE) {
+		let msg = `developer error: a 'dssu' message is 16 bytes, but got ${bytes.length}`;
+		throw new Error(msg);
+	}
 
 	/**
 	 * 4	nMsgSessionID		- Required		- Session ID
@@ -234,10 +245,10 @@ Parser.parseDssu = function (bytes) {
 
 	let offset = 0;
 
-	let session_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+	let session_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
 	offset += SIZES.SESSION_ID;
 
-	let state_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+	let state_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
 	offset += SIZES.STATE;
 
 	///**
@@ -245,20 +256,23 @@ Parser.parseDssu = function (bytes) {
 	// * Not parsed because apparently master nodes no longer send
 	// * the entries count.
 	// */
-	//parsed.entries_count = dv.getUint32(offset, DV_BIG_ENDIAN);
+	//parsed.entries_count = dv.getUint32(offset, DV_LITTLE_ENDIAN);
 	//offset += SIZES.ENTRIES_COUNT;
 
-	let status_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+	let status_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
 	offset += SIZES.STATUS_UPDATE;
 
-	let message_id = dv.getUint32(offset, DV_BIG_ENDIAN);
+	let message_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
 
 	let dssuMessage = {
 		session_id: session_id,
-		state: DSSU_STATES[state_id],
+		state_id: state_id,
+		state: Parser._DSSU_STATES[state_id],
 		// entries_count: 0,
-		status: DSSU_STATUSES[status_id],
-		message: DSSU_MESSAGE_IDS[message_id],
+		status_id: status_id,
+		status: Parser._DSSU_STATUSES[status_id],
+		message_id: message_id,
+		message: Parser._DSSU_MESSAGE_IDS[message_id],
 	};
 
 	console.log(dssuMessage);
