@@ -20,10 +20,12 @@ let DashRpc = require('dashrpc');
 let DashTx = require('dashtx');
 let Secp256k1 = require('@dashincubator/secp256k1');
 
-// const DENOM_MOD = 100001;
+const DENOM_LOWEST = 100001;
+const PREDENOM_MIN = DENOM_LOWEST + 193;
 // const MIN_UNUSED = 2500;
-const MIN_UNUSED = 200;
+const MIN_UNUSED = 500;
 const MIN_BALANCE = 100001 * 10000;
+const MIN_DENOMINATED = 100;
 
 let rpcConfig = {
 	protocol: 'http', // https for remote, http for local / private networking
@@ -193,6 +195,231 @@ async function main() {
 	// TODO sort denominated
 	// for (let addr of addresses) { ... }
 
+	async function generateMinBalance() {
+		for (let addr of addresses) {
+			// console.log('[debug] totalBalance:', totalBalance);
+			if (totalBalance >= MIN_BALANCE) {
+				break;
+			}
+
+			let data = keysMap[addr];
+			// console.log(data);
+			if (data.reserved) {
+				continue;
+			}
+			if (data.used) {
+				continue;
+			}
+
+			void (await generateToAddress(data));
+		}
+	}
+
+	async function generateDenominations() {
+		let denomCount = 0;
+		let denominable = [];
+		let denominated = {};
+		for (let addr of addresses) {
+			let data = keysMap[addr];
+			if (data.reserved) {
+				continue;
+			}
+			if (data.satoshis === 0) {
+				continue;
+			}
+
+			// TODO denominations.includes(data.satoshis)
+			let isUndenominated = data.satoshis % DENOM_LOWEST;
+			if (isUndenominated) {
+				if (data.satoshis >= PREDENOM_MIN) {
+					denominable.push(data);
+				}
+				continue;
+			}
+
+			if (!denominated[data.satoshis]) {
+				denominated[data.satoshis] = [];
+			}
+			denomCount += 1;
+			denominated[data.satoshis].push(data);
+		}
+
+		// CAVEAT: this fee-approximation strategy that guarantees
+		// to denominate all coins _correctly_, but in some cases will
+		// create _smaller_ denominations than necessary - specifically
+		// 10 x 100001 instead of 1 x 1000010 when the lowest order of
+		// coin is near the single coin value (i.e. 551000010)
+		// (because 551000010 / 100194 yields 5499 x 100001 coins + full fees,
+		// but we actually only generate 5 + 4 + 9 + 9 = 27 coins, leaving
+		// well over 5472 * 193 extra value)
+		for (let data of denominable) {
+			if (denomCount >= MIN_DENOMINATED) {
+				break;
+			}
+
+			let fee = data.satoshis;
+
+			// 123 means
+			//   - 3 x   100001
+			//   - 2 x  1000010
+			//   - 1 x 10000100
+			let order = data.satoshis / PREDENOM_MIN;
+			order = Math.floor(order);
+			let orderStr = order.toString();
+			// TODO mod and divide to loop and shift positions, rather than stringify
+			let orders = orderStr.split('');
+			orders.reverse();
+
+			// TODO Math.min(orders.length, STANDARD_DENOMS.length);
+			// let numOutputs = 0;
+			let denomOutputs = [];
+			// let magnitudes = [0];
+			for (let i = 0; i < orders.length; i += 1) {
+				let order = orders[i];
+				let count = parseInt(order, 10);
+				let orderSingle = DENOM_LOWEST * Math.pow(10, i);
+				// let orderTotal = count * orderSingle;
+				// numOutputs += count;
+				for (let i = 0; i < count; i += 1) {
+					fee -= orderSingle;
+					denomOutputs.push({
+						satoshis: orderSingle,
+					});
+				}
+				// magnitudes.push(count);
+			}
+			// example:
+			//   [ 0, 3, 2, 1 ]
+			//   - 0 x 100001 * 0
+			//   - 3 x 100001 * 1
+			//   - 2 x 100001 * 10
+			//   - 1 x 100001 * 100
+
+			console.log('[debug] denom outputs', denomOutputs);
+			console.log('[debug] fee', fee);
+			// Note: this is where we reconcile the difference between
+			// the number of the smallest denom, and the number of actual denoms
+			// (and where we may end up with 10 x LOWEST, which we could carry
+			// over into the next tier, but won't right now for simplicity).
+			for (;;) {
+				let fees = DashTx._appraiseCounts(1, denomOutputs.length + 1);
+				let nextCoinCost = DENOM_LOWEST + fees.max;
+				if (fee < nextCoinCost) {
+					// TODO split out 10200 (or 10193) collaterals as well
+					break;
+				}
+				fee -= DashTx.OUTPUT_SIZE;
+				fee -= DENOM_LOWEST;
+				denomOutputs.push({
+					satoshis: DENOM_LOWEST,
+				});
+				// numOutputs += 1;
+				// magnitudes[1] += 1;
+			}
+			console.log('[debug] denom outputs', denomOutputs);
+
+			let changes = [];
+			for (let addr of addresses) {
+				if (denomOutputs.length === 0) {
+					break;
+				}
+
+				let unused = unusedMap[addr];
+				if (!unused) {
+					continue;
+				}
+
+				unused.reserved = Date.now();
+				delete unusedMap[addr];
+
+				let denomValue = denomOutputs.pop();
+				if (!denomValue) {
+					break;
+				}
+
+				unused.satoshis = denomValue.satoshis;
+				changes.push(unused);
+			}
+
+			let txInfo;
+			{
+				let utxosRpc = await rpc.getAddressUtxos({ addresses: [data.address] });
+				let utxos = utxosRpc.result;
+				for (let utxo of utxos) {
+					console.log('[debug] input utxo', utxo);
+					// utxo.sigHashType = 0x01;
+					utxo.address = data.address;
+					if (utxo.txid) {
+						// TODO fix in dashtx
+						utxo.txId = utxo.txid;
+					}
+				}
+				for (let change of changes) {
+					let pubKeyHashBytes = await DashKeys.addrToPkh(change.address, {
+						version: 'testnet',
+					});
+					change.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+				}
+
+				txInfo = {
+					version: 3,
+					inputs: utxos,
+					outputs: changes,
+					locktime: 0,
+				};
+				txInfo.inputs.sort(DashTx.sortInputs);
+				txInfo.outputs.sort(DashTx.sortOutputs);
+			}
+
+			let keys = [];
+			for (let input of txInfo.inputs) {
+				let data = keysMap[input.address];
+				let addressKey = await xreceiveKey.deriveAddress(data.index);
+				keys.push(addressKey.privateKey);
+			}
+			let txInfoSigned = await dashTx.hashAndSignAll(txInfo, keys);
+
+			let txRpc = await rpc.sendRawTransaction(txInfoSigned.transaction);
+			console.log('[debug] txRpc.result', txRpc.result);
+
+			// TODO don't add collateral coins
+			for (let change of changes) {
+				denomCount += 1;
+				if (!denominated[change.satoshis]) {
+					denominated[change.satoshis] = [];
+				}
+				denominated[change.satoshis].push(change);
+			}
+		}
+	}
+
+	async function generateToAddress(data) {
+		void (await rpc.generateToAddress(1, data.address));
+		// let blocksRpc = await rpc.generateToAddress(1, addr);
+		// console.log('[debug] blocksRpc', blocksRpc);
+
+		// let deltas = await rpc.getAddressMempool({ addresses: [addr] });
+		// console.log('[debug] generatetoaddress mempool', deltas);
+		// let deltas2 = await rpc.getAddressDeltas({ addresses: [addr] });
+		// console.log('[debug] generatetoaddress deltas', deltas);
+		// let results = deltas.result.concat(deltas2.result);
+		// for (let delta of results) {
+		// 	totalBalance += delta.satoshis;
+		// 	keysMap[delta.address].used = true;
+		// 	delete unusedMap[delta.address];
+		// }
+
+		let utxosRpc = await rpc.getAddressUtxos({ addresses: [data.address] });
+		let utxos = utxosRpc.result;
+		for (let utxo of utxos) {
+			// console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
+			data.satoshis += utxo.satoshis;
+			totalBalance += utxo.satoshis;
+			keysMap[utxo.address].used = true;
+			delete unusedMap[utxo.address];
+		}
+	}
+
 	async function getCollateralTx({ denomination }) {
 		let largest = { satoshis: 0 };
 		let change;
@@ -355,7 +582,7 @@ async function main() {
 	let dataCount = 0;
 	conn.on('data', function (data) {
 		console.log('[DEBUG] data');
-		console.log(dataCount, data.length, data);
+		console.log(dataCount, data.length, data.toString('hex'));
 		dataCount += 1;
 	});
 
@@ -664,6 +891,9 @@ async function main() {
 		let denomination = 100001 * 100;
 		let collateralTx;
 		{
+			void (await generateMinBalance());
+			void (await generateDenominations());
+
 			let collateralTxInfo = await getCollateralTx({ denomination });
 			let keys = [];
 			for (let input of collateralTxInfo.inputs) {
