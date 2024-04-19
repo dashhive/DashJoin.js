@@ -1,14 +1,14 @@
 'use strict';
 
-let DarkSend = module.exports;
+let Packer = module.exports;
 
 let Crypto = require('node:crypto');
 
 let CoinJoin = require('./coinjoin.js');
 
-DarkSend.PROTOCOL_VERSION = 70227;
+Packer.PROTOCOL_VERSION = 70227;
 
-DarkSend.FIELD_SIZES = {
+Packer.FIELD_SIZES = {
 	VERSION: 4,
 	SERVICES: 8,
 	TIMESTAMP: 8,
@@ -31,8 +31,8 @@ DarkSend.FIELD_SIZES = {
 	MN_CONNECTION_NONEMPTY: 1,
 };
 
-DarkSend.RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
-DarkSend.MNAUTH_PROTOCOL_VERSION_INTRODUCTION = 70214;
+Packer.RELAY_PROTOCOL_VERSION_INTRODUCTION = 70001;
+Packer.MNAUTH_PROTOCOL_VERSION_INTRODUCTION = 70214;
 
 let textEncoder = new TextEncoder();
 
@@ -44,10 +44,10 @@ let SIZES = {
 };
 const TOTAL_HEADER_SIZE =
 	SIZES.MAGIC_BYTES + SIZES.COMMAND_NAME + SIZES.PAYLOAD_SIZE + SIZES.CHECKSUM;
-DarkSend.HEADER_SIZE = TOTAL_HEADER_SIZE;
+Packer.HEADER_SIZE = TOTAL_HEADER_SIZE;
 
-DarkSend.PING_SIZE = DarkSend.FIELD_SIZES.NONCE;
-DarkSend.DSQ_SIZE = 1; // bool
+Packer.PING_SIZE = Packer.FIELD_SIZES.NONCE;
+Packer.DSQ_SIZE = 1; // bool
 
 const EMPTY_CHECKSUM = [0x5d, 0xf6, 0xe0, 0xe2];
 
@@ -55,8 +55,8 @@ const EMPTY_CHECKSUM = [0x5d, 0xf6, 0xe0, 0xe2];
  * @typedef {"mainnet"|"testnet"|"regtest"|"devnet"} NetworkName
  */
 
-DarkSend.NETWORKS = {};
-DarkSend.NETWORKS.mainnet = {
+Packer.NETWORKS = {};
+Packer.NETWORKS.mainnet = {
 	port: 9999,
 	magic: new Uint8Array([
 		//0xBD6B0CBF,
@@ -66,7 +66,7 @@ DarkSend.NETWORKS.mainnet = {
 	nBits: 0x1e0ffff0,
 	minimumParticiparts: 3,
 };
-DarkSend.NETWORKS.testnet = {
+Packer.NETWORKS.testnet = {
 	port: 19999,
 	magic: new Uint8Array([
 		//0xFFCAE2CE,
@@ -76,7 +76,7 @@ DarkSend.NETWORKS.testnet = {
 	nBits: 0x1e0ffff0,
 	minimumParticiparts: 2,
 };
-DarkSend.NETWORKS.regtest = {
+Packer.NETWORKS.regtest = {
 	port: 19899,
 	magic: new Uint8Array([
 		//0xDCB7C1FC,
@@ -86,7 +86,7 @@ DarkSend.NETWORKS.regtest = {
 	nBits: 0x207fffff,
 	minimumParticiparts: 2,
 };
-DarkSend.NETWORKS.devnet = {
+Packer.NETWORKS.devnet = {
 	port: 19799,
 	magic: new Uint8Array([
 		//0xCEFFCAE2,
@@ -150,7 +150,7 @@ SERVICE_IDENTIFIERS.NETWORK_LIMITED = 0x400;
 /**
  * @typedef VersionOpts
  * @prop {NetworkName} network - "mainnet", "testnet", etc
- * @prop {Uint32?} [protocol_version] - features (default: DarkSend.PROTOCOL_VERSION)
+ * @prop {Uint32?} [protocol_version] - features (default: Packer.PROTOCOL_VERSION)
  * @prop {Array<ServiceBitmask>?} [addr_recv_services] - default: NETWORK
  * @prop {String} addr_recv_ip - ipv6 address (can be 'ipv4-mapped') of the server
  * @prop {Uint16} addr_recv_port - 9999, 19999, etc (can be arbitrary on testnet)
@@ -172,9 +172,9 @@ SERVICE_IDENTIFIERS.NETWORK_LIMITED = 0x400;
  *   - https://dashcore.readme.io/docs/core-ref-p2p-network-control-messages#version
  */
 /* jshint maxcomplexity: 9001 */
-DarkSend.version = function ({
+Packer.version = function ({
 	network,
-	protocol_version = DarkSend.PROTOCOL_VERSION,
+	protocol_version = Packer.PROTOCOL_VERSION,
 	// alias of addr_trans_services
 	//services,
 	addr_recv_services = [SERVICE_IDENTIFIERS.NETWORK],
@@ -206,24 +206,24 @@ DarkSend.version = function ({
 		relay,
 		mnauth_challenge,
 	};
-	let SIZES = Object.assign({}, DarkSend.FIELD_SIZES);
+	let SIZES = Object.assign({}, Packer.FIELD_SIZES);
 
-	if (!DarkSend.NETWORKS[args.network]) {
+	if (!Packer.NETWORKS[args.network]) {
 		throw new Error(`"network" '${args.network}' is invalid.`);
 	}
 	if (!Array.isArray(args.addr_recv_services)) {
 		throw new Error('"addr_recv_services" must be an array');
 	}
 	if (
-		args.protocol_version < DarkSend.RELAY_PROTOCOL_VERSION_INTRODUCTION &&
+		args.protocol_version < Packer.RELAY_PROTOCOL_VERSION_INTRODUCTION &&
 		args.relay !== null
 	) {
 		throw new Error(
-			`"relay" field is not supported in protocol versions prior to ${DarkSend.RELAY_PROTOCOL_VERSION_INTRODUCTION}`,
+			`"relay" field is not supported in protocol versions prior to ${Packer.RELAY_PROTOCOL_VERSION_INTRODUCTION}`,
 		);
 	}
 	if (
-		args.protocol_version < DarkSend.MNAUTH_PROTOCOL_VERSION_INTRODUCTION &&
+		args.protocol_version < Packer.MNAUTH_PROTOCOL_VERSION_INTRODUCTION &&
 		args.mnauth_challenge !== null
 	) {
 		throw new Error(
@@ -235,21 +235,21 @@ DarkSend.version = function ({
 			throw new Error('"mnauth_challenge" field must be a Uint8Array');
 		}
 		if (
-			args.mnauth_challenge.length !== DarkSend.SIZES.MNAUTH_CHALLENGE_NONEMPTY
+			args.mnauth_challenge.length !== Packer.SIZES.MNAUTH_CHALLENGE_NONEMPTY
 		) {
 			throw new Error(
-				`"mnauth_challenge" field must be ${DarkSend.SIZES.MNAUTH_CHALLENGE_NONEMPTY} bytes long`,
+				`"mnauth_challenge" field must be ${Packer.SIZES.MNAUTH_CHALLENGE_NONEMPTY} bytes long`,
 			);
 		}
 	}
 	SIZES.USER_AGENT_STRING = args.user_agent?.length || 0;
 	if (args.relay !== null) {
-		SIZES.RELAY = DarkSend.FIELD_SIZES.RELAY_NONEMPTY;
+		SIZES.RELAY = Packer.FIELD_SIZES.RELAY_NONEMPTY;
 	}
 	// if (args.mnauth_challenge !== null) {
-	SIZES.MNAUTH_CHALLENGE = DarkSend.FIELD_SIZES.MNAUTH_CHALLENGE_NONEMPTY;
+	SIZES.MNAUTH_CHALLENGE = Packer.FIELD_SIZES.MNAUTH_CHALLENGE_NONEMPTY;
 	// }
-	SIZES.MN_CONNECTION = DarkSend.FIELD_SIZES.MN_CONNECTION_NONEMPTY;
+	SIZES.MN_CONNECTION = Packer.FIELD_SIZES.MN_CONNECTION_NONEMPTY;
 
 	let TOTAL_SIZE =
 		SIZES.VERSION +
@@ -407,7 +407,7 @@ DarkSend.version = function ({
 		payload.set(0x01, MNAUTH_CONNECTION_OFFSET);
 	}
 
-	payload = DarkSend.packMessage({ network, command, payload });
+	payload = Packer.packMessage({ network, command, payload });
 	return payload;
 };
 
@@ -416,14 +416,14 @@ DarkSend.version = function ({
  * Use a .subarray(offset) to define an offset.
  * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
  */
-DarkSend.packPing = function ({ network, message = null, nonce = null }) {
+Packer.packPing = function ({ network, message = null, nonce = null }) {
 	const command = 'ping';
 
 	if (!message) {
-		let pingSize = DarkSend.HEADER_SIZE + DarkSend.PING_SIZE;
+		let pingSize = Packer.HEADER_SIZE + Packer.PING_SIZE;
 		message = new Uint8Array(pingSize);
 	}
-	let payload = message.subarray(DarkSend.HEADER_SIZE);
+	let payload = message.subarray(Packer.HEADER_SIZE);
 
 	if (!nonce) {
 		nonce = payload;
@@ -432,7 +432,7 @@ DarkSend.packPing = function ({ network, message = null, nonce = null }) {
 		payload.set(nonce, 0);
 	}
 
-	void DarkSend.packMessage({ network, command, bytes: message });
+	void Packer.packMessage({ network, command, bytes: message });
 	return message;
 };
 
@@ -441,28 +441,28 @@ DarkSend.packPing = function ({ network, message = null, nonce = null }) {
  * Use a .subarray(offset) to define an offset.
  * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
  */
-DarkSend.packPong = function ({ network, message = null, nonce }) {
+Packer.packPong = function ({ network, message = null, nonce }) {
 	const command = 'pong';
 
 	if (!message) {
-		let pongSize = DarkSend.HEADER_SIZE + DarkSend.PING_SIZE;
+		let pongSize = Packer.HEADER_SIZE + Packer.PING_SIZE;
 		message = new Uint8Array(pongSize);
 	}
-	let payload = message.subarray(DarkSend.HEADER_SIZE);
+	let payload = message.subarray(Packer.HEADER_SIZE);
 	payload.set(nonce, 0);
 
-	void DarkSend.packMessage({ network, command, bytes: message });
+	void Packer.packMessage({ network, command, bytes: message });
 	return message;
 };
 
 /**
  * Just a boolean
  */
-DarkSend.packSendDsq = function ({ network, message = null, send = true }) {
+Packer.packSendDsq = function ({ network, message = null, send = true }) {
 	const command = 'senddsq';
 
 	if (!message) {
-		let dsqSize = DarkSend.HEADER_SIZE + DarkSend.DSQ_SIZE;
+		let dsqSize = Packer.HEADER_SIZE + Packer.DSQ_SIZE;
 		message = new Uint8Array(dsqSize);
 	}
 
@@ -470,15 +470,15 @@ DarkSend.packSendDsq = function ({ network, message = null, send = true }) {
 	if (!send) {
 		sendByte = [0x00];
 	}
-	let payload = message.subarray(DarkSend.HEADER_SIZE);
+	let payload = message.subarray(Packer.HEADER_SIZE);
 	payload.set(sendByte, 0);
 
-	void DarkSend.packMessage({ network, command, bytes: message });
+	void Packer.packMessage({ network, command, bytes: message });
 
 	return message;
 };
 
-DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
+Packer.packAllow = function ({ network, denomination, collateralTx }) {
 	const command = 'dsa';
 	const DENOMINATION_SIZE = 4;
 
@@ -500,13 +500,13 @@ DarkSend.packAllow = function ({ network, denomination, collateralTx }) {
 
 	payload.set(collateralTx, offset);
 
-	let message = DarkSend.packMessage({ network, command, payload });
+	let message = Packer.packMessage({ network, command, payload });
 	return message;
 };
 
 let DashTx = require('dashtx');
 
-DarkSend.packDsi = function ({ network, inputs, collateralTx, outputs }) {
+Packer.packDsi = function ({ network, inputs, collateralTx, outputs }) {
 	const command = 'dsi';
 
 	let neutered = [];
@@ -532,8 +532,8 @@ DarkSend.packDsi = function ({ network, inputs, collateralTx, outputs }) {
 
 	let txHex = hex.join('');
 	let len = txHex.length / 2;
-	let bytes = new Uint8Array(DarkSend.HEADER_SIZE + len);
-	let payload = bytes.subarray(DarkSend.HEADER_SIZE);
+	let bytes = new Uint8Array(Packer.HEADER_SIZE + len);
+	let payload = bytes.subarray(Packer.HEADER_SIZE);
 
 	for (let i = 0; i < txHex.length; i += 2) {
 		let end = i + 2;
@@ -541,27 +541,27 @@ DarkSend.packDsi = function ({ network, inputs, collateralTx, outputs }) {
 		payload[i] = parseInt(hex, 16);
 	}
 
-	void DarkSend.packMessage({ network, command, bytes });
+	void Packer.packMessage({ network, command, bytes });
 	return bytes;
 };
 
-DarkSend.packMessage = function ({
+Packer.packMessage = function ({
 	network,
 	command,
 	bytes = null,
 	payload = null,
 }) {
 	let payloadLength = payload?.byteLength || 0;
-	let messageSize = DarkSend.HEADER_SIZE + payloadLength;
+	let messageSize = Packer.HEADER_SIZE + payloadLength;
 	let offset = 0;
 
 	let embeddedPayload = false;
 	let message = bytes;
 	if (message) {
 		if (!payload) {
-			payload = message.subarray(DarkSend.HEADER_SIZE);
+			payload = message.subarray(Packer.HEADER_SIZE);
 			payloadLength = payload.byteLength;
-			messageSize = DarkSend.HEADER_SIZE + payloadLength;
+			messageSize = Packer.HEADER_SIZE + payloadLength;
 			embeddedPayload = true;
 		}
 	} else {
@@ -572,7 +572,7 @@ DarkSend.packMessage = function ({
 			`expected bytes of length ${messageSize}, but got ${message.length}`,
 		);
 	}
-	message.set(DarkSend.NETWORKS[network].magic, offset);
+	message.set(Packer.NETWORKS[network].magic, offset);
 	offset += SIZES.MAGIC_BYTES;
 
 	// Set command_name (char[12])

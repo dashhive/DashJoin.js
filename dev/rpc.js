@@ -11,7 +11,7 @@ let pkg = require('../package.json');
 let Net = require('node:net');
 
 let CoinJoin = require('./coinjoin.js');
-let DarkSend = require('./ds.js'); // TODO rename packer
+let Packer = require('./packer.js'); // TODO rename packer
 let Parser = require('./parser.js');
 
 let DashPhrase = require('dashphrase');
@@ -66,7 +66,7 @@ async function main() {
 	// }
 
 	let network = 'regtest';
-	// let minimumParticipants = DarkSend.NETWORKS[network].minimumParticiparts;
+	// let minimumParticipants = Packer.NETWORKS[network].minimumParticiparts;
 	rpcConfig.onconnected = async function () {
 		let rpc = this;
 		console.info(`[info] rpc client connected ${rpc.host}`);
@@ -628,13 +628,13 @@ async function main() {
 	let messages = [];
 	let listenerMap = {};
 	async function goRead() {
-		let pongSize = DarkSend.HEADER_SIZE + DarkSend.PING_SIZE;
+		let pongSize = Packer.HEADER_SIZE + Packer.PING_SIZE;
 		let pongMessageBytes = new Uint8Array(pongSize);
 		for (;;) {
 			console.log('[debug] readMessage()');
 			let msg = await readMessage();
 			if (msg.command === 'ping') {
-				void DarkSend.packPong({
+				void Packer.packPong({
 					network: network,
 					message: pongMessageBytes,
 					nonce: msg.payload,
@@ -838,10 +838,10 @@ async function main() {
 	//
 	// version / verack
 	//
-	let versionMsg = DarkSend.version({
-		network: network, // DarkSend.NETWORKS.regtest,
-		//protocol_version: DarkSend.PROTOCOL_VERSION,
-		//addr_recv_services: [DarkSend.IDENTIFIER_SERVICES.NETWORK],
+	let versionMsg = Packer.version({
+		network: network, // Packer.NETWORKS.regtest,
+		//protocol_version: Packer.PROTOCOL_VERSION,
+		//addr_recv_services: [Packer.IDENTIFIER_SERVICES.NETWORK],
 		addr_recv_ip: evonode.hostname,
 		addr_recv_port: evonode.port,
 		//addr_trans_services: [],
@@ -892,7 +892,7 @@ async function main() {
 				delete listenerMap['verack'];
 			};
 		});
-		let verackBytes = DarkSend.packMessage({
+		let verackBytes = Packer.packMessage({
 			network,
 			command: 'verack',
 			payload: null,
@@ -922,7 +922,7 @@ async function main() {
 					return;
 				}
 
-				let sendDsqMessage = DarkSend.packSendDsq({
+				let sendDsqMessage = Packer.packSendDsq({
 					network: network,
 					send: true,
 				});
@@ -978,7 +978,7 @@ async function main() {
 			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
 			collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
 		}
-		let dsaMsg = await DarkSend.packAllow({
+		let dsaMsg = await Packer.packAllow({
 			network,
 			denomination,
 			collateralTx,

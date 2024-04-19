@@ -1,6 +1,6 @@
 'use strict';
 
-let Packer = require('../dev/ds.js');
+let Packer = require('../dev/packer.js');
 // TODO copy .utils.bytesToHex rather than depend on it
 let DashKeys = require('dashkeys');
 

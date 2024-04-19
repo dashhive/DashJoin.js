@@ -1,6 +1,6 @@
 'use strict';
 
-let Packer = require('../dev/ds.js');
+let Packer = require('../dev/packer.js');
 
 function test() {
 	let network = 'regtest';
