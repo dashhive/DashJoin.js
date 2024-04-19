@@ -14,6 +14,7 @@ let CoinJoin = require('./coinjoin.js');
 let DarkSend = require('./ds.js'); // TODO rename packer
 let Parser = require('./parser.js');
 
+let DashPhrase = require('dashphrase');
 let DashHd = require('dashhd');
 let DashKeys = require('dashkeys');
 let DashRpc = require('dashrpc');
@@ -24,7 +25,7 @@ const DENOM_LOWEST = 100001;
 const PREDENOM_MIN = DENOM_LOWEST + 193;
 // const MIN_UNUSED = 2500;
 const MIN_UNUSED = 500;
-const MIN_BALANCE = 100001 * 10000;
+const MIN_BALANCE = 100001 * 100000;
 const MIN_DENOMINATED = 100;
 
 let rpcConfig = {
@@ -42,6 +43,20 @@ if (process.env.DASHD_RPC_TIMEOUT) {
 
 async function main() {
 	/* jshint maxstatements: 1000 */
+	/* jshint maxcomplexity: 100 */
+
+	let walletSalt = process.argv[2] || '';
+	let isHelp = walletSalt === 'help' || walletSalt === '--help';
+	if (isHelp) {
+		throw new Error(
+			`USAGE\n    ${process.argv[1]} [wallet-salt]\n\nEXAMPLE\n    ${process.argv[1]} 'luke|han|chewie'`,
+		);
+	}
+
+	let walletPhrase = process.env.DASH_WALLET_PHRASE || '';
+	if (!walletPhrase) {
+		throw new Error('missing DASH_WALLET_PHRASE');
+	}
 
 	// let cache = {};
 	// try {
@@ -51,7 +66,7 @@ async function main() {
 	// }
 
 	let network = 'regtest';
-	let minimumParticipants = DarkSend.NETWORKS[network].minimumParticiparts;
+	// let minimumParticipants = DarkSend.NETWORKS[network].minimumParticiparts;
 	rpcConfig.onconnected = async function () {
 		let rpc = this;
 		console.info(`[info] rpc client connected ${rpc.host}`);
@@ -62,13 +77,23 @@ async function main() {
 	let height = await rpc.init(rpc);
 	console.info(`[info] rpc server is ready. Height = ${height}`);
 
-	let seedHex = process.env.DASH_WALLET_SEED || '';
-	if (!seedHex) {
-		throw new Error('missing DASH_WALLET_SEED');
-	}
-	let seedBuffer = Buffer.from(seedHex, 'hex');
-	let seedBytes = new Uint8Array(seedBuffer);
+	let keyUtils = {
+		sign: async function (privateKey, hash) {
+			// TODO update DashTx docs arguments from object to 2 args
+			let sigOpts = { canonical: true, extraEntropy: true };
+			let sigBytes = await Secp256k1.sign(hash, privateKey, sigOpts);
+			// TODO update DashTx docs return from hex to bytes
+			//return DashTx.utils.u8ToHex(sigBytes);
+			return sigBytes;
+		},
+		toPublicKey: async function (privKeyBytes) {
+			return await DashKeys.utils.toPublicKey(privKeyBytes);
+		},
+	};
+	let dashTx = DashTx.create(keyUtils);
+
 	let testCoin = '1';
+	let seedBytes = await DashPhrase.toSeed(walletPhrase, walletSalt);
 	let walletKey = await DashHd.fromSeed(seedBytes, {
 		coinType: testCoin,
 		versions: DashHd.TESTNET,
@@ -192,6 +217,9 @@ async function main() {
 	}
 	console.log('[debug] wallet balance:', totalBalance);
 
+	void (await generateMinBalance());
+	void (await generateDenominations());
+
 	// TODO sort denominated
 	// for (let addr of addresses) { ... }
 
@@ -216,6 +244,7 @@ async function main() {
 	}
 
 	async function generateDenominations() {
+		// jshint maxcomplexity: 25
 		let denomCount = 0;
 		let denominable = [];
 		let denominated = {};
@@ -253,6 +282,7 @@ async function main() {
 		// but we actually only generate 5 + 4 + 9 + 9 = 27 coins, leaving
 		// well over 5472 * 193 extra value)
 		for (let data of denominable) {
+			console.log('[debug] denominable', data);
 			if (denomCount >= MIN_DENOMINATED) {
 				break;
 			}
@@ -302,7 +332,8 @@ async function main() {
 			// (and where we may end up with 10 x LOWEST, which we could carry
 			// over into the next tier, but won't right now for simplicity).
 			for (;;) {
-				let fees = DashTx._appraiseCounts(1, denomOutputs.length + 1);
+				let numInputs = 1;
+				let fees = DashTx._appraiseCounts(numInputs, denomOutputs.length + 1);
 				let nextCoinCost = DENOM_LOWEST + fees.max;
 				if (fee < nextCoinCost) {
 					// TODO split out 10200 (or 10193) collaterals as well
@@ -376,10 +407,22 @@ async function main() {
 				let data = keysMap[input.address];
 				let addressKey = await xreceiveKey.deriveAddress(data.index);
 				keys.push(addressKey.privateKey);
+				// DEBUG check pkh hex
+				let pubKeyHashBytes = await DashKeys.addrToPkh(data.address, {
+					version: 'testnet',
+				});
+				data.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+				console.log(data);
 			}
 			let txInfoSigned = await dashTx.hashAndSignAll(txInfo, keys);
 
+			console.log('[debug], txInfo, keys, txSigned');
+			console.log(txInfo);
+			console.log(keys);
+			console.log(txInfoSigned);
+			await sleep(150);
 			let txRpc = await rpc.sendRawTransaction(txInfoSigned.transaction);
+			await sleep(150);
 			console.log('[debug] txRpc.result', txRpc.result);
 
 			// TODO don't add collateral coins
@@ -394,8 +437,11 @@ async function main() {
 	}
 
 	async function generateToAddress(data) {
-		void (await rpc.generateToAddress(1, data.address));
-		// let blocksRpc = await rpc.generateToAddress(1, addr);
+		let numBlocks = 1;
+		await sleep(150);
+		void (await rpc.generateToAddress(numBlocks, data.address));
+		await sleep(150);
+		// let blocksRpc = await rpc.generateToAddress(numBlocks, addr);
 		// console.log('[debug] blocksRpc', blocksRpc);
 
 		// let deltas = await rpc.getAddressMempool({ addresses: [addr] });
@@ -447,8 +493,11 @@ async function main() {
 				break;
 			}
 
-			void (await rpc.generateToAddress(1, addr));
-			// let blocksRpc = await rpc.generateToAddress(1, addr);
+			let numBlocks = 1;
+			await sleep(150);
+			void (await rpc.generateToAddress(numBlocks, addr));
+			await sleep(150);
+			// let blocksRpc = await rpc.generateToAddress(numBlocks, addr);
 			// console.log('[debug] blocksRpc', blocksRpc);
 
 			// let deltas = await rpc.getAddressMempool({ addresses: [addr] });
@@ -515,17 +564,6 @@ async function main() {
 		return collateralTxInfo;
 	}
 
-	let dashTx = DashTx.create({ sign: sign });
-
-	async function sign(privateKey, hash) {
-		// TODO update DashTx docs arguments from object to 2 args
-		let sigOpts = { canonical: true, extraEntropy: true };
-		let sigBytes = await Secp256k1.sign(hash, privateKey, sigOpts);
-		// TODO update DashTx docs return from hex to bytes
-		//return DashTx.utils.u8ToHex(sigBytes);
-		return sigBytes;
-	}
-
 	let evonodes = [];
 	{
 		let resp = await rpc.masternodelist();
@@ -549,7 +587,8 @@ async function main() {
 		}
 	}
 
-	void shuffle(evonodes);
+	// void shuffle(evonodes);
+	evonodes.sort(byId);
 	let evonode = evonodes.at(-1);
 	console.info('[info] chosen evonode:');
 	console.log(JSON.stringify(evonode, null, 2));
@@ -824,71 +863,106 @@ async function main() {
 	// console.log(Parser.parseHeader(versionBuffer.slice(0, 24)));
 	// console.log(Parser.parseVerack(versionBuffer.slice(24)));
 
-	conn.write(versionMsg);
+	{
+		let versionP = new Promise(function (resolve, reject) {
+			listenerMap['version'] = async function (message) {
+				let version = await Parser.parseVersion(message.payload);
+				console.log('DEBUG version', version);
+				resolve();
+				listenerMap['version'] = null;
+				delete listenerMap['version'];
+			};
+		});
+		await sleep(150);
+		conn.write(versionMsg);
 
-	await new Promise(function (resolve, reject) {
-		listenerMap['version'] = async function (message) {
-			let version = await Parser.parseVersion(message.payload);
-			console.log('DEBUG version', version);
-			resolve();
-			listenerMap['version'] = null;
-			delete listenerMap['version'];
-		};
-	});
+		await versionP;
+	}
 
-	let verackBytes = DarkSend.packMessage({
-		network,
-		command: 'verack',
-		payload: null,
-	});
-	conn.write(verackBytes);
+	{
+		let verackP = await new Promise(function (resolve, reject) {
+			listenerMap['verack'] = async function (message) {
+				if (message.command !== 'verack') {
+					return;
+				}
 
-	await new Promise(function (resolve, reject) {
-		listenerMap['verack'] = async function (message) {
-			if (message.command !== 'verack') {
+				console.log('DEBUG verack', message);
+				resolve();
+				listenerMap['verack'] = null;
+				delete listenerMap['verack'];
+			};
+		});
+		let verackBytes = DarkSend.packMessage({
+			network,
+			command: 'verack',
+			payload: null,
+		});
+		await sleep(150);
+		conn.write(verackBytes);
+
+		await verackP;
+	}
+
+	{
+		let mnauthP = new Promise(function (resolve, reject) {
+			listenerMap['mnauth'] = async function (message) {
+				if (message.command !== 'mnauth') {
+					return;
+				}
+
+				resolve();
+				listenerMap['mnauth'] = null;
+				delete listenerMap['mnauth'];
+			};
+		});
+
+		let senddsqP = new Promise(function (resolve, reject) {
+			listenerMap['senddsq'] = async function (message) {
+				if (message.command !== 'senddsq') {
+					return;
+				}
+
+				let sendDsqMessage = DarkSend.packSendDsq({
+					network: network,
+					send: true,
+				});
+				await sleep(150);
+				conn.write(sendDsqMessage);
+				console.log("[debug] sending 'senddsq':", sendDsqMessage);
+
+				resolve();
+				listenerMap['senddsq'] = null;
+				delete listenerMap['senddsq'];
+			};
+		});
+
+		// TODO setTimeout
+		// void new Promise(function (resolve, reject) {
+		listenerMap['dssu'] = async function (message) {
+			if (message.command !== 'dssu') {
 				return;
 			}
 
-			console.log('DEBUG verack', message);
-			resolve();
-			listenerMap['verack'] = null;
-			delete listenerMap['verack'];
-		};
-	});
-	await new Promise(function (resolve, reject) {
-		listenerMap['mnauth'] = async function (message) {
-			if (message.command !== 'mnauth') {
-				return;
-			}
+			let dssu = await Parser.parseDssu(message.payload);
+			console.log('DEBUG dssu', dssu);
 
-			resolve();
-			listenerMap['mnauth'] = null;
-			delete listenerMap['mnauth'];
+			// resolve(dssu);
+			listenerMap['dssu'] = null;
+			delete listenerMap['dssu'];
 		};
-	});
-	await new Promise(function (resolve, reject) {
-		listenerMap['senddsq'] = async function (message) {
-			if (message.command !== 'senddsq') {
-				return;
-			}
+		// });
 
-			let sendDsqMessage = DarkSend.packSendDsq({
-				network: network,
-				send: true,
-			});
-			conn.write(sendDsqMessage);
-			console.log("[debug] sending 'senddsq':", sendDsqMessage);
-			resolve();
-			listenerMap['senddsq'] = null;
-			delete listenerMap['senddsq'];
-		};
-	});
+		await mnauthP;
+		await senddsqP;
+	}
 
-	//
-	// dsa / dssu + dsq
-	//
-	for (let i = 0; i < minimumParticipants; i += 1) {
-		let denomination = 100001 * 100;
+	{
+		let dsqPromise = new Promise(readDsq);
+		//
+		// dsa / dssu + dsq
+		//
+		//for (let i = 0; i < minimumParticipants; i += 1)
+		let denomination = 100001 * 1;
 		let collateralTx;
 		{
 			void (await generateMinBalance());
@@ -909,27 +983,22 @@ async function main() {
 			denomination,
 			collateralTx,
 		});
+		await sleep(150);
 		conn.write(dsaMsg);
+
 		let dsaBuf = Buffer.from(dsaMsg);
-		console.log('[debug] dsa', i, dsaBuf.toString('hex'));
+		console.log('[debug] dsa', dsaBuf.toString('hex'));
+
+		let dsq = await dsqPromise;
+		for (; !dsq.ready; ) {
+			dsq = await new Promise(readDsq);
+			if (dsq.ready) {
+				break;
+			}
+		}
 	}
 
-	// TODO setTimeout
-	await new Promise(function (resolve, reject) {
-		listenerMap['dssu'] = async function (message) {
-			if (message.command !== 'dssu') {
-				return;
-			}
-
-			let dssu = await Parser.parseDssu(message.payload);
-			console.log('DEBUG dssu', dssu);
-
-			resolve();
-			listenerMap['dssu'] = null;
-			delete listenerMap['dssu'];
-		};
-	});
-	await new Promise(function (resolve, reject) {
+	function readDsq(resolve, reject) {
 		listenerMap['dsq'] = async function (message) {
 			if (message.command !== 'dsq') {
 				return;
@@ -938,13 +1007,23 @@ async function main() {
 			let dsq = await Parser.parseDsq(message.payload);
 			console.log('DEBUG dsq', dsq);
 
-			resolve();
+			resolve(dsq);
 			listenerMap['dsq'] = null;
 			delete listenerMap['dsq'];
 		};
-	});
+	}
 
 	console.log('exiting?');
+}
+
+function byId(a, b) {
+	if (a.id > b.id) {
+		return 1;
+	}
+	if (a.id < b.id) {
+		return -1;
+	}
+	return 0;
 }
 
 // http://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
@@ -965,6 +1044,12 @@ function shuffle(arr) {
 	}
 
 	return arr;
+}
+
+function sleep(ms) {
+	return new Promise(function (resolve) {
+		setTimeout(resolve, ms);
+	});
 }
 
 main()
