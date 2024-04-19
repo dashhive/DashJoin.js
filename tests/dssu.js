@@ -43,7 +43,7 @@ async function readFixtureHex(name) {
 	let fixtureStr = await Fs.readFile(fixturePath, 'ascii');
 
 	// nix whitespace used for debugging
-	fixtureStr = fixtureStr.replace(/[\s\n]+/, '');
+	fixtureStr = fixtureStr.replace(/[\s\n]+/g, '');
 
 	let bytes = DashKeys.utils.hexToBytes(fixtureStr);
 	return bytes;
