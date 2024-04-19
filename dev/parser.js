@@ -324,9 +324,9 @@ Parser.parseDsq = function (bytes) {
 	let timestamp64n = dv.getBigInt64(offset, DV_LITTLE_ENDIAN);
 	offset += SIZES.TIME;
 	let timestamp_unix = Number(timestamp64n);
-	// let timestampMs = timestamp_unix * 1000;
-	// let timestampDate = new Date(timestampMs);
-	// let timestamp = timestampDate.toISOString();
+	let timestampMs = timestamp_unix * 1000;
+	let timestampDate = new Date(timestampMs);
+	let timestamp = timestampDate.toISOString();
 
 	/**
 	 * Grab the fReady
@@ -342,7 +342,7 @@ Parser.parseDsq = function (bytes) {
 		protxhash_bytes,
 		// protxhash: '',
 		timestamp_unix,
-		// timestamp,
+		timestamp,
 		ready,
 		signature_bytes,
 		// signature: '',
