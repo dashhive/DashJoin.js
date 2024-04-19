@@ -519,26 +519,46 @@ Packer.packDsi = function ({ network, inputs, collateralTx, outputs }) {
 		neutered.push(_input);
 	}
 
-	let hex = [];
-	void DashTx._packInputs({
-		inputs: neutered,
-		tx: hex,
-	});
-	hex.push(collateralTx);
-	void DashTx._packOutputs({
-		outputs: outputs,
-		tx: hex,
-	});
+	let inputsHex = DashTx._packInputs({ inputs: neutered });
+	let inputHex = inputsHex.join('');
+	console.log('inputs', inputsHex);
+	let outputsHex = DashTx._packOutputs({ outputs: outputs });
+	let outputHex = outputsHex.join('');
+	console.log('outputs', outputsHex);
 
-	let txHex = hex.join('');
-	let len = txHex.length / 2;
+	let len = collateralTx.length;
+	len += inputHex.length / 2;
+	len += outputHex.length / 2;
 	let bytes = new Uint8Array(Packer.HEADER_SIZE + len);
-	let payload = bytes.subarray(Packer.HEADER_SIZE);
+	console.log('total length (hex)', bytes.length * 2);
 
-	for (let i = 0; i < txHex.length; i += 2) {
-		let end = i + 2;
-		let hex = txHex.slice(i, end);
-		payload[i] = parseInt(hex, 16);
+	let offset = Packer.HEADER_SIZE;
+
+	{
+		let inputsPayload = bytes.subarray(offset);
+		let j = 0;
+		for (let i = 0; i < inputHex.length; i += 2) {
+			let end = i + 2;
+			let hex = inputHex.slice(i, end);
+			inputsPayload[j] = parseInt(hex, 16);
+			j += 1;
+		}
+		offset += inputHex.length / 2;
+	}
+
+	bytes.set(collateralTx, offset);
+	offset += collateralTx.length;
+
+	{
+		let outputsPayload = bytes.subarray(offset);
+		let j = 0;
+		for (let i = 0; i < outputHex.length; i += 2) {
+			let end = i + 2;
+			let hex = outputHex.slice(i, end);
+			outputsPayload[j] = parseInt(hex, 16);
+			j += 1;
+		}
+		offset += outputHex.length / 2;
 	}
 
 	void Packer.packMessage({ network, command, bytes });
