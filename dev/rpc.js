@@ -25,8 +25,11 @@ const DENOM_LOWEST = 100001;
 const PREDENOM_MIN = DENOM_LOWEST + 193;
 // const MIN_UNUSED = 2500;
 const MIN_UNUSED = 500;
-const MIN_BALANCE = 100001 * 100000;
+const MIN_BALANCE = 100001 * 1000;
 const MIN_DENOMINATED = 100;
+
+// https://github.com/dashpay/dash/blob/v19.x/src/coinjoin/coinjoin.h#L39
+const COINJOIN_ENTRY_MAX_SIZE = 9;
 
 let rpcConfig = {
 	protocol: 'http', // https for remote, http for local / private networking
@@ -149,6 +152,7 @@ async function main() {
 					address: address,
 					// uxtos: utxos,
 					used: false,
+					reserved: 0,
 					satoshis: 0,
 				};
 				// console.log('[debug] addr info', data);
@@ -217,6 +221,8 @@ async function main() {
 	}
 	console.log('[debug] wallet balance:', totalBalance);
 
+	let denomination = 100001 * 1;
+
 	void (await generateMinBalance());
 	void (await generateDenominations());
 
@@ -231,15 +237,12 @@ async function main() {
 			}
 
 			let data = keysMap[addr];
-			// console.log(data);
-			if (data.reserved) {
-				continue;
-			}
-			if (data.used) {
+			let isAvailable = !data.used && !data.reserved;
+			if (!isAvailable) {
 				continue;
 			}
 
-			void (await generateToAddress(data));
+			void (await generateToAddressAndUpdateBalance(data));
 		}
 	}
 
@@ -432,11 +435,12 @@ async function main() {
 					denominated[change.satoshis] = [];
 				}
 				denominated[change.satoshis].push(change);
+				change.reserved = 0;
 			}
 		}
 	}
 
-	async function generateToAddress(data) {
+	async function generateToAddressAndUpdateBalance(data) {
 		let numBlocks = 1;
 		await sleep(150);
 		void (await rpc.generateToAddress(numBlocks, data.address));
@@ -466,69 +470,41 @@ async function main() {
 		}
 	}
 
-	async function getCollateralTx({ denomination }) {
-		let largest = { satoshis: 0 };
-		let change;
+	// TODO unreserve collateral after positive response
+	// (and check for use 30 seconds after failure message)
+	async function getCollateralTx() {
+		let barelyEnoughest = { satoshis: Infinity };
 		for (let addr of addresses) {
 			let data = keysMap[addr];
-			// console.log(data);
-			if (data.reserved) {
+			if (data.reserved > 0) {
 				continue;
 			}
-			if (data.satoshis > largest.satoshis) {
-				largest = data;
-				largest.reserved = Date.now();
-				// console.log('[debug] new largest:', largest);
-			}
-			if (data.used) {
+
+			if (!data.satoshis) {
 				continue;
 			}
-			if (!change) {
-				change = data;
-				data.used = true;
+
+			let isDenom = data.satoshis % DENOM_LOWEST === 0;
+			if (isDenom) {
+				continue;
 			}
 
-			// console.log('[debug] totalBalance:', totalBalance);
-			if (totalBalance >= MIN_BALANCE) {
-				break;
+			if (data.satoshis < CoinJoin.COLLATERAL) {
+				continue;
 			}
 
-			let numBlocks = 1;
-			await sleep(150);
-			void (await rpc.generateToAddress(numBlocks, addr));
-			await sleep(150);
-			// let blocksRpc = await rpc.generateToAddress(numBlocks, addr);
-			// console.log('[debug] blocksRpc', blocksRpc);
-
-			// let deltas = await rpc.getAddressMempool({ addresses: [addr] });
-			// console.log('[debug] generatetoaddress mempool', deltas);
-			// let deltas2 = await rpc.getAddressDeltas({ addresses: [addr] });
-			// console.log('[debug] generatetoaddress deltas', deltas);
-			// let results = deltas.result.concat(deltas2.result);
-			// for (let delta of results) {
-			// 	totalBalance += delta.satoshis;
-			// 	keysMap[delta.address].used = true;
-			// 	delete unusedMap[delta.address];
-			// }
-
-			let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
-			let utxos = utxosRpc.result;
-			for (let utxo of utxos) {
-				// console.log(data.index, '[debug] utxo.satoshis', utxo.satoshis);
-				data.satoshis += utxo.satoshis;
-				totalBalance += utxo.satoshis;
-				keysMap[utxo.address].used = true;
-				delete unusedMap[utxo.address];
+			if (data.satoshis < barelyEnoughest.satoshis) {
+				barelyEnoughest = data;
+				barelyEnoughest.reserved = Date.now();
 			}
 		}
-		console.log('[debug] largest coin:', largest);
+		console.log('[debug] barelyEnoughest coin:', barelyEnoughest);
 
 		let collateralTxInfo;
 		{
-			let addr = largest.address;
+			let addr = barelyEnoughest.address;
 			let utxosRpc = await rpc.getAddressUtxos({ addresses: [addr] });
 			let utxos = utxosRpc.result;
-			let fee = CoinJoin.COLLATERAL;
 			for (let utxo of utxos) {
 				console.log('[debug] input utxo', utxo);
 				// utxo.sigHashType = 0x01;
@@ -538,17 +514,25 @@ async function main() {
 					utxo.txId = utxo.txid;
 				}
 			}
-			let output = Object.assign({}, change);
-			let pubKeyHashBytes = await DashKeys.addrToPkh(change.address, {
-				version: 'testnet',
-			});
-			output.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
-			output.satoshis = largest.satoshis - fee;
-			// TODO
-			// if (collateralUtxoIsDust) {
-			//     output = { memo: '', satoshis: 0 };
-			// }
-			console.log('[debug] change', change);
+
+			let output;
+			let leftover = barelyEnoughest.satoshis - CoinJoin.COLLATERAL;
+			if (leftover >= CoinJoin.COLLATERAL) {
+				let change = await reserveChangeAddress();
+				output = Object.assign({}, change);
+				// TODO change.used = true;
+				// change.reserved = 0;
+				let pubKeyHashBytes = await DashKeys.addrToPkh(output.address, {
+					version: 'testnet',
+				});
+				output.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+				output.satoshis = leftover;
+			} else {
+				output = DashTx.createDonationOutput();
+				// TODO 0-byte memo? no outputs (bypassing the normal restriction)?
+			}
+
+			console.log('[debug] change or memo', output);
 			let txInfo = {
 				version: 3,
 				inputs: utxos,
@@ -560,8 +544,40 @@ async function main() {
 
 			collateralTxInfo = txInfo;
 		}
-		console.log('[debug] dsa collateral tx', collateralTxInfo);
+
+		console.log('[debug] ds* collateral tx', collateralTxInfo);
 		return collateralTxInfo;
+	}
+
+	async function reserveChangeAddress() {
+		for (let addr of addresses) {
+			let data = keysMap[addr];
+
+			let isAvailable = !data.used && !data.reserved;
+			if (!isAvailable) {
+				continue;
+			}
+
+			data.reserved = Date.now();
+			return data;
+		}
+
+		let msg =
+			'sanity fail: ran out of addresses despite having 500+ unused extra';
+		throw new Error(msg);
+	}
+
+	// TODO keyUtils.getPrivateKey
+	async function getPrivateKeys(inputs) {
+		let keys = [];
+		for (let input of inputs) {
+			let data = keysMap[input.address];
+			// TODO map xkey by walletid
+			let addressKey = await xreceiveKey.deriveAddress(data.index);
+			keys.push(addressKey.privateKey);
+		}
+
+		return keys;
 	}
 
 	let evonodes = [];
@@ -962,19 +978,14 @@ async function main() {
 		// dsa / dssu + dsq
 		//
 		//for (let i = 0; i < minimumParticipants; i += 1)
-		let denomination = 100001 * 1;
 		let collateralTx;
 		{
 			void (await generateMinBalance());
 			void (await generateDenominations());
 
-			let collateralTxInfo = await getCollateralTx({ denomination });
-			let keys = [];
-			for (let input of collateralTxInfo.inputs) {
-				let data = keysMap[input.address];
-				let addressKey = await xreceiveKey.deriveAddress(data.index);
-				keys.push(addressKey.privateKey);
-			}
+			void (await generateMinBalance());
+			let collateralTxInfo = await getCollateralTx();
+			let keys = await getPrivateKeys(collateralTxInfo.inputs);
 			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
 			collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
 		}
@@ -1011,6 +1022,97 @@ async function main() {
 			listenerMap['dsq'] = null;
 			delete listenerMap['dsq'];
 		};
+	}
+
+	{
+		let dsfP = new Promise(function (resolve, reject) {
+			listenerMap['dsf'] = async function (message) {
+				if (message.command !== 'dsf') {
+					return;
+				}
+
+				resolve();
+				listenerMap['dsf'] = null;
+				delete listenerMap['dsf'];
+			};
+		});
+
+		let inputs = [];
+		let outputs = [];
+		for (let addr of addresses) {
+			let allGood =
+				inputs.length >= COINJOIN_ENTRY_MAX_SIZE &&
+				outputs.length >= COINJOIN_ENTRY_MAX_SIZE;
+			if (allGood) {
+				break;
+			}
+
+			let data = keysMap[addr];
+
+			// build up outputs
+			let isFree = !data.used && !data.reserved;
+			if (isFree) {
+				if (outputs.length >= COINJOIN_ENTRY_MAX_SIZE) {
+					continue;
+				}
+
+				data.reserved = Date.now();
+				let pubKeyHashBytes = await DashKeys.addrToPkh(data.address, {
+					version: 'testnet',
+				});
+				let pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+				let output = {
+					pubKeyHash: pubKeyHash,
+					satoshis: denomination,
+				};
+				outputs.push(output);
+				continue;
+			}
+
+			// Note: we'd need to look at utxos (not total address balance)
+			// to be wholly accurate, but this is good enough for now
+			if (data.satoshis !== denomination) {
+				continue;
+			}
+			if (data.reserved) {
+				continue;
+			}
+			if (inputs.length >= COINJOIN_ENTRY_MAX_SIZE) {
+				continue;
+			}
+
+			data.reserved = Date.now();
+			let utxosRpc = await rpc.getAddressUtxos({ addresses: [data.address] });
+			let utxos = utxosRpc.result;
+			for (let utxo of utxos) {
+				console.log('[debug] input utxo', utxo);
+				// utxo.sigHashType = 0x01;
+				utxo.address = data.address;
+				// TODO fix in dashtx
+				utxo.txId = utxo.txId || utxo.txid;
+				utxo.txid = utxo.txId || utxo.txid;
+				inputs.push(utxo);
+			}
+		}
+
+		let collateralTx;
+		{
+			void (await generateMinBalance());
+			let collateralTxInfo = await getCollateralTx();
+			let keys = await getPrivateKeys(collateralTxInfo.inputs);
+			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
+			collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
+		}
+
+		let dsiMessageBytes = Packer.packDsi({
+			network,
+			inputs,
+			collateralTx,
+			outputs,
+		});
+		conn.write(dsiMessageBytes);
+
+		await dsfP;
 	}
 
 	console.log('exiting?');
@@ -1059,6 +1161,6 @@ main()
 	})
 	.catch(function (err) {
 		console.error('Fail:');
-		console.error(err.stack || err);
+		console.error(err.stack);
 		process.exit(1);
 	});
