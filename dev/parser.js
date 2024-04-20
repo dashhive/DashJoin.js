@@ -9,8 +9,10 @@ const DV_LITTLE_ENDIAN = true;
 Parser.HEADER_SIZE = 24;
 Parser.DSSU_SIZE = 16;
 Parser.DSQ_SIZE = 142;
+Parser.SESSION_ID_SIZE = 4;
 
 let CoinJoin = require('./coinjoin.js');
+let DashTx = require('dashtx');
 
 /**
  * Parse the 24-byte P2P Message Header
@@ -25,6 +27,7 @@ let CoinJoin = require('./coinjoin.js');
 Parser.parseHeader = function (bytes) {
 	let buffer = Buffer.from(bytes);
 	console.log(
+		new Date(),
 		'[debug] parseHeader(bytes)',
 		buffer.length,
 		buffer.toString('hex'),
@@ -62,7 +65,7 @@ Parser.parseHeader = function (bytes) {
 	};
 
 	if (command !== 'inv') {
-		console.log(headerMessage);
+		console.log(new Date(), headerMessage);
 	}
 	console.log();
 	return headerMessage;
@@ -239,7 +242,7 @@ Parser.parseDssu = function (bytes) {
 	 * 4	nMsgMessageID		- Required		- ID of the typical masternode reply message
 	 */
 	const SIZES = {
-		SESSION_ID: 4,
+		SESSION_ID: Parser.SESSION_ID_SIZE,
 		STATE: 4,
 		ENTRIES_COUNT: 4,
 		STATUS_UPDATE: 4,
@@ -351,4 +354,31 @@ Parser.parseDsq = function (bytes) {
 	console.log(dsqMessage);
 	console.log();
 	return dsqMessage;
+};
+
+Parser.parseDsf = function (bytes) {
+	console.log(
+		new Date(),
+		'[debug] parseDsf',
+		bytes.length,
+		bytes.toString('hex'),
+	);
+
+	let offset = 0;
+	let sessionId = bytes.subarray(offset, Parser.SESSION_ID_SIZE);
+	let session_id = DashTx.utils.bytesToHex(sessionId);
+	offset += Parser.SESSION_ID_SIZE;
+
+	// TODO parse transaction completely with DashTx
+	let transactionUnsigned = bytes.subarray(offset);
+	let transaction_unsigned = DashTx.utils.bytesToHex(transactionUnsigned);
+
+	console.log(
+		new Date(),
+		'[debug] parseDsf',
+		transaction_unsigned.length,
+		transaction_unsigned,
+	);
+
+	return { session_id, transaction_unsigned };
 };
