@@ -359,7 +359,7 @@ Parser.parseDsq = function (bytes) {
 Parser.parseDsf = function (bytes) {
 	console.log(
 		new Date(),
-		'[debug] parseDsf',
+		'[debug] parseDsf (msg len)',
 		bytes.length,
 		bytes.toString('hex'),
 	);
@@ -373,10 +373,11 @@ Parser.parseDsf = function (bytes) {
 	let transactionUnsigned = bytes.subarray(offset);
 	let transaction_unsigned = DashTx.utils.bytesToHex(transactionUnsigned);
 
+	let txLen = transaction_unsigned.length / 2;
 	console.log(
 		new Date(),
-		'[debug] parseDsf',
-		transaction_unsigned.length,
+		'[debug] parseDsf (tx len)',
+		txLen,
 		transaction_unsigned,
 	);
 
