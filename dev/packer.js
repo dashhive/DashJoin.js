@@ -565,6 +565,23 @@ Packer.packDsi = function ({ network, inputs, collateralTx, outputs }) {
 	return bytes;
 };
 
+Packer.packDss = function ({ network, inputs }) {
+	const command = 'dss';
+
+	if (!inputs?.length) {
+		// TODO make better
+		throw new Error('you must provide some inputs');
+	}
+
+	let txInputsHex = DashTx._packInputs({ inputs });
+	let txInputHex = txInputsHex.join('');
+	let payload = DashTx.utils.hexToBytes(txInputHex);
+
+	// TODO prealloc bytes
+	let bytes = Packer.packMessage({ network, command, payload });
+	return bytes;
+};
+
 Packer.packMessage = function ({
 	network,
 	command,
