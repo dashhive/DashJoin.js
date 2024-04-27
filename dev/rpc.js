@@ -19,17 +19,19 @@ let DashHd = require('dashhd');
 let DashKeys = require('dashkeys');
 let DashRpc = require('dashrpc');
 let DashTx = require('dashtx');
+require('./txparser.js');
 let Secp256k1 = require('@dashincubator/secp256k1');
 
 const DENOM_LOWEST = 100001;
 const PREDENOM_MIN = DENOM_LOWEST + 193;
 // const MIN_UNUSED = 2500;
-const MIN_UNUSED = 500;
+const MIN_UNUSED = 1000;
 const MIN_BALANCE = 100001 * 1000;
-const MIN_DENOMINATED = 100;
+const MIN_DENOMINATED = 200;
 
 // https://github.com/dashpay/dash/blob/v19.x/src/coinjoin/coinjoin.h#L39
-const COINJOIN_ENTRY_MAX_SIZE = 9;
+// const COINJOIN_ENTRY_MAX_SIZE = 9; // real
+const COINJOIN_ENTRY_MAX_SIZE = 2; // just for testing right now
 
 let rpcConfig = {
 	protocol: 'http', // https for remote, http for local / private networking
@@ -81,15 +83,41 @@ async function main() {
 	console.info(`[info] rpc server is ready. Height = ${height}`);
 
 	let keyUtils = {
-		sign: async function (privateKey, hash) {
-			// TODO update DashTx docs arguments from object to 2 args
+		sign: async function (privKeyBytes, hashBytes) {
 			let sigOpts = { canonical: true, extraEntropy: true };
-			let sigBytes = await Secp256k1.sign(hash, privateKey, sigOpts);
-			// TODO update DashTx docs return from hex to bytes
-			//return DashTx.utils.u8ToHex(sigBytes);
+			let sigBytes = await Secp256k1.sign(hashBytes, privKeyBytes, sigOpts);
 			return sigBytes;
 		},
+		getPrivateKey: async function (input) {
+			if (!input.address) {
+				//throw new Error('should put the address on the input there buddy...');
+				console.warn('missing address:', input.txid, input.outputIndex);
+				return null;
+			}
+			let data = keysMap[input.address];
+			let isUint = data.index > -1;
+			if (!isUint) {
+				throw new Error(`missing 'index'`);
+			}
+			// TODO map xkey by walletid
+			let addressKey = await xreceiveKey.deriveAddress(data.index);
+
+			{
+				// sanity check
+				let privKeyHex = DashTx.utils.bytesToHex(addressKey.privateKey);
+				if (data._privKeyHex !== privKeyHex) {
+					if (data._privKeyHex) {
+						console.log(data._privKeyHex);
+						console.log(privKeyHex);
+						throw new Error('mismatch key bytes');
+					}
+					data._privKeyHex = privKeyHex;
+				}
+			}
+			return addressKey.privateKey;
+		},
 		toPublicKey: async function (privKeyBytes) {
+			// TODO use secp256k1 directly
 			return await DashKeys.utils.toPublicKey(privKeyBytes);
 		},
 	};
@@ -105,7 +133,7 @@ async function main() {
 
 	let accountHdpath = `m/44'/1'/0'`;
 	let accountKey = await walletKey.deriveAccount(0);
-	let xreceiveKey = await accountKey.deriveXKey(walletKey, 0);
+	let xreceiveKey = await accountKey.deriveXKey(walletKey, 0); //jshint ignore:line
 	// let xchangeKey = await accountKey.deriveXKey(walletKey, 1);
 	// let xprvHdpath = `m/44'/5'/0'/0`;
 	// let xprvKey = await DashHd.derivePath(walletKey, xprvHdpath);
@@ -114,7 +142,7 @@ async function main() {
 	// remove the leading `m/` or `m'/`
 	let partialPath = accountHdpath.replace(/^m'?\//, '');
 	let totalBalance = 0;
-	let keysMap = {};
+	let keysMap = {}; //jshint ignore:line
 	let used = [];
 	let addresses = [];
 	let unusedMap = {};
@@ -285,7 +313,7 @@ async function main() {
 		// but we actually only generate 5 + 4 + 9 + 9 = 27 coins, leaving
 		// well over 5472 * 193 extra value)
 		for (let data of denominable) {
-			console.log('[debug] denominable', data);
+			// console.log('[debug] denominable', data);
 			if (denomCount >= MIN_DENOMINATED) {
 				break;
 			}
@@ -328,8 +356,8 @@ async function main() {
 			//   - 2 x 100001 * 10
 			//   - 1 x 100001 * 100
 
-			console.log('[debug] denom outputs', denomOutputs);
-			console.log('[debug] fee', fee);
+			// console.log('[debug] denom outputs', denomOutputs);
+			// console.log('[debug] fee', fee);
 			// Note: this is where we reconcile the difference between
 			// the number of the smallest denom, and the number of actual denoms
 			// (and where we may end up with 10 x LOWEST, which we could carry
@@ -350,7 +378,7 @@ async function main() {
 				// numOutputs += 1;
 				// magnitudes[1] += 1;
 			}
-			console.log('[debug] denom outputs', denomOutputs);
+			// console.log('[debug] denom outputs', denomOutputs);
 
 			let changes = [];
 			for (let addr of addresses) {
@@ -567,18 +595,15 @@ async function main() {
 		throw new Error(msg);
 	}
 
-	// TODO keyUtils.getPrivateKey
-	async function getPrivateKeys(inputs) {
-		let keys = [];
-		for (let input of inputs) {
-			let data = keysMap[input.address];
-			// TODO map xkey by walletid
-			let addressKey = await xreceiveKey.deriveAddress(data.index);
-			keys.push(addressKey.privateKey);
-		}
+	// async function getPrivateKeys(inputs) {
+	// 	let keys = [];
+	// 	for (let input of inputs) {
+	// 		let privKeyBytes = await keyUtils.getPrivateKey(input);
+	// 		keys.push(privKeyBytes);
+	// 	}
 
-		return keys;
-	}
+	// 	return keys;
+	// }
 
 	let evonodes = [];
 	{
@@ -649,18 +674,24 @@ async function main() {
 		for (;;) {
 			console.log('[debug] readMessage()');
 			let msg = await readMessage();
+
 			if (msg.command === 'ping') {
 				void Packer.packPong({
 					network: network,
 					message: pongMessageBytes,
 					nonce: msg.payload,
 				});
-				console.log('[debug] pong', pongMessageBytes);
 				conn.write(pongMessageBytes);
+				console.log('[debug] sent pong');
 				continue;
 			}
-			// console.log('[DEBUG] readMessage', msg);
-			// console.log('[DEBUG] msg.command', msg.command);
+
+			if (msg.command === 'dssu') {
+				let dssu = await Parser.parseDssu(msg.payload);
+				console.log('[debug] dssu', dssu);
+				continue;
+			}
+
 			let i = messages.length;
 			messages.push(msg);
 			let listeners = Object.values(listenerMap);
@@ -692,11 +723,11 @@ async function main() {
 		let header;
 
 		function cleanup() {
-			console.log("[debug] readMessage handlers: remove 'onReadableHeader'");
+			// console.log("[debug] readMessage handlers: remove 'onReadableHeader'");
 			conn.removeListener('data', onReadableHeader);
 			conn.removeListener('readable', onReadableHeader);
 
-			console.log("[debug] readMessage handlers: remove 'onReadablePayload'");
+			// console.log("[debug] readMessage handlers: remove 'onReadablePayload'");
 			conn.removeListener('data', onReadablePayload);
 			conn.removeListener('readable', onReadablePayload);
 		}
@@ -754,7 +785,7 @@ async function main() {
 				return;
 			}
 
-			console.log("[debug] readMessage handlers: add 'onReadablePayload'");
+			// console.log("[debug] readMessage handlers: add 'onReadablePayload'");
 			//conn.on('readable', onReadablePayload);
 			conn.on('data', onReadablePayload);
 			onReadablePayload(null);
@@ -801,7 +832,7 @@ async function main() {
 
 		errReject = reject;
 
-		console.log("[debug] readMessage handlers: add 'onReadableHeader'");
+		// console.log("[debug] readMessage handlers: add 'onReadableHeader'");
 		//conn.on('readable', onReadableHeader);
 		conn.on('data', onReadableHeader);
 
@@ -952,22 +983,6 @@ async function main() {
 			};
 		});
 
-		// TODO setTimeout
-		// void new Promise(function (resolve, reject) {
-		listenerMap['dssu'] = async function (message) {
-			if (message.command !== 'dssu') {
-				return;
-			}
-
-			let dssu = await Parser.parseDssu(message.payload);
-			console.log('DEBUG dssu', dssu);
-
-			// resolve(dssu);
-			listenerMap['dssu'] = null;
-			delete listenerMap['dssu'];
-		};
-		// });
-
 		await mnauthP;
 		await senddsqP;
 	}
@@ -985,8 +1000,9 @@ async function main() {
 
 			void (await generateMinBalance());
 			let collateralTxInfo = await getCollateralTx();
-			let keys = await getPrivateKeys(collateralTxInfo.inputs);
-			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
+			// let keys = await getPrivateKeys(collateralTxInfo.inputs);
+			// let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
+			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo);
 			collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
 		}
 		let dsaMsg = await Packer.packAllow({
@@ -1024,51 +1040,44 @@ async function main() {
 		};
 	}
 
+	let dsfP = new Promise(function (resolve, reject) {
+		listenerMap['dsf'] = async function (message) {
+			if (message.command !== 'dsf') {
+				return;
+			}
+
+			let dsf = Parser.parseDsf(message.payload);
+			resolve(dsf);
+			listenerMap['dsf'] = null;
+			delete listenerMap['dsf'];
+		};
+	});
+
+	let dscP = new Promise(function (resolve, reject) {
+		listenerMap['dsc'] = async function (message) {
+			if (message.command !== 'dsc') {
+				return;
+			}
+
+			console.log('[debug] DSC Status:', message.payload.slice(4));
+			// let dsc = Parser.parseDsc(message.payload);
+			// resolve(dsc);
+			resolve();
+			listenerMap['dsc'] = null;
+			delete listenerMap['dsc'];
+		};
+	});
+
+	let inputs = [];
+	let outputs = [];
 	{
-		let dsfP = new Promise(function (resolve, reject) {
-			listenerMap['dsf'] = async function (message) {
-				if (message.command !== 'dsf') {
-					return;
-				}
-
-				resolve();
-				listenerMap['dsf'] = null;
-				delete listenerMap['dsf'];
-			};
-		});
-
-		let inputs = [];
-		let outputs = [];
+		// build utxo inputs from addrs
 		for (let addr of addresses) {
-			let allGood =
-				inputs.length >= COINJOIN_ENTRY_MAX_SIZE &&
-				outputs.length >= COINJOIN_ENTRY_MAX_SIZE;
-			if (allGood) {
+			if (inputs.length >= COINJOIN_ENTRY_MAX_SIZE) {
 				break;
 			}
 
 			let data = keysMap[addr];
-
-			// build up outputs
-			let isFree = !data.used && !data.reserved;
-			if (isFree) {
-				if (outputs.length >= COINJOIN_ENTRY_MAX_SIZE) {
-					continue;
-				}
-
-				data.reserved = Date.now();
-				let pubKeyHashBytes = await DashKeys.addrToPkh(data.address, {
-					version: 'testnet',
-				});
-				let pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
-				let output = {
-					pubKeyHash: pubKeyHash,
-					satoshis: denomination,
-				};
-				outputs.push(output);
-				continue;
-			}
-
 			// Note: we'd need to look at utxos (not total address balance)
 			// to be wholly accurate, but this is good enough for now
 			if (data.satoshis !== denomination) {
@@ -1077,32 +1086,68 @@ async function main() {
 			if (data.reserved) {
 				continue;
 			}
-			if (inputs.length >= COINJOIN_ENTRY_MAX_SIZE) {
-				continue;
-			}
 
 			data.reserved = Date.now();
 			let utxosRpc = await rpc.getAddressUtxos({ addresses: [data.address] });
 			let utxos = utxosRpc.result;
 			for (let utxo of utxos) {
-				console.log('[debug] input utxo', utxo);
 				// utxo.sigHashType = 0x01;
 				utxo.address = data.address;
+				utxo.index = data.index;
 				// TODO fix in dashtx
 				utxo.txId = utxo.txId || utxo.txid;
 				utxo.txid = utxo.txId || utxo.txid;
+
+				// must have pubKeyHash for script to sign
+				let pubKeyHashBytes = await DashKeys.addrToPkh(data.address, {
+					version: 'testnet',
+				});
+				utxo.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+
+				console.log('[debug] input utxo', utxo);
 				inputs.push(utxo);
 			}
 		}
 
-		let collateralTx;
-		{
-			void (await generateMinBalance());
-			let collateralTxInfo = await getCollateralTx();
-			let keys = await getPrivateKeys(collateralTxInfo.inputs);
-			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
-			collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
+		// build output addrs
+		for (let addr of addresses) {
+			if (outputs.length >= inputs.length) {
+				break;
+			}
+
+			let data = keysMap[addr];
+
+			let isFree = !data.used && !data.reserved;
+			if (!isFree) {
+				continue;
+			}
+
+			data.reserved = Date.now();
+			let pubKeyHashBytes = await DashKeys.addrToPkh(data.address, {
+				version: 'testnet',
+			});
+			let pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
+
+			let output = {
+				pubKeyHash: pubKeyHash,
+				satoshis: denomination,
+			};
+
+			outputs.push(output);
 		}
+		// inputs.sort(DashTx.sortInputs);
+		// outputs.sort(DashTx.sortOutputs);
+	}
+
+	console.log('sanity check 1: inputs', inputs);
+	let dsf;
+	{
+		void (await generateMinBalance());
+		let collateralTxInfo = await getCollateralTx();
+		// let keys = await getPrivateKeys(collateralTxInfo.inputs);
+		// let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
+		let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo);
+		let collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
 
 		let dsiMessageBytes = Packer.packDsi({
 			network,
@@ -1110,13 +1155,133 @@ async function main() {
 			collateralTx,
 			outputs,
 		});
+		await sleep(150);
 		conn.write(dsiMessageBytes);
-
-		await dsfP;
+		dsf = await dsfP;
 	}
 
-	console.log('exiting?');
+	console.log('sanity check 2: inputs', inputs);
+	{
+		let txRequest = dsf.transaction_unsigned;
+		console.log('[debug] tx request (unsigned)', txRequest);
+		// let sigHashType = DashTx.SIGHASH_ALL | DashTx.SIGHASH_ANYONECANPAY; //jshint ignore:line
+		let sigHashType = DashTx.SIGHASH_ALL;
+		let txInfo = DashTx.parseUnknown(txRequest);
+		console.log('[debug] DashTx.parseRequest(dsfTxRequest)');
+		console.log(txInfo);
+		for (let input of inputs) {
+			console.log('sanity check 3: input', input);
+			let privKeyBytes = await keyUtils.getPrivateKey(input);
+			let pubKeyBytes = await keyUtils.toPublicKey(privKeyBytes);
+			let publicKey = DashTx.utils.bytesToHex(pubKeyBytes);
+
+			{
+				// sanity check
+				let addr = await DashKeys.pubkeyToAddr(pubKeyBytes, {
+					version: 'testnet',
+				});
+				if (addr !== input.address) {
+					console.error(`privKeyBytes => 'addr': ${addr}`);
+					console.error(`'input.address': ${input.address}`);
+					throw new Error('sanity fail: address mismatch');
+				}
+			}
+
+			// let sighashInputs = [];
+			for (let sighashInput of txInfo.inputs) {
+				if (sighashInput.txid !== input.txid) {
+					continue;
+				}
+				if (sighashInput.outputIndex !== input.outputIndex) {
+					continue;
+				}
+
+				sighashInput.index = input.index;
+				sighashInput.address = input.address;
+				sighashInput.satoshis = input.satoshis;
+				sighashInput.pubKeyHash = input.pubKeyHash;
+				// sighashInput.script = input.script;
+				sighashInput.publicKey = publicKey;
+				sighashInput.sigHashType = sigHashType;
+				console.log('[debug] YES, CAN HAZ INPUTS!!!', sighashInput);
+				// sighashInputs.push({
+				// 	txId: input.txId || input.txid,
+				// 	txid: input.txid || input.txId,
+				// 	outputIndex: input.outputIndex,
+				// 	pubKeyHash: input.pubKeyHash,
+				// 	sigHashType: input.sigHashType,
+				// });
+				break;
+			}
+			// if (sighashInputs.length !== 1) {
+			// 	let msg =
+			// 		'expected exactly one selected input to match one tx request input';
+			// 	throw new Error(msg);
+			// }
+			// let anyonecanpayIndex = 0;
+			// let txHashable = DashTx.createHashable(
+			// 	{
+			// 		version: txInfo.version,
+			// 		inputs: sighashInputs, // exactly 1
+			// 		outputs: txInfo.outputs,
+			// 		locktime: txInfo.locktime,
+			// 	},
+			// 	anyonecanpayIndex,
+			// );
+			// console.log('[debug] txHashable (pre-sighashbyte)', txHashable);
+
+			// let signableHashBytes = await DashTx.hashPartial(txHashable, sigHashType);
+			// let signableHashHex = DashTx.utils.bytesToHex(signableHashBytes);
+			// console.log('[debug] signableHashHex', signableHashHex);
+			// let sigBuf = await keyUtils.sign(privKeyBytes, signableHashBytes);
+			// let signature = DashTx.utils.bytesToHex(sigBuf);
+			// Object.assign(input, { publicKey, sigHashType, signature });
+		}
+
+		let txSigned = await dashTx.hashAndSignAll(txInfo);
+		console.log('[debug] txSigned', txSigned);
+		let signedInputs = [];
+		for (let input of txSigned.inputs) {
+			if (!input?.signature) {
+				continue;
+			}
+			signedInputs.push(input);
+		}
+		console.log('[debug] signed inputs', signedInputs);
+
+		let dssMessageBytes = Packer.packDss({
+			network: network,
+			inputs: signedInputs,
+		});
+		console.log('[debug] dss =>', dssMessageBytes.length);
+		console.log(dssMessageBytes);
+		let dssHex = DashTx.utils.bytesToHex(dssMessageBytes);
+		console.log(dssHex);
+		await sleep(150);
+		conn.write(dssMessageBytes);
+		await dscP;
+	}
+
+	console.log('Sweet, sweet victory!');
 }
+
+// function packForSighash({ version, inputs, outputs, locktime }) {
+// 	let _sep = '';
+
+// 	/** @type Array<String> */
+// 	let tx = [];
+// 	let v = DashTx.utils._toUint32LE(version);
+// 	tx.push(v);
+
+// 	void DashTx._packInputs({ tx, inputs, _sep });
+// 	void DashTx._packOutputs({ tx, outputs, _sep });
+
+// 	let locktimeHex = DashTx.utils._toUint32LE(locktime);
+// 	tx.push(locktimeHex);
+
+// 	let txHex = tx.join(_sep);
+// 	return txHex;
+// }
 
 function byId(a, b) {
 	if (a.id > b.id) {
