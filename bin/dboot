@@ -1,9 +1,0 @@
-#!/usr/bin/env node
-'use strict'
-// # vi: filetype=js
-
-const dboot = require('../src/bootstrap/index.js');
-
-(async function(){
-  await dboot.run_cli_program();
-})();

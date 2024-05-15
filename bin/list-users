@@ -1,4 +1,0 @@
-#!/bin/bash
-
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-"$SCRIPT_DIR"/dboot --instance=$INSTANCE_NAME --list-users | cut -d "'" -f 2 | grep -vE '(\[|\])' | grep -v 'loading' | grep -v 'checking'
