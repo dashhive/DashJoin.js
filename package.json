@@ -15,7 +15,7 @@
     "prettier": "npx -p prettier@3.x -- prettier -w '**/*.{js,md}'",
     "tsc": "npx -p typescript@4.x -- tsc -p ./jsconfig.json",
     "---------": "------------------------------------------------",
-    "test": "./node_modules/mocha/bin/mocha.js"
+    "test": "node ./tests/"
   },
   "repository": {
     "type": "git",
