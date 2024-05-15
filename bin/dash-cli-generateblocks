@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+set -u
+
+g_num=${1:-10}
+./bin/wallet-create 'foo' 2> /dev/null > /dev/null || true
+g_address="$(
+    ./bin/dash-cli-wallet 'foo' getnewaddress
+)"
+./bin/dash-cli-wallet 'foo' generatetoaddress "${g_num}" "${g_address}"
