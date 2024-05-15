@@ -519,10 +519,10 @@ Packer.packDsi = function ({ network, inputs, collateralTx, outputs }) {
 		neutered.push(_input);
 	}
 
-	let inputsHex = DashTx._packInputs({ inputs: neutered });
+	let inputsHex = DashTx.serializeInputs(inputs);
 	let inputHex = inputsHex.join('');
 	console.log('inputs', inputsHex);
-	let outputsHex = DashTx._packOutputs({ outputs: outputs });
+	let outputsHex = DashTx.serializeOutputs(outputs);
 	let outputHex = outputsHex.join('');
 	console.log('outputs', outputsHex);
 
@@ -573,7 +573,7 @@ Packer.packDss = function ({ network, inputs }) {
 		throw new Error('you must provide some inputs');
 	}
 
-	let txInputsHex = DashTx._packInputs({ inputs });
+	let txInputsHex = DashTx.serializeInputs(inputs);
 	let txInputHex = txInputsHex.join('');
 	let payload = DashTx.utils.hexToBytes(txInputHex);
 

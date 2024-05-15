@@ -19,7 +19,6 @@ let DashHd = require('dashhd');
 let DashKeys = require('dashkeys');
 let DashRpc = require('dashrpc');
 let DashTx = require('dashtx');
-require('./txparser.js');
 let Secp256k1 = require('@dashincubator/secp256k1');
 
 const DENOM_LOWEST = 100001;
@@ -1164,8 +1163,8 @@ async function main() {
 	{
 		let txRequest = dsf.transaction_unsigned;
 		console.log('[debug] tx request (unsigned)', txRequest);
-		// let sigHashType = DashTx.SIGHASH_ALL | DashTx.SIGHASH_ANYONECANPAY; //jshint ignore:line
-		let sigHashType = DashTx.SIGHASH_ALL;
+		let sigHashType = DashTx.SIGHASH_ALL | DashTx.SIGHASH_ANYONECANPAY; //jshint ignore:line
+		// let sigHashType = DashTx.SIGHASH_ALL;
 		let txInfo = DashTx.parseUnknown(txRequest);
 		console.log('[debug] DashTx.parseRequest(dsfTxRequest)');
 		console.log(txInfo);
@@ -1238,6 +1237,12 @@ async function main() {
 			// Object.assign(input, { publicKey, sigHashType, signature });
 		}
 
+		// for (let input of txInfo.inputs) {
+		// let inputs = Tx.selectSigHashInputs(txInfo, i, _sigHashType);
+		// let outputs = Tx.selectSigHashOutputs(txInfo, i, _sigHashType);
+		// let txForSig = Object.assign({}, txInfo, { inputs, outputs });
+		// }
+		// let txSigned = await dashTx.hashAndSignAll(txForSig);
 		let txSigned = await dashTx.hashAndSignAll(txInfo);
 		console.log('[debug] txSigned', txSigned);
 		let signedInputs = [];
