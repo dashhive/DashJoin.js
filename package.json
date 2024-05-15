@@ -1,5 +1,5 @@
 {
-  "name": "dashjoin.js",
+  "name": "dashjoin",
   "version": "1.0.0",
   "description": "JavaScript reference implementation of CoinJoin",
   "main": "index.js",
