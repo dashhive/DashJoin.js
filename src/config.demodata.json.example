@@ -1,8 +1,0 @@
-{
-  "usedTxn": "./data/w-psend-used-txns.json",
-  "txnList": "./data/w-psend-txns.json",
-  "changeAddress": "./data/w-psend-change-address-0",
-  "sourceAddress": "./data/w-psend-address-0",
-  "wif": "./data/w-psend-privkey-0",
-  "payeeAddress": "./data/w-foobar-address-0"
-}
