@@ -1,17 +1,22 @@
 {
   "name": "dashjoin.js",
   "version": "1.0.0",
-  "description": "A pure node.js implementation of DASH's CoinJoin/PrivateSend implementation.",
+  "description": "JavaScript reference implementation of CoinJoin",
   "main": "index.js",
   "directories": {
     "doc": "docs",
     "test": "tests"
   },
   "scripts": {
-    "demo": "./src/demo.js",
+    "bump": "npm version -m \"chore(release): bump to v%s\"",
     "fmt": "npm run prettier",
-    "test": "./node_modules/mocha/bin/mocha.js",
-    "prettier": "npx -p prettier@3.x -- prettier -w '**/*.{js,md}'"
+    "lint": "npm run jshint && npm run tsc",
+    "--------": "-------------------------------------------------",
+    "jshint": "npx -p jshint@2.x -- jshint -c ./.jshintrc ./*.js",
+    "prettier": "npx -p prettier@3.x -- prettier -w '**/*.{js,md}'",
+    "tsc": "npx -p typescript@4.x -- tsc -p ./jsconfig.json",
+    "---------": "------------------------------------------------",
+    "test": "./node_modules/mocha/bin/mocha.js"
   },
   "repository": {
     "type": "git",
