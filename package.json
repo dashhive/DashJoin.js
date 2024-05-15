@@ -1,5 +1,5 @@
 {
-  "name": "dashjoin.js",
+  "name": "dashjoin",
   "version": "1.0.0",
   "description": "A pure node.js implementation of DASH's CoinJoin/PrivateSend implementation.",
   "main": "index.js",
