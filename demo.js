@@ -1311,6 +1311,6 @@ main()
 	})
 	.catch(function (err) {
 		console.error('Fail:');
-		console.error(err.stack);
+		console.error(err.stack || err);
 		process.exit(1);
 	});
