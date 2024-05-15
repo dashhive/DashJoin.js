@@ -48,7 +48,7 @@ async function test() {
 
 	let sigHashHexExp = await readFixtureHex('he-1-sighash');
 
-	let sigHashBytes = await DashTx._hash(hashTxBytes);
+	let sigHashBytes = await DashTx.doubleSha256(hashTxBytes);
 	let sigHashHex = DashKeys.utils.bytesToHex(sigHashBytes);
 	Assert.equal(sigHashHex, sigHashHexExp);
 
@@ -82,7 +82,7 @@ async function test() {
 
 		let txRequestHex = dsfHex.slice(8);
 		let dsfTxInfo = DashTx.parseUnknown(txRequestHex);
-		let txRequestHex2 = DashTx._create(dsfTxInfo);
+		let txRequestHex2 = DashTx.serialize(dsfTxInfo);
 
 		Assert.equal(txRequestHex, txRequestHex2);
 
@@ -129,7 +129,8 @@ async function test() {
 			throw new Error('selected coin not found in selected inputs');
 		}
 		let sigHashType = 0x01;
-		let hashTxHex2 = DashTx.createHashable(txInfo, inputIndex, sigHashType);
+		let txForSig = DashTx.createForSig(txInfo, inputIndex, sigHashType);
+		let hashTxHex2 = DashTx.serializeForSig(txForSig, sigHashType);
 
 		Assert.equal(hashTxHex2, hashTxHex);
 	}
