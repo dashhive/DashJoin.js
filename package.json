@@ -1,12 +1,11 @@
 {
-  "name": "dashjoin.js",
+  "name": "dashjoin",
   "version": "1.0.0",
   "description": "A pure node.js implementation of DASH's CoinJoin/PrivateSend implementation.",
   "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "test": "tests"
-  },
+  "files": [
+      "*.js"
+  ],
   "scripts": {
     "demo": "./src/demo.js",
     "fmt": "npm run prettier",
@@ -18,23 +17,17 @@
     "url": "git+ssh://git@github.com/dashhive/DashJoin.js.git"
   },
   "keywords": [
-    "dash",
-    "coin",
-    "join",
-    "private",
-    "send",
-    "cryto",
-    "currency"
+    "Dash",
+    "CoinJoin",
+    "PrivateSend",
+    "Crpytocurrency"
   ],
-  "author": "William Merfalen <null@fluxkraft-os.net> (https://github.com/wmerfalen)",
+  "author": "AJ ONeal <aj@therootcompany.com> (https://therootcompany.com)",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/dashhive/DashJoin.js/issues"
   },
   "homepage": "https://github.com/dashhive/DashJoin.js#readme",
-  "devDependencies": {
-    "mocha": "^10.2.0"
-  },
   "dependencies": {
     "@dashevo/dashcore-lib": "^0.20.6",
     "@dashincubator/secp256k1": "^1.7.1-5",
