@@ -7,8 +7,6 @@ void DotEnv.config({ path: '.env.secret' });
 //@ts-ignore - ts can't understand JSON, still...
 let pkg = require('./package.json');
 
-let Net = require('node:net');
-
 let CoinJoin = require('./coinjoin.js');
 let Packer = require('./packer.js'); // TODO rename packer
 let Parser = require('./parser.js');
@@ -38,6 +36,9 @@ let rpcConfig = {
 	host: process.env.DASHD_RPC_HOST || '127.0.0.1',
 	port: process.env.DASHD_RPC_PORT || '19898', // mainnet=9998, testnet=19998, regtest=19898
 	timeout: 10 * 1000, // bump default from 5s to 10s for up to 10k addresses
+	onconnected: async function () {
+		console.info(`[info] rpc client connected ${rpcConfig.host}`);
+	},
 };
 if (process.env.DASHD_RPC_TIMEOUT) {
 	let rpcTimeoutSec = parseFloat(process.env.DASHD_RPC_TIMEOUT);
@@ -63,13 +64,8 @@ async function main() {
 
 	let network = 'regtest';
 	// let minimumParticipants = Packer.NETWORKS[network].minimumParticiparts;
-	rpcConfig.onconnected = async function () {
-		let rpc = this;
-		console.info(`[info] rpc client connected ${rpc.host}`);
-	};
 
 	let rpc = new DashRpc(rpcConfig);
-	rpc.onconnected = rpcConfig.onconnected;
 	let height = await rpc.init(rpc);
 	console.info(`[info] rpc server is ready. Height = ${height}`);
 
@@ -199,8 +195,8 @@ async function main() {
 			// addresses: unusedAddresses,
 		});
 		// console.log(
-		// 	'[debug] mempooldeltas.result.length',
-		// 	mempooldeltas.result.length,
+		//      '[debug] mempooldeltas.result.length',
+		//      mempooldeltas.result.length,
 		// );
 		// TODO check that we have a duplicate in both deltas by using txid, vin/vout
 		for (let delta of mempooldeltas.result) {
@@ -436,7 +432,7 @@ async function main() {
 				data.pubKeyHash = DashKeys.utils.bytesToHex(pubKeyHashBytes);
 				console.log(data);
 			}
-			let txInfoSigned = await dashTx.hashAndSignAll(txInfo);
+			let txInfoSigned = await dashTx.hashAndSignAll(txInfo, keys);
 
 			console.log('[debug], txInfo, keys, txSigned');
 			console.log(txInfo);
@@ -473,9 +469,9 @@ async function main() {
 		// console.log('[debug] generatetoaddress deltas', deltas);
 		// let results = deltas.result.concat(deltas2.result);
 		// for (let delta of results) {
-		// 	totalBalance += delta.satoshis;
-		// 	keysMap[delta.address].used = true;
-		// 	delete unusedMap[delta.address];
+		//      totalBalance += delta.satoshis;
+		//      keysMap[delta.address].used = true;
+		//      delete unusedMap[delta.address];
 		// }
 
 		let utxosRpc = await rpc.getAddressUtxos({ addresses: [data.address] });
@@ -492,7 +488,7 @@ async function main() {
 	// TODO unreserve collateral after positive response
 	// (and check for use 30 seconds after failure message)
 	async function getCollateralTx() {
-		let barelyEnoughest = { satoshis: Infinity, reserved: 0 };
+		let barelyEnoughest = { satoshis: Infinity };
 		for (let addr of addresses) {
 			let data = keysMap[addr];
 			if (data.reserved > 0) {
@@ -503,11 +499,9 @@ async function main() {
 				continue;
 			}
 
-			if (barelyEnoughest.reserved > 0) {
-				let isDenom = data.satoshis % DENOM_LOWEST === 0;
-				if (isDenom) {
-					continue;
-				}
+			let isDenom = data.satoshis % DENOM_LOWEST === 0;
+			if (isDenom) {
+				continue;
 			}
 
 			if (data.satoshis < CoinJoin.COLLATERAL) {
@@ -589,18 +583,20 @@ async function main() {
 	}
 
 	// async function getPrivateKeys(inputs) {
-	// 	let keys = [];
-	// 	for (let input of inputs) {
-	// 		let privKeyBytes = await keyUtils.getPrivateKey(input);
-	// 		keys.push(privKeyBytes);
-	// 	}
+	//      let keys = [];
+	//      for (let input of inputs) {
+	//              let privKeyBytes = await keyUtils.getPrivateKey(input);
+	//              keys.push(privKeyBytes);
+	//      }
 
-	// 	return keys;
+	//      return keys;
 	// }
 
 	let evonodes = [];
 	{
-		let resp = await rpc.masternodelist();
+		//let resp = await rpc.masternodelist();
+		let res = await fetch('http://127.0.0.1:8080/rpc/masternodelist');
+		let resp = await res.json();
 		let evonodesMap = resp.result;
 		let evonodeProTxIds = Object.keys(evonodesMap);
 		for (let id of evonodeProTxIds) {
@@ -627,13 +623,21 @@ async function main() {
 	console.info('[info] chosen evonode:');
 	console.log(JSON.stringify(evonode, null, 2));
 
-	let conn = Net.createConnection({
-		host: evonode.hostname,
+	let query = {
+		access_token: 'secret',
+		hostname: evonode.hostname,
 		port: evonode.port,
-		keepAlive: true,
-		keepAliveInitialDelay: 3,
-		//localAddress: rpc.host,
-	});
+	};
+	let searchParams = new URLSearchParams(query);
+	let search = searchParams.toString();
+	let wsc = new WebSocket(`ws://127.0.0.1:8080/tcp?${search}`);
+	//let conn = Net.createConnection({
+	//      host: evonode.hostname,
+	//      port: evonode.port,
+	//      keepAlive: true,
+	//      keepAliveInitialDelay: 3,
+	//      //localAddress: rpc.host,
+	//});
 
 	/** @type {Array<Buffer>} */
 	let chunks = [];
@@ -643,21 +647,31 @@ async function main() {
 	function onError(err) {
 		console.error('Error:');
 		console.error(err);
-		conn.removeListener('error', onError);
+		// conn.removeListener('error', onError);
+		wsc.onerror = null;
 		errReject(err);
 	}
 	function onEnd() {
 		console.info('[info] disconnected from server');
 	}
-	conn.on('error', onError);
-	conn.once('end', onEnd);
-	conn.setMaxListeners(2);
+	// conn.on('error', onError);
+	// conn.once('end', onEnd);
+	// conn.setMaxListeners(2);
+	wsc.onerror = onError;
+	wsc.onclose = onEnd;
+
 	let dataCount = 0;
-	conn.on('data', function (data) {
+	// conn.on('data', function (data) {
+	//      console.log('[DEBUG] data');
+	//      console.log(dataCount, data.length, data.toString('hex'));
+	//      dataCount += 1;
+	// });
+	wsc.onmessage = function (wsevent) {
+		let data = Buffer.from(wsevent.data);
 		console.log('[DEBUG] data');
 		console.log(dataCount, data.length, data.toString('hex'));
 		dataCount += 1;
-	});
+	};
 
 	/** @type {Array<Uint8Array>} */
 	let messages = [];
@@ -676,7 +690,8 @@ async function main() {
 					message: pongMessageBytes,
 					nonce: msg.payload,
 				});
-				conn.write(pongMessageBytes);
+				// conn.write(pongMessageBytes);
+				wsc.send(pongMessageBytes);
 				console.log('[debug] sent pong');
 				continue;
 			}
@@ -718,13 +733,14 @@ async function main() {
 		let header;
 
 		function cleanup() {
+			wsc.onmessage = null;
 			// console.log("[debug] readMessage handlers: remove 'onReadableHeader'");
-			conn.removeListener('data', onReadableHeader);
-			conn.removeListener('readable', onReadableHeader);
+			// conn.removeListener('data', onReadableHeader);
+			// conn.removeListener('readable', onReadableHeader);
 
 			// console.log("[debug] readMessage handlers: remove 'onReadablePayload'");
-			conn.removeListener('data', onReadablePayload);
-			conn.removeListener('readable', onReadablePayload);
+			// conn.removeListener('data', onReadablePayload);
+			// conn.removeListener('readable', onReadablePayload);
 		}
 
 		function resolve(data) {
@@ -772,8 +788,9 @@ async function main() {
 				throw new Error('too big you are, handle you I cannot');
 			}
 			// console.log('DEBUG header', header);
-			conn.removeListener('readable', onReadableHeader);
-			conn.removeListener('data', onReadableHeader);
+			// conn.removeListener('readable', onReadableHeader);
+			// conn.removeListener('data', onReadableHeader);
+			wsc.onmessage = null;
 
 			if (header.payloadSize === 0) {
 				resolve(header);
@@ -782,7 +799,11 @@ async function main() {
 
 			// console.log("[debug] readMessage handlers: add 'onReadablePayload'");
 			//conn.on('readable', onReadablePayload);
-			conn.on('data', onReadablePayload);
+			// conn.on('data', onReadablePayload);
+			wsc.onmessage = function (wsevent) {
+				let data = Buffer.from(wsevent.data);
+				onReadablePayload(data);
+			};
 			onReadablePayload(null);
 		}
 
@@ -820,8 +841,9 @@ async function main() {
 				chunk = chunk.slice(0, header.payloadSize);
 			}
 			header.payload = chunk;
-			conn.removeListener('readable', onReadablePayload);
-			conn.removeListener('data', onReadablePayload);
+			// conn.removeListener('readable', onReadablePayload);
+			// conn.removeListener('data', onReadablePayload);
+			wsc.onmessage = null;
 			resolve(header);
 		}
 
@@ -829,7 +851,11 @@ async function main() {
 
 		// console.log("[debug] readMessage handlers: add 'onReadableHeader'");
 		//conn.on('readable', onReadableHeader);
-		conn.on('data', onReadableHeader);
+		// conn.on('data', onReadableHeader);
+		wsc.onmessage = function (wsevent) {
+			let data = Buffer.from(wsevent.data);
+			onReadableHeader(data);
+		};
 
 		if (chunks.length) {
 			onReadableHeader(null);
@@ -844,8 +870,9 @@ async function main() {
 		// TODO setTimeout
 		await new Promise(function (_resolve, _reject) {
 			function cleanup() {
-				conn.removeListener('readable', onReadable);
-				conn.removeListener('data', onReadable);
+				// conn.removeListener('readable', onReadable);
+				// conn.removeListener('data', onReadable);
+				wsc.onmessage = null;
 			}
 
 			function resolve(data) {
@@ -868,9 +895,14 @@ async function main() {
 			}
 
 			errReject = reject;
-			conn.once('connect', onConnect);
+			// conn.once('connect', onConnect);
+			wsc.onopen = onConnect;
 			//conn.on('readable', onReadable);
-			conn.on('data', onReadable);
+			// conn.on('data', onReadable);
+			wsc.onmessage = function (wsevent) {
+				let data = Buffer.from(wsevent.data);
+				onReadable(data);
+			};
 		});
 	}
 
@@ -916,7 +948,8 @@ async function main() {
 			};
 		});
 		await sleep(150);
-		conn.write(versionMsg);
+		// conn.write(versionMsg);
+		wsc.send(versionMsg);
 
 		await versionP;
 	}
@@ -940,7 +973,8 @@ async function main() {
 			payload: null,
 		});
 		await sleep(150);
-		conn.write(verackBytes);
+		// conn.write(verackBytes);
+		wsc.send(verackBytes);
 
 		await verackP;
 	}
@@ -969,10 +1003,11 @@ async function main() {
 					send: true,
 				});
 				await sleep(150);
-				conn.write(sendDsqMessage);
+				// conn.write(sendDsqMessage);
+				wsc.send(sendDsqMessage);
 				console.log("[debug] sending 'senddsq':", sendDsqMessage);
 
-				resolve();
+				resolve(null);
 				listenerMap['senddsq'] = null;
 				delete listenerMap['senddsq'];
 			};
@@ -995,6 +1030,8 @@ async function main() {
 
 			void (await generateMinBalance());
 			let collateralTxInfo = await getCollateralTx();
+			// let keys = await getPrivateKeys(collateralTxInfo.inputs);
+			// let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
 			let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo);
 			collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
 		}
@@ -1004,7 +1041,8 @@ async function main() {
 			collateralTx,
 		});
 		await sleep(150);
-		conn.write(dsaMsg);
+		// conn.write(dsaMsg);
+		wsc.send(dsaMsg);
 
 		let dsaBuf = Buffer.from(dsaMsg);
 		console.log('[debug] dsa', dsaBuf.toString('hex'));
@@ -1137,6 +1175,8 @@ async function main() {
 	{
 		void (await generateMinBalance());
 		let collateralTxInfo = await getCollateralTx();
+		// let keys = await getPrivateKeys(collateralTxInfo.inputs);
+		// let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
 		let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo);
 		let collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
 
@@ -1147,7 +1187,8 @@ async function main() {
 			outputs,
 		});
 		await sleep(150);
-		conn.write(dsiMessageBytes);
+		// conn.write(dsiMessageBytes);
+		wsc.send(dsiMessageBytes);
 		dsf = await dsfP;
 	}
 
@@ -1196,28 +1237,28 @@ async function main() {
 				sighashInput.sigHashType = sigHashType;
 				console.log('[debug] YES, CAN HAZ INPUTS!!!', sighashInput);
 				// sighashInputs.push({
-				// 	txId: input.txId || input.txid,
-				// 	txid: input.txid || input.txId,
-				// 	outputIndex: input.outputIndex,
-				// 	pubKeyHash: input.pubKeyHash,
-				// 	sigHashType: input.sigHashType,
+				//      txId: input.txId || input.txid,
+				//      txid: input.txid || input.txId,
+				//      outputIndex: input.outputIndex,
+				//      pubKeyHash: input.pubKeyHash,
+				//      sigHashType: input.sigHashType,
 				// });
 				break;
 			}
 			// if (sighashInputs.length !== 1) {
-			// 	let msg =
-			// 		'expected exactly one selected input to match one tx request input';
-			// 	throw new Error(msg);
+			//      let msg =
+			//              'expected exactly one selected input to match one tx request input';
+			//      throw new Error(msg);
 			// }
 			// let anyonecanpayIndex = 0;
 			// let txHashable = DashTx.createHashable(
-			// 	{
-			// 		version: txInfo.version,
-			// 		inputs: sighashInputs, // exactly 1
-			// 		outputs: txInfo.outputs,
-			// 		locktime: txInfo.locktime,
-			// 	},
-			// 	anyonecanpayIndex,
+			//      {
+			//              version: txInfo.version,
+			//              inputs: sighashInputs, // exactly 1
+			//              outputs: txInfo.outputs,
+			//              locktime: txInfo.locktime,
+			//      },
+			//      anyonecanpayIndex,
 			// );
 			// console.log('[debug] txHashable (pre-sighashbyte)', txHashable);
 
@@ -1255,7 +1296,8 @@ async function main() {
 		let dssHex = DashTx.utils.bytesToHex(dssMessageBytes);
 		console.log(dssHex);
 		await sleep(150);
-		conn.write(dssMessageBytes);
+		// conn.write(dssMessageBytes);
+		wsc.send(dssMessageBytes);
 		await dscP;
 	}
 
@@ -1280,22 +1322,22 @@ function byId(a, b) {
 
 // http://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
 // function shuffle(arr) {
-// 	let currentIndex = arr.length;
+//      let currentIndex = arr.length;
 
-// 	// While there remain elements to shuffle...
-// 	for (; currentIndex !== 0; ) {
-// 		// Pick a remaining element...
-// 		let randomIndexFloat = Math.random() * currentIndex;
-// 		let randomIndex = Math.floor(randomIndexFloat);
-// 		currentIndex -= 1;
+//      // While there remain elements to shuffle...
+//      for (; currentIndex !== 0; ) {
+//              // Pick a remaining element...
+//              let randomIndexFloat = Math.random() * currentIndex;
+//              let randomIndex = Math.floor(randomIndexFloat);
+//              currentIndex -= 1;
 
-// 		// And swap it with the current element.
-// 		let temporaryValue = arr[currentIndex];
-// 		arr[currentIndex] = arr[randomIndex];
-// 		arr[randomIndex] = temporaryValue;
-// 	}
+//              // And swap it with the current element.
+//              let temporaryValue = arr[currentIndex];
+//              arr[currentIndex] = arr[randomIndex];
+//              arr[randomIndex] = temporaryValue;
+//      }
 
-// 	return arr;
+//      return arr;
 // }
 
 function sleep(ms) {
@@ -1311,6 +1353,6 @@ main()
 	})
 	.catch(function (err) {
 		console.error('Fail:');
-		console.error(err.stack || err);
+		console.error(err.stack);
 		process.exit(1);
 	});
