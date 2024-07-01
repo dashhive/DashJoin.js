@@ -488,7 +488,7 @@ async function main() {
 	// TODO unreserve collateral after positive response
 	// (and check for use 30 seconds after failure message)
 	async function getCollateralTx() {
-		let barelyEnoughest = { satoshis: Infinity };
+		let barelyEnoughest = { satoshis: Infinity, reserved: 0 };
 		for (let addr of addresses) {
 			let data = keysMap[addr];
 			if (data.reserved > 0) {
@@ -499,9 +499,11 @@ async function main() {
 				continue;
 			}
 
-			let isDenom = data.satoshis % DENOM_LOWEST === 0;
-			if (isDenom) {
-				continue;
+			if (barelyEnoughest.reserved > 0) {
+				let isDenom = data.satoshis % DENOM_LOWEST === 0;
+				if (isDenom) {
+					continue;
+				}
 			}
 
 			if (data.satoshis < CoinJoin.COLLATERAL) {
@@ -666,12 +668,15 @@ async function main() {
 	//      console.log(dataCount, data.length, data.toString('hex'));
 	//      dataCount += 1;
 	// });
-	wsc.onmessage = function (wsevent) {
-		let data = Buffer.from(wsevent.data);
-		console.log('[DEBUG] data');
+	console.log('[DEBUG] main add wsc.onmessage');
+	wsc.addEventListener('message', async function (wsevent) {
+		console.log('[DEBUG] main wsc.onmessage');
+		let ab = await wsevent.data.arrayBuffer();
+		let data = Buffer.from(ab);
+		console.log('[DEBUG] data (main)');
 		console.log(dataCount, data.length, data.toString('hex'));
 		dataCount += 1;
-	};
+	});
 
 	/** @type {Array<Uint8Array>} */
 	let messages = [];
@@ -733,7 +738,9 @@ async function main() {
 		let header;
 
 		function cleanup() {
-			wsc.onmessage = null;
+			console.log('[DEBUG] [readMessage.cleanup] remove data listener');
+			wsc.removeEventListener('message', onWsReadableHeader);
+			wsc.removeEventListener('message', onWsReadablePayload);
 			// console.log("[debug] readMessage handlers: remove 'onReadableHeader'");
 			// conn.removeListener('data', onReadableHeader);
 			// conn.removeListener('readable', onReadableHeader);
@@ -788,9 +795,11 @@ async function main() {
 				throw new Error('too big you are, handle you I cannot');
 			}
 			// console.log('DEBUG header', header);
+			console.log('[DEBUG] [onReadableHeader] remove data listener');
 			// conn.removeListener('readable', onReadableHeader);
 			// conn.removeListener('data', onReadableHeader);
-			wsc.onmessage = null;
+			//wsc.onmessage = null;
+			wsc.removeEventListener('message', onWsReadableHeader);
 
 			if (header.payloadSize === 0) {
 				resolve(header);
@@ -800,11 +809,17 @@ async function main() {
 			// console.log("[debug] readMessage handlers: add 'onReadablePayload'");
 			//conn.on('readable', onReadablePayload);
 			// conn.on('data', onReadablePayload);
-			wsc.onmessage = function (wsevent) {
-				let data = Buffer.from(wsevent.data);
-				onReadablePayload(data);
-			};
+			console.log('[DEBUG] onReadableHeader add wsc.onmessage');
+			wsc.addEventListener('message', onWsReadablePayload);
 			onReadablePayload(null);
+		}
+		async function onWsReadableHeader(wsevent) {
+			console.log('[DEBUG] onReadableHeader wsc.onmessage');
+			let ab = await wsevent.data.arrayBuffer();
+			let data = Buffer.from(ab);
+			console.log('[DEBUG] data (readable header)');
+			console.log(dataCount, data.length, data.toString('hex'));
+			onReadableHeader(data);
 		}
 
 		function onReadablePayload(data) {
@@ -841,10 +856,20 @@ async function main() {
 				chunk = chunk.slice(0, header.payloadSize);
 			}
 			header.payload = chunk;
+			console.log('[DEBUG] [onReadablePayload] remove data listener');
 			// conn.removeListener('readable', onReadablePayload);
 			// conn.removeListener('data', onReadablePayload);
-			wsc.onmessage = null;
+			// wsc.onmessage = null;
+			wsc.removeEventListener('message', onWsReadablePayload);
 			resolve(header);
+		}
+		async function onWsReadablePayload(wsevent) {
+			console.log('[DEBUG] onReadablePayload wsc.onmessage');
+			let ab = await wsevent.data.arrayBuffer();
+			let data = Buffer.from(ab);
+			console.log('[DEBUG] data (readable payload)');
+			console.log(dataCount, data.length, data.toString('hex'));
+			onReadablePayload(data);
 		}
 
 		errReject = reject;
@@ -852,10 +877,8 @@ async function main() {
 		// console.log("[debug] readMessage handlers: add 'onReadableHeader'");
 		//conn.on('readable', onReadableHeader);
 		// conn.on('data', onReadableHeader);
-		wsc.onmessage = function (wsevent) {
-			let data = Buffer.from(wsevent.data);
-			onReadableHeader(data);
-		};
+		console.log('[DEBUG] readMessage add wsc.onmessage');
+		wsc.addEventListener('message', onWsReadableHeader);
 
 		if (chunks.length) {
 			onReadableHeader(null);
@@ -870,9 +893,11 @@ async function main() {
 		// TODO setTimeout
 		await new Promise(function (_resolve, _reject) {
 			function cleanup() {
+				console.log('[DEBUG] [waitForConnect.cleanup] remove data listener');
 				// conn.removeListener('readable', onReadable);
 				// conn.removeListener('data', onReadable);
-				wsc.onmessage = null;
+				// wsc.onmessage = null;
+				wsc.removeEventListener('message', onWsReadable);
 			}
 
 			function resolve(data) {
@@ -886,6 +911,7 @@ async function main() {
 			}
 
 			function onConnect() {
+				console.log('[DEBUG] waitForConnect wsc.onopen');
 				resolve();
 			}
 
@@ -893,16 +919,23 @@ async function main() {
 				// checking an impossible condition, just in case
 				throw new Error('unexpected response before request');
 			}
+			async function onWsReadable(wsevent) {
+				console.log('[DEBUG] waitForConnect wsc.onmessage');
+				let ab = await wsevent.data.arrayBuffer();
+				let data = Buffer.from(ab);
+				console.log('[DEBUG] data (readable)');
+				console.log(dataCount, data.length, data.toString('hex'));
+				onReadable(data);
+			}
 
 			errReject = reject;
 			// conn.once('connect', onConnect);
+			wsc.onopen = null;
 			wsc.onopen = onConnect;
 			//conn.on('readable', onReadable);
 			// conn.on('data', onReadable);
-			wsc.onmessage = function (wsevent) {
-				let data = Buffer.from(wsevent.data);
-				onReadable(data);
-			};
+			console.log('[DEBUG] waitForConnect add wsc.onmessage');
+			wsc.addEventListener('message', onWsReadable);
 		});
 	}
 
