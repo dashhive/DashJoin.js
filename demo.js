@@ -424,11 +424,8 @@ async function main() {
 				txInfo.outputs.sort(DashTx.sortOutputs);
 			}
 
-			let keys = [];
 			for (let input of txInfo.inputs) {
 				let data = keysMap[input.address];
-				let addressKey = await xreceiveKey.deriveAddress(data.index);
-				keys.push(addressKey.privateKey);
 				// DEBUG check pkh hex
 				let pubKeyHashBytes = await DashKeys.addrToPkh(data.address, {
 					version: 'testnet',
@@ -438,9 +435,8 @@ async function main() {
 			}
 			let txInfoSigned = await dashTx.hashAndSignAll(txInfo);
 
-			console.log('[debug], txInfo, keys, txSigned');
+			console.log('[debug], txInfo, txSigned');
 			console.log(txInfo);
-			console.log(keys);
 			console.log(txInfoSigned);
 			await sleep(150);
 			let txRpc = await rpc.sendRawTransaction(txInfoSigned.transaction);
