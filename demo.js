@@ -10,7 +10,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 	}
 
 	//@ts-ignore - ts can't understand JSON, still...
-	let pkg = window.ENVS.package || require('./package.json');
+	let pkg = DotEnv.package || require('./package.json');
 
 	let Packer = require('./packer.js'); // TODO rename packer
 	let Parser = require('./parser.js');
@@ -247,7 +247,9 @@ var CJDemo = ('object' === typeof module && exports) || {};
 
 		let denomination = 100001 * 1;
 
+		console.log('[debug] generate min balance...');
 		void (await generateMinBalance());
+		console.log('[debug] generate denoms...');
 		void (await generateDenominations());
 
 		// TODO sort denominated
@@ -606,6 +608,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		//      return keys;
 		// }
 
+		console.log('[debug] get evonode list...');
 		let evonodes = [];
 		{
 			//let resp = await rpc.masternodelist();
@@ -1013,7 +1016,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 					delete listenerMap['verack'];
 				};
 			});
-			let verackBytes = await Packer.packAndHashMessage({
+			let verackBytes = Packer.packMessage({
 				network,
 				command: 'verack',
 				payload: null,

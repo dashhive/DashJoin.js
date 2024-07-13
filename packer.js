@@ -538,7 +538,7 @@ var CJPacker = ('object' === typeof module && exports) || {};
 		const DENOMINATION_SIZE = 4;
 
 		//@ts-ignore - numbers can be used as map keys
-		let denomMask = CoinJoin.STANDARD_DENOMINATION_MASKS[denomination];
+		let denomMask = STANDARD_DENOMINATION_MASKS[denomination];
 		if (!denomMask) {
 			throw new Error(
 				`contact your local Dash representative to vote for denominations of '${denomination}'`,

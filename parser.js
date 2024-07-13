@@ -39,7 +39,7 @@ var CJParser = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array} bytes
 	 */
 	CJParser.parseHeader = function (bytes) {
-		let buffer = Buffer.from(bytes);
+		// let buffer = Buffer.from(bytes);
 		// console.log(
 		// 	new Date(),
 		// 	'[debug] parseHeader(bytes)',
@@ -47,8 +47,8 @@ var CJParser = ('object' === typeof module && exports) || {};
 		// 	buffer.toString('hex'),
 		// );
 		// console.log(buffer.toString('utf8'));
+		// bytes = new Uint8Array(buffer);
 
-		bytes = new Uint8Array(buffer);
 		if (bytes.length < CJParser.HEADER_SIZE) {
 			console.log(
 				`[DEBUG] malformed header`,
@@ -94,17 +94,16 @@ var CJParser = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array} bytes
 	 */
 	CJParser.parseVersion = function (bytes) {
-		let buffer = Buffer.from(bytes);
+		// let buffer = Buffer.from(bytes);
 		// console.log(
 		// 	'[debug] parseVersion(bytes)',
 		// 	buffer.length,
 		// 	buffer.toString('hex'),
 		// );
 		// console.log(buffer.toString('utf8'));
+		// bytes = new Uint8Array(buffer);
 
-		bytes = new Uint8Array(buffer);
 		let dv = new DataView(bytes.buffer);
-
 		let versionStart = 0;
 		let version = dv.getUint32(versionStart, DV_LITTLE_ENDIAN);
 
@@ -248,9 +247,9 @@ var CJParser = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array} bytes
 	 */
 	CJParser.parseDssu = function (bytes) {
-		let buffer = Buffer.from(bytes);
+		// let buffer = Buffer.from(bytes);
+		// bytes = new Uint8Array(buffer);
 
-		bytes = new Uint8Array(buffer);
 		let dv = new DataView(bytes.buffer);
 		// console.log('[debug] parseDssu(bytes)', bytes.length, buffer.toString('hex'));
 		// console.log(buffer.toString('utf8'));
@@ -315,9 +314,9 @@ var CJParser = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array} bytes
 	 */
 	CJParser.parseDsq = function (bytes) {
-		let buffer = Buffer.from(bytes);
+		// let buffer = Buffer.from(bytes);
+		// bytes = new Uint8Array(buffer);
 
-		bytes = new Uint8Array(buffer);
 		if (bytes.length !== CJParser.DSQ_SIZE) {
 			let msg = `developer error: 'dsq' messages are ${CJParser.DSQ_SIZE} bytes, not ${bytes.length}`;
 			throw new Error(msg);
