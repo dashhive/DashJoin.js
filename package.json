@@ -4,7 +4,7 @@
   "description": "JavaScript reference implementation of CoinJoin",
   "main": "index.js",
   "files": [
-      "*.js"
+    "*.js"
   ],
   "scripts": {
     "bump": "npm version -m \"chore(release): bump to v%s\"",
@@ -38,7 +38,7 @@
     "dashhd": "^3.3.3",
     "dashkeys": "^1.1.4",
     "dashphrase": "^1.4.0",
-    "dashrpc": "^19.0.1",
+    "dashrpc": "^20.0.0",
     "dashtx": "^0.18.1",
     "dotenv": "^16.4.5"
   }
