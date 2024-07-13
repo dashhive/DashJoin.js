@@ -50,11 +50,11 @@ var CJParser = ('object' === typeof module && exports) || {};
 		// bytes = new Uint8Array(buffer);
 
 		if (bytes.length < CJParser.HEADER_SIZE) {
-			console.log(
-				`[DEBUG] malformed header`,
-				buffer.toString('utf8'),
-				buffer.toString('hex'),
-			);
+			// console.log(
+			// 	`[DEBUG] malformed header`,
+			// 	buffer.toString('utf8'),
+			// 	buffer.toString('hex'),
+			// );
 			let msg = `developer error: header should be ${CJParser.HEADER_SIZE}+ bytes (optional payload), not ${bytes.length}`;
 			throw new Error(msg);
 		}
@@ -64,17 +64,17 @@ var CJParser = ('object' === typeof module && exports) || {};
 		let payloadSizeStart = 16;
 		let checksumStart = 20;
 
-		let magicBytes = buffer.slice(0, commandStart);
+		let magicBytes = bytes.slice(0, commandStart);
 
-		let commandEnd = buffer.indexOf(0x00, commandStart);
+		let commandEnd = bytes.indexOf(0x00, commandStart);
 		if (commandEnd >= payloadSizeStart) {
 			throw new Error('command name longer than 12 bytes');
 		}
-		let commandBuf = buffer.slice(commandStart, commandEnd);
+		let commandBuf = bytes.slice(commandStart, commandEnd);
 		let command = commandBuf.toString('utf8');
 
 		let payloadSize = dv.getUint32(payloadSizeStart, DV_LITTLE_ENDIAN);
-		let checksum = buffer.slice(checksumStart, checksumStart + 4);
+		let checksum = bytes.slice(checksumStart, checksumStart + 4);
 
 		let headerMessage = {
 			magicBytes,
@@ -123,7 +123,7 @@ var CJParser = ('object' === typeof module && exports) || {};
 		);
 
 		let addrRecvAddressStart = addrRecvServicesStart + 8; // + SIZES.SERVICES (8)
-		let addrRecvAddress = buffer.slice(
+		let addrRecvAddress = bytes.slice(
 			addrRecvAddressStart,
 			addrRecvAddressStart + 16,
 		);
@@ -138,7 +138,7 @@ var CJParser = ('object' === typeof module && exports) || {};
 		);
 
 		let addrTransAddressStart = addrTransServicesStart + 8; // + SIZES.SERVICES (8)
-		let addrTransAddress = buffer.slice(
+		let addrTransAddress = bytes.slice(
 			addrTransAddressStart,
 			addrTransAddressStart + 16,
 		);
@@ -147,13 +147,13 @@ var CJParser = ('object' === typeof module && exports) || {};
 		let addrTransPort = dv.getUint16(addrTransPortStart, DV_LITTLE_ENDIAN);
 
 		let nonceStart = addrTransPortStart + 2; // + SIZES.PORT (2)
-		let nonce = buffer.slice(nonceStart, nonceStart + 8);
+		let nonce = bytes.slice(nonceStart, nonceStart + 8);
 
 		let uaSizeStart = 80; // + SIZES.PORT (2)
-		let uaSize = buffer[uaSizeStart];
+		let uaSize = bytes[uaSizeStart];
 
 		let uaStart = uaSizeStart + 1;
-		let uaBytes = buffer.slice(uaStart, uaStart + uaSize);
+		let uaBytes = bytes.slice(uaStart, uaStart + uaSize);
 		let ua = uaBytes.toString('utf8');
 
 		let startHeightStart = uaStart + uaSize;
@@ -162,22 +162,22 @@ var CJParser = ('object' === typeof module && exports) || {};
 		let relayStart = startHeightStart + 4;
 		/** @type {Boolean?} */
 		let relay = null;
-		if (buffer.length > relayStart) {
-			relay = buffer[relayStart] > 0;
+		if (bytes.length > relayStart) {
+			relay = bytes[relayStart] > 0;
 		}
 
 		let mnAuthChStart = relayStart + 1;
 		/** @type {Uint8Array?} */
 		let mnAuthChallenge = null;
-		if (buffer.length > mnAuthChStart) {
-			mnAuthChallenge = buffer.slice(mnAuthChStart, mnAuthChStart + 32);
+		if (bytes.length > mnAuthChStart) {
+			mnAuthChallenge = bytes.slice(mnAuthChStart, mnAuthChStart + 32);
 		}
 
 		let mnConnStart = mnAuthChStart + 32;
 		/** @type {Boolean?} */
 		let mnConn = null;
-		if (buffer.length > mnConnStart) {
-			mnConn = buffer[mnConnStart] > 0;
+		if (bytes.length > mnConnStart) {
+			mnConn = bytes[mnConnStart] > 0;
 		}
 
 		let versionMessage = {
