@@ -1,6 +1,6 @@
 'use strict';
 
-let DotEnv = window.ENV || require('dotenv');
+let DotEnv = require('dotenv');
 if (DotEnv.config) {
 	void DotEnv.config({ path: '.env' });
 	void DotEnv.config({ path: '.env.secret' });
