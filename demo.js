@@ -3,11 +3,6 @@ var CJDemo = ('object' === typeof module && exports) || {};
 (function (window, CJDemo) {
 	'use strict';
 
-	let ENV = window.ENV || require('./node-env.js');
-
-	//@ts-ignore - ts can't understand JSON, still...
-	let pkg = ENV.package || require('./package.json');
-
 	//@ts-ignore
 	let Packer = window.CJPacker || require('./packer.js');
 	//@ts-ignore
@@ -36,25 +31,12 @@ var CJDemo = ('object' === typeof module && exports) || {};
 	// const COINJOIN_ENTRY_MAX_SIZE = 9; // real
 	const COINJOIN_ENTRY_MAX_SIZE = 2; // just for testing right now
 
-	let rpcConfig = {
-		protocol: ENV.DASHD_RPC_PROTOCOL || 'http', // https for remote, http for local / private networking
-		user: ENV.DASHD_RPC_USER,
-		pass: ENV.DASHD_RPC_PASS || ENV.DASHD_RPC_PASSWORD,
-		host: ENV.DASHD_RPC_HOST || '127.0.0.1',
-		port: ENV.DASHD_RPC_PORT || '19898', // mainnet=9998, testnet=19998, regtest=19898
-		timeout: 10 * 1000, // bump default from 5s to 10s for up to 10k addresses
-		onconnected: async function () {
-			console.info(`[info] rpc client connected ${rpcConfig.host}`);
-		},
-	};
-	if (ENV.DASHD_RPC_TIMEOUT) {
-		let rpcTimeoutSec = parseFloat(ENV.DASHD_RPC_TIMEOUT);
-		rpcConfig.timeout = rpcTimeoutSec * 1000;
-	}
-
-	async function main() {
+	CJDemo.run = async function (ENV, rpcConfig) {
 		/* jshint maxstatements: 1000 */
 		/* jshint maxcomplexity: 100 */
+
+		//@ts-ignore - ts can't understand JSON, still...
+		let pkg = ENV.package || require('./package.json');
 
 		let walletSalt = ENV.DASH_WALLET_SALT || '';
 		let isHelp = walletSalt === 'help' || walletSalt === '--help';
@@ -1367,7 +1349,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		}
 
 		console.log('Sweet, sweet victory!');
-	}
+	};
 
 	/**
 	 * @param {Object} a
@@ -1432,17 +1414,6 @@ var CJDemo = ('object' === typeof module && exports) || {};
 			setTimeout(resolve, ms);
 		});
 	}
-
-	main()
-		.then(function () {
-			console.info('Done');
-			process.exit(0);
-		})
-		.catch(function (err) {
-			console.error('Fail:');
-			console.error(err.stack || err);
-			process.exit(1);
-		});
 
 	// @ts-ignore
 	window.CJDemo = CJDemo;
