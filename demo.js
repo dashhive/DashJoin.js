@@ -3,24 +3,22 @@ var CJDemo = ('object' === typeof module && exports) || {};
 (function (window, CJDemo) {
 	'use strict';
 
-	let DotEnv = window.ENVS || require('dotenv');
-	if (DotEnv.config) {
-		void DotEnv.config({ path: '.env' });
-		void DotEnv.config({ path: '.env.secret' });
-	}
+	let ENV = window.ENV || require('./node-env.js');
 
 	//@ts-ignore - ts can't understand JSON, still...
-	let pkg = DotEnv.package || require('./package.json');
+	let pkg = ENV.package || require('./package.json');
 
-	let Packer = require('./packer.js'); // TODO rename packer
-	let Parser = require('./parser.js');
+	//@ts-ignore
+	let Packer = window.CJPacker || require('./packer.js');
+	//@ts-ignore
+	let Parser = window.CJParser || require('./parser.js');
 
 	let DashPhrase = window.DashPhrase || require('dashphrase');
 	let DashHd = window.DashHd || require('dashhd');
 	let DashKeys = window.DashKeys || require('dashkeys');
 	let DashRpc = window.DashRpc || require('dashrpc');
 	let DashTx = window.DashTx || require('dashtx');
-	let Secp256k1 = window.Secp256k1 || require('@dashincubator/secp256k1');
+	let Secp256k1 = window.nobleSecp256k1 || require('@dashincubator/secp256k1');
 
 	// (STANDARD_DENOMINATIONS[0] / 10).floor();
 	const COLLATERAL = 10000;
@@ -40,17 +38,17 @@ var CJDemo = ('object' === typeof module && exports) || {};
 
 	let rpcConfig = {
 		protocol: 'http', // https for remote, http for local / private networking
-		user: process.env.DASHD_RPC_USER,
-		pass: process.env.DASHD_RPC_PASS || process.env.DASHD_RPC_PASSWORD,
-		host: process.env.DASHD_RPC_HOST || '127.0.0.1',
-		port: process.env.DASHD_RPC_PORT || '19898', // mainnet=9998, testnet=19998, regtest=19898
+		user: ENV.DASHD_RPC_USER,
+		pass: ENV.DASHD_RPC_PASS || ENV.DASHD_RPC_PASSWORD,
+		host: ENV.DASHD_RPC_HOST || '127.0.0.1',
+		port: ENV.DASHD_RPC_PORT || '19898', // mainnet=9998, testnet=19998, regtest=19898
 		timeout: 10 * 1000, // bump default from 5s to 10s for up to 10k addresses
 		onconnected: async function () {
 			console.info(`[info] rpc client connected ${rpcConfig.host}`);
 		},
 	};
-	if (process.env.DASHD_RPC_TIMEOUT) {
-		let rpcTimeoutSec = parseFloat(process.env.DASHD_RPC_TIMEOUT);
+	if (ENV.DASHD_RPC_TIMEOUT) {
+		let rpcTimeoutSec = parseFloat(ENV.DASHD_RPC_TIMEOUT);
 		rpcConfig.timeout = rpcTimeoutSec * 1000;
 	}
 
@@ -58,7 +56,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		/* jshint maxstatements: 1000 */
 		/* jshint maxcomplexity: 100 */
 
-		let walletSalt = process.argv[2] || '';
+		let walletSalt = ENV._WALLET_SALT || '';
 		let isHelp = walletSalt === 'help' || walletSalt === '--help';
 		if (isHelp) {
 			throw new Error(
@@ -66,7 +64,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 			);
 		}
 
-		let walletPhrase = process.env.DASH_WALLET_PHRASE || '';
+		let walletPhrase = ENV.DASH_WALLET_PHRASE || '';
 		if (!walletPhrase) {
 			throw new Error('missing DASH_WALLET_PHRASE');
 		}
@@ -74,6 +72,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		let network = 'regtest';
 		// let minimumParticipants = Packer.NETWORKS[network].minimumParticiparts;
 
+		console.log(`[DEBUG] rpcConfig`, rpcConfig);
 		let rpc = DashRpc.create(rpcConfig);
 		let height = await rpc.init(rpc);
 		console.info(`[info] rpc server is ready. Height = ${height}`);
@@ -647,7 +646,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		};
 		let searchParams = new URLSearchParams(query);
 		let search = searchParams.toString();
-		let wsc = new WebSocket(`${process.env.DASHD_TCP_WS_URL}?${search}`);
+		let wsc = new WebSocket(`${ENV.DASHD_TCP_WS_URL}?${search}`);
 		//let conn = Net.createConnection({
 		//      host: evonode.hostname,
 		//      port: evonode.port,
