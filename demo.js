@@ -647,7 +647,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		};
 		let searchParams = new URLSearchParams(query);
 		let search = searchParams.toString();
-		let wsc = new WebSocket(`ws://127.0.0.1:8080/tcp?${search}`);
+		let wsc = new WebSocket(`${process.env.DASHD_TCP_WS_URL}?${search}`);
 		//let conn = Net.createConnection({
 		//      host: evonode.hostname,
 		//      port: evonode.port,
