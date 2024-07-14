@@ -37,7 +37,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 	const COINJOIN_ENTRY_MAX_SIZE = 2; // just for testing right now
 
 	let rpcConfig = {
-		protocol: 'http', // https for remote, http for local / private networking
+		protocol: ENV.DASHD_RPC_PROTOTYPE || 'http', // https for remote, http for local / private networking
 		user: ENV.DASHD_RPC_USER,
 		pass: ENV.DASHD_RPC_PASS || ENV.DASHD_RPC_PASSWORD,
 		host: ENV.DASHD_RPC_HOST || '127.0.0.1',
