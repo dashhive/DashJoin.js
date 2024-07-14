@@ -56,7 +56,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		/* jshint maxstatements: 1000 */
 		/* jshint maxcomplexity: 100 */
 
-		let walletSalt = ENV._WALLET_SALT || '';
+		let walletSalt = ENV.DASH_WALLET_SALT || '';
 		let isHelp = walletSalt === 'help' || walletSalt === '--help';
 		if (isHelp) {
 			throw new Error(
