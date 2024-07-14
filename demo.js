@@ -610,7 +610,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		let evonodes = [];
 		{
 			//let resp = await rpc.masternodelist();
-			let rpcBaseUrl = `${ENV.DASH_RPC_PROTOCOL}://${ENV.DASH_RPC_HOST}:${ENV.DASH_RPC_PORT}`;
+			let rpcBaseUrl = `${ENV.DASHD_RPC_PROTOCOL}://${ENV.DASHD_RPC_HOST}:${ENV.DASHD_RPC_PORT}`;
 			let res = await fetch(`${rpcBaseUrl}/rpc/masternodelist`);
 			let resp = await res.json();
 			let evonodesMap = resp.result;
