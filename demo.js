@@ -72,7 +72,6 @@ var CJDemo = ('object' === typeof module && exports) || {};
 		let network = 'regtest';
 		// let minimumParticipants = Packer.NETWORKS[network].minimumParticiparts;
 
-		console.log(`[DEBUG] rpcConfig`, rpcConfig);
 		let rpc = DashRpc.create(rpcConfig);
 		let height = await rpc.init(rpc);
 		console.info(`[info] rpc server is ready. Height = ${height}`);
