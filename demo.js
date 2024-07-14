@@ -679,17 +679,18 @@ var CJDemo = ('object' === typeof module && exports) || {};
 
 		let dataCount = 0;
 		// conn.on('data', function (data) {
+		//      let bytes = new Uint8Array(data);
 		//      console.log('[DEBUG] data');
-		//      console.log(dataCount, data.length, data.toString('hex'));
+		//      console.log(dataCount, bytes.length, DashTx.utils.bytesToHex(bytes));
 		//      dataCount += 1;
 		// });
 		console.log('[DEBUG] main add wsc.onmessage');
 		wsc.addEventListener('message', async function (wsevent) {
 			console.log('[DEBUG] main wsc.onmessage');
 			let ab = await wsevent.data.arrayBuffer();
-			let data = Buffer.from(ab);
+			let bytes = new Uint8Array(ab);
 			console.log('[DEBUG] data (main)');
-			console.log(dataCount, data.length, data.toString('hex'));
+			console.log(dataCount, bytes.length, DashTx.utils.bytesToHex(bytes));
 			dataCount += 1;
 		});
 
@@ -775,25 +776,25 @@ var CJDemo = ('object' === typeof module && exports) || {};
 				_reject(err);
 			}
 
-			function onReadableHeader(data) {
-				let size = data?.length || 0;
-				console.log('State: reading header', size);
+			function onReadableHeader(bytes) {
+				let size = bytes?.length || 0;
+				console.log('State: reading header', size, typeof bytes);
 				let chunk;
 				for (;;) {
-					chunk = data;
+					chunk = bytes;
 					// chunk = conn.read(); // TODO reenable
 					if (!chunk) {
 						break;
 					}
 					chunks.push(chunk);
 					chunksLength += chunk.byteLength;
-					data = null; // TODO nix
+					bytes = null; // TODO nix
 				}
 				if (chunksLength < HEADER_SIZE) {
 					return;
 				}
 				if (chunks.length > 1) {
-					chunk = Buffer.concat(chunks, chunksLength);
+					chunk = concatBytes(chunks, chunksLength);
 				} else {
 					chunk = chunks[0];
 				}
@@ -810,7 +811,7 @@ var CJDemo = ('object' === typeof module && exports) || {};
 					console.log(`[DEBUG] header`, header);
 					throw new Error('too big you are, handle you I cannot');
 				}
-				// console.log('DEBUG header', header);
+				console.log('DEBUG header', header);
 				console.log('[DEBUG] [onReadableHeader] remove data listener');
 				// conn.removeListener('readable', onReadableHeader);
 				// conn.removeListener('data', onReadableHeader);
@@ -829,34 +830,41 @@ var CJDemo = ('object' === typeof module && exports) || {};
 				wsc.addEventListener('message', onWsReadablePayload);
 				onReadablePayload(null);
 			}
+			async function onNodeReadableHeader(data) {
+				let bytes = new Uint8Array(data);
+				onReadableHeader(bytes);
+			}
 			async function onWsReadableHeader(wsevent) {
 				console.log('[DEBUG] onReadableHeader wsc.onmessage');
 				let ab = await wsevent.data.arrayBuffer();
-				let data = Buffer.from(ab);
-				console.log('[DEBUG] data (readable header)');
-				console.log(dataCount, data.length, data.toString('hex'));
-				onReadableHeader(data);
+				let bytes = new Uint8Array(ab);
+				console.log('[DEBUG] bytes (readable header)');
+				console.log(dataCount, bytes.length, DashTx.utils.bytesToHex(bytes));
+				onReadableHeader(bytes);
 			}
 
-			function onReadablePayload(data) {
-				let size = data?.length || 0;
+			/**
+			 * @param {Uint8Array} bytes
+			 */
+			function onReadablePayload(bytes) {
+				let size = bytes?.length || 0;
 				console.log('State: reading payload', size);
 				let chunk;
 				for (;;) {
-					chunk = data;
+					chunk = bytes;
 					// chunk = conn.read(); // TODO revert
 					if (!chunk) {
 						break;
 					}
 					chunks.push(chunk);
 					chunksLength += chunk.byteLength;
-					data = null; // TODO nix
+					bytes = null; // TODO nix
 				}
 				if (chunksLength < header.payloadSize) {
 					return;
 				}
 				if (chunks.length > 1) {
-					chunk = Buffer.concat(chunks, chunksLength);
+					chunk = concatBytes(chunks, chunksLength);
 				} else if (chunks.length === 1) {
 					chunk = chunks[0];
 				} else {
@@ -879,13 +887,17 @@ var CJDemo = ('object' === typeof module && exports) || {};
 				wsc.removeEventListener('message', onWsReadablePayload);
 				resolve(header);
 			}
+			async function onNodeReadablePayload(data) {
+				let bytes = new Uint8Array(data);
+				onReadablePayload(bytes);
+			}
 			async function onWsReadablePayload(wsevent) {
 				console.log('[DEBUG] onReadablePayload wsc.onmessage');
 				let ab = await wsevent.data.arrayBuffer();
-				let data = Buffer.from(ab);
+				let bytes = new Uint8Array(ab);
 				console.log('[DEBUG] data (readable payload)');
-				console.log(dataCount, data.length, data.toString('hex'));
-				onReadablePayload(data);
+				console.log(dataCount, bytes.length, DashTx.utils.bytesToHex(bytes));
+				onReadablePayload(bytes);
 			}
 
 			errReject = reject;
@@ -931,17 +943,21 @@ var CJDemo = ('object' === typeof module && exports) || {};
 					resolve();
 				}
 
-				function onReadable() {
+				function onReadable(bytes) {
 					// checking an impossible condition, just in case
 					throw new Error('unexpected response before request');
+				}
+				async function onNodeReadable(data) {
+					let bytes = new Uint8Array(data);
+					onReadable(bytes);
 				}
 				async function onWsReadable(wsevent) {
 					console.log('[DEBUG] waitForConnect wsc.onmessage');
 					let ab = await wsevent.data.arrayBuffer();
-					let data = Buffer.from(ab);
+					let bytes = new Uint8Array(ab);
 					console.log('[DEBUG] data (readable)');
-					console.log(dataCount, data.length, data.toString('hex'));
-					onReadable(data);
+					console.log(dataCount, bytes.length, DashTx.utils.bytesToHex(bytes));
+					onReadable(bytes);
 				}
 
 				errReject = reject;
@@ -1093,8 +1109,9 @@ var CJDemo = ('object' === typeof module && exports) || {};
 			// conn.write(dsaMsg);
 			wsc.send(dsaMsg);
 
-			let dsaBuf = Buffer.from(dsaMsg);
-			console.log('[debug] dsa', dsaBuf.toString('hex'));
+			// let dsaBuf = Buffer.from(dsaMsg);
+			// console.log('[debug] dsa', dsaBuf.toString('hex'));
+			console.log('[debug] dsa', DashTx.utils.bytesToHex(dsaMsg));
 
 			let dsq = await dsqPromise;
 			for (; !dsq.ready; ) {
@@ -1388,6 +1405,28 @@ var CJDemo = ('object' === typeof module && exports) || {};
 
 	//      return arr;
 	// }
+
+	/**
+	 * @param {Array<Uint8Array>} byteArrays
+	 * @param {Number?} [len]
+	 * @returns {Uint8Array}
+	 */
+	function concatBytes(byteArrays, len) {
+		if (!len) {
+			for (let bytes of byteArrays) {
+				len += bytes.length;
+			}
+		}
+
+		let allBytes = new Uint8Array(len);
+		let offset = 0;
+		for (let bytes of byteArrays) {
+			allBytes.set(bytes, offset);
+			offset += bytes.length;
+		}
+
+		return allBytes;
+	}
 
 	function sleep(ms) {
 		return new Promise(function (resolve) {

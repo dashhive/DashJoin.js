@@ -27,6 +27,8 @@ var CJParser = ('object' === typeof module && exports) || {};
 	CJParser.DSQ_SIZE = 142;
 	CJParser.SESSION_ID_SIZE = 4;
 
+	let textDecoder = new TextDecoder();
+
 	/**
 	 * Parse the 24-byte P2P Message Header
 	 *   -  4 byte magic bytes (delimiter) (possibly intended for non-tcp messages?)
@@ -71,7 +73,7 @@ var CJParser = ('object' === typeof module && exports) || {};
 			throw new Error('command name longer than 12 bytes');
 		}
 		let commandBuf = bytes.slice(commandStart, commandEnd);
-		let command = commandBuf.toString('utf8');
+		let command = textDecoder.decode(commandBuf);
 
 		let payloadSize = dv.getUint32(payloadSizeStart, DV_LITTLE_ENDIAN);
 		let checksum = bytes.slice(checksumStart, checksumStart + 4);
@@ -154,7 +156,7 @@ var CJParser = ('object' === typeof module && exports) || {};
 
 		let uaStart = uaSizeStart + 1;
 		let uaBytes = bytes.slice(uaStart, uaStart + uaSize);
-		let ua = uaBytes.toString('utf8');
+		let ua = textDecoder.decode(uaBytes);
 
 		let startHeightStart = uaStart + uaSize;
 		let startHeight = dv.getUint32(startHeightStart, DV_LITTLE_ENDIAN);
