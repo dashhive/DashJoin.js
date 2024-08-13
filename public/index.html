@@ -375,12 +375,20 @@
 					$('[data-id=total-balance]').innerText = totalAmount.toFixed(4);
 					$('[data-id=balances]').innerText = balances.join('\n');
 					$('[data-id=addresses]').innerText = addresses.join('\n');
+
+					$('body').removeAttribute('hidden');
+
+					if (totalBalance < MIN_BALANCE) {
+						setTimeout(function () {
+							window.alert(
+								'Error: Balance too low. Please fill up at CN 💸 and/or DCG 💸.',
+							);
+						}, 300);
+					}
 				}
 			}
 
 			async function main() {
-				await init();
-
 				if (network === `testnet`) {
 					let $testnets = $$('[data-network=testnet]');
 					for (let $testnet of $testnets) {
@@ -388,7 +396,7 @@
 					}
 				}
 
-				$('body').removeAttribute('hidden');
+				await init();
 			}
 
 			main().catch(function (err) {
