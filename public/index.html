@@ -39,10 +39,13 @@
 				margin: 0;
 				padding: 0;
 			}
-			pre code,
-			code {
+			pre code {
 				margin: 0;
 				padding: 0.3rem 1rem 0.3rem 1rem;
+			}
+			code {
+				margin: 0.1rem;
+				padding: 0rem 0.3rem 0rem 0.3rem;
 			}
 		</style>
 	</head>
@@ -141,7 +144,7 @@
                         data-id="spent">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
 					</details>
 					<label
-						>Balances
+						>Balances (<code data-id="total-balance">0.0000</code>)
 						<small>addresses with utxos</small>
 						<pre><code
                         data-id="balances">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
@@ -179,6 +182,7 @@
 		<script>
 			'use strict';
 
+			const MIN_BALANCE = 100001 * 1000;
 			let network = 'testnet';
 			let rpcBaseUrl = 'https://trpc.digitalcash.dev/';
 			let rpcBasicAuth = btoa(`api:null`);
@@ -349,6 +353,8 @@
 						}
 					}
 
+					const SATS = 100000000;
+					let totalBalance = 0;
 					let balances = [];
 					let addrs = Object.keys(deltasMap);
 					for (let addr of addrs) {
@@ -358,13 +364,15 @@
 						if (info.balance === 0) {
 							continue;
 						}
+						totalBalance += info.balance;
 
-						const SATS = 100000000;
 						let amount = info.balance / SATS;
 						let amountStr = amount.toFixed(8);
 						balances.push(`${addr}: ${info.deltas.length}: ${amountStr}`);
 					}
+					let totalAmount = totalBalance / SATS;
 
+					$('[data-id=total-balance]').innerText = totalAmount.toFixed(4);
 					$('[data-id=balances]').innerText = balances.join('\n');
 					$('[data-id=addresses]').innerText = addresses.join('\n');
 				}
