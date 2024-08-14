@@ -15,6 +15,8 @@
 	let DashTx = window.DashTx;
 	let Secp256k1 = window.nobleSecp256k1;
 
+	let DashJoin = window.DashJoin;
+
 	const SATS = 100000000;
 	const MIN_BALANCE = 100001 * 1000;
 
@@ -28,6 +30,7 @@
 	let spentAddrs = [];
 	let deltasMap = {};
 	let keysMap = {};
+	let denomsMap = {};
 
 	let keyUtils = {
 		getPrivateKey: async function (txInput, i) {
@@ -440,7 +443,7 @@
 
 	let defaultCjSlots = [
 		{
-			denom: 10000100000,
+			denom: 1000010000,
 			priority: 1,
 			have: 0,
 			want: 2,
@@ -484,19 +487,16 @@
 		return slots;
 	}
 	window.syncCashDrawer = function (event) {
-		console.log('DEBUG syncCashDrawer');
 		let isDirty = false;
 
 		let slots = getCashDrawer();
 		for (let slot of slots) {
 			let $row = $(`[data-denom="${slot.denom}"]`);
-			console.log('DEBUG syncCashDrawer slot', slot, $row);
 
 			let priorityStr = $('[name=priority]', $row).value;
 			if (priorityStr) {
 				let priority = parseFloat(priorityStr);
 				if (slot.priority !== priority) {
-					console.log('DEBUG update priority', slot.priority, priority);
 					isDirty = true;
 					slot.priority = priority;
 				}
@@ -506,7 +506,6 @@
 			if (wantStr) {
 				let want = parseFloat(wantStr);
 				if (slot.want !== want) {
-					console.log('DEBUG update priority', slot.want, want);
 					isDirty = true;
 					slot.want = want;
 				}
@@ -517,15 +516,43 @@
 			dbSet('cash-drawer-control', slots);
 		}
 
+		renderCashDrawer();
 		return true;
 	};
+
 	function renderCashDrawer() {
+		let cjBalance = 0;
 		let slots = getCashDrawer();
 		for (let slot of slots) {
 			let $row = $(`[data-denom="${slot.denom}"]`);
-			$('[name=priority]', $row).value = slot.priority;
-			$('[name=want]', $row).value = slot.want;
+			let addrs = Object.keys(denomsMap[slot.denom]);
+			let have = addrs.length;
+			let need = slot.want - have;
+			need = Math.max(0, need);
+
+			let priority = $('[name=priority]', $row).value;
+			if (priority) {
+				if (priority !== slot.priority.toString()) {
+					$('[name=priority]', $row).value = slot.priority;
+				}
+			}
+			let want = $('[name=want]', $row).value;
+			if (want) {
+				if (want !== slot.want.toString()) {
+					$('[name=want]', $row).value = slot.want;
+				}
+			}
+
+			$('[data-name=have]', $row).textContent = have;
+			$('[data-name=need]', $row).textContent = need;
+
+			for (let addr of addrs) {
+				cjBalance += denomsMap[slot.denom][addr].satoshis;
+			}
 		}
+
+		let cjAmount = cjBalance / SATS;
+		$('[data-id=cj-balance]').textContent = cjAmount.toFixed(8);
 	}
 
 	async function updateDeltas(addrs) {
@@ -625,6 +652,31 @@
 		}
 	}
 
+	function siftDenoms() {
+		for (let denom of DashJoin.DENOMS) {
+			if (!denomsMap[denom]) {
+				denomsMap[denom] = {};
+			}
+		}
+
+		let addrs = Object.keys(deltasMap);
+		for (let addr of addrs) {
+			let info = deltasMap[addr];
+			if (info.balance === 0) {
+				continue;
+			}
+
+			for (let coin of info.deltas) {
+				let denom = DashJoin.getDenom(coin.satoshis);
+				if (!denom) {
+					continue;
+				}
+
+				denomsMap[denom][coin.address] = coin;
+			}
+		}
+	}
+
 	async function main() {
 		if (network === `testnet`) {
 			let $testnets = $$('[data-network=testnet]');
@@ -634,6 +686,7 @@
 		}
 
 		await init();
+		siftDenoms();
 		renderCashDrawer();
 	}
 
