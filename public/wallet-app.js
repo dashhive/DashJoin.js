@@ -438,6 +438,96 @@
 		renderCoins();
 	}
 
+	let defaultCjSlots = [
+		{
+			denom: 10000100000,
+			priority: 1,
+			have: 0,
+			want: 2,
+			need: 0,
+		},
+		{
+			denom: 100001000,
+			priority: 10,
+			have: 0,
+			want: 10,
+			need: 0,
+		},
+		{
+			denom: 10000100,
+			priority: 10,
+			have: 0,
+			want: 50,
+			need: 0,
+		},
+		{
+			denom: 1000010,
+			priority: 1,
+			have: 0,
+			want: 20,
+			need: 0,
+		},
+		{
+			denom: 100001,
+			priority: 0,
+			have: 0,
+			want: 5,
+			need: 0,
+		},
+	];
+	function getCashDrawer() {
+		let slots = dbGet('cash-drawer-control', []);
+		if (!slots.length) {
+			slots = defaultCjSlots.slice(0);
+			dbSet('cash-drawer-control', slots);
+		}
+		return slots;
+	}
+	window.syncCashDrawer = function (event) {
+		console.log('DEBUG syncCashDrawer');
+		let isDirty = false;
+
+		let slots = getCashDrawer();
+		for (let slot of slots) {
+			let $row = $(`[data-denom="${slot.denom}"]`);
+			console.log('DEBUG syncCashDrawer slot', slot, $row);
+
+			let priorityStr = $('[name=priority]', $row).value;
+			if (priorityStr) {
+				let priority = parseFloat(priorityStr);
+				if (slot.priority !== priority) {
+					console.log('DEBUG update priority', slot.priority, priority);
+					isDirty = true;
+					slot.priority = priority;
+				}
+			}
+
+			let wantStr = $('[name=want]', $row).value;
+			if (wantStr) {
+				let want = parseFloat(wantStr);
+				if (slot.want !== want) {
+					console.log('DEBUG update priority', slot.want, want);
+					isDirty = true;
+					slot.want = want;
+				}
+			}
+		}
+
+		if (isDirty) {
+			dbSet('cash-drawer-control', slots);
+		}
+
+		return true;
+	};
+	function renderCashDrawer() {
+		let slots = getCashDrawer();
+		for (let slot of slots) {
+			let $row = $(`[data-denom="${slot.denom}"]`);
+			$('[name=priority]', $row).value = slot.priority;
+			$('[name=want]', $row).value = slot.want;
+		}
+	}
+
 	async function updateDeltas(addrs) {
 		for (let address of addrs) {
 			let info = dbGet(address);
@@ -544,6 +634,7 @@
 		}
 
 		await init();
+		renderCashDrawer();
 	}
 
 	main().catch(function (err) {

@@ -239,6 +239,150 @@
 					</label>
 
 					<button type="submit" onclick="sendDash(event)">Send DASH</button>
+
+					<hr />
+					<label
+						>Cash Drawer (<code data-id="cash-balance">0.0000</code>)
+						<small>denominated coins</small>
+					</label>
+					<table>
+						<thead>
+							<tr>
+								<th>Denom</th>
+								<th>Priority</th>
+								<th>Have</th>
+								<th>Want</th>
+								<th>Need</th>
+							</tr>
+						</thead>
+						<tbody data-id="coins-table">
+							<tr data-denom="1000010000">
+								<th>10.000<span hidden>10000</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="1"
+									/>
+								</th>
+								<th>0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="2"
+									/>
+								</th>
+								<th>0</th>
+							</tr>
+							<tr data-denom="100001000">
+								<th>1.000<span hidden>01000</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="10"
+									/>
+								</th>
+								<th>0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="10"
+									/>
+								</th>
+								<th>0</th>
+							</tr>
+							<tr data-denom="10000100">
+								<th>0.100<span hidden>00100</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="10"
+									/>
+								</th>
+								<th>0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="50"
+									/>
+								</th>
+								<th>0</th>
+							</tr>
+							<tr data-denom="1000010">
+								<th>0.010<span hidden>00010</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="1"
+									/>
+								</th>
+								<th>0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="20"
+									/>
+								</th>
+								<th>0</th>
+							</tr>
+							<tr data-denom="100001">
+								<th>0.001<span hidden>00001</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="0"
+									/>
+								</th>
+								<th>0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="5"
+									/>
+								</th>
+								<th>0</th>
+							</tr>
+						</tbody>
+					</table>
 				</form>
 			</section>
 			<br />
