@@ -9,6 +9,7 @@
 		<script src="./node_modules/@dashincubator/secp256k1/secp256k1.js"></script>
 		<script src="./node_modules/dashkeys/dashkeys.js"></script>
 		<script src="./node_modules/dashhd/dashhd.js"></script>
+		<script src="./node_modules/dashtx/dashtx.js"></script>
 		<style>
 			nav {
 				margin-bottom: 0.3rem;
@@ -46,6 +47,19 @@
 			code {
 				margin: 0.1rem;
 				padding: 0rem 0.3rem 0rem 0.3rem;
+			}
+			small button {
+				font-size: 0.75rem;
+				margin: 0;
+				padding: 0.2rem;
+			}
+			fieldset {
+				border-style: none;
+				margin: 0;
+				padding: 0;
+			}
+			fieldset label {
+				display: inline-block;
 			}
 		</style>
 	</head>
@@ -126,7 +140,7 @@
                         data-id="wallet-seed">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
 					</label>
 					<label
-						>First Account
+						>HD Account
 						<small>bip-44 path</small>
 						<input
 							type="text"
@@ -135,36 +149,120 @@
 							disabled
 						/>
 					</label>
-					<details>
-						<summary>
-							Spent Addresses
-							<small>addresses with utxos</small>
-						</summary>
-						<pre><code
-                        data-id="spent">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
-					</details>
+					<hr />
 					<label
-						>Balances (<code data-id="total-balance">0.0000</code>)
-						<small>addresses with utxos</small>
-						<pre><code
-                        data-id="balances">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+						>Coins (<code data-id="total-balance">0.0000</code>)
+						<small>unspent outputs</small>
 					</label>
+					<table>
+						<thead>
+							<tr>
+								<th><input onchange="toggleAll(event)" type="checkbox" /></th>
+								<th>Amount</th>
+								<th>Address</th>
+								<th>TXID</th>
+								<th>Index</th>
+							</tr>
+						</thead>
+						<tbody data-id="coins-table">
+							<!-- tmpl-balance-row -->
+						</tbody>
+						<tfoot>
+							<th></th>
+							<th></th>
+							<th>
+								<small
+									><button type="button">Denominate Selected</button></small
+								>
+							</th>
+							<th></th>
+							<th></th>
+						</tfoot>
+					</table>
+					<template data-id="coin-row-tmpl">
+						<tr>
+							<td class="select">
+								<input data-name="coin" type="checkbox" value="addr,txid,out" />
+							</td>
+							<td data-name="amount" style="font-family: monospace"></td>
+							<td
+								data-name="address"
+								style="font-family: monospace; font-size: 6pt"
+							></td>
+							<td
+								data-name="txid"
+								style="font-family: monospace; font-size: 6pt"
+							></td>
+							<td
+								data-name="output-index"
+								style="font-family: monospace; font-size: 6pt"
+							></td>
+						</tr>
+					</template>
+
+					<fieldset>
+						<label
+							>Send Amount
+							<small>0 + select coins for full transfer</small>
+							<input
+								type="number"
+								data-id="send-amount"
+								placeholder="ex: 1.0001"
+								step="0.0001"
+								min="0.0000"
+							/>
+						</label>
+						<small
+							><button type="button" onclick="setMax(event)">Max</button></small
+						>
+						<small><span data-id="send-dust">200</span> dust</small>
+						<!-- <label -->
+						<!-- 	>Dust Amount -->
+						<!-- 	<input -->
+						<!-- 		type="number" -->
+						<!-- 		data-id="send-dust" -->
+						<!-- 		placeholder="ex: 1.0001" -->
+						<!-- 		step="1" -->
+						<!-- 		min="200" -->
+						<!-- 		disabled -->
+						<!-- 	/> -->
+						<!-- </label> -->
+					</fieldset>
 					<label
-						>Fresh Addresses
+						>Send Address
 						<small>base58check-encoded pkh</small>
-						<pre><code
-                        data-id="addresses">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+						<input
+							type="text"
+							data-id="send-address"
+							placeholder="ex: ybLxVb3aspSHFgxM1qTyuBSXnjAqLFEG8P"
+						/>
 					</label>
 
-					<button type="submit">Try it!</button>
+					<button type="submit" onclick="sendDash(event)">Send DASH</button>
 				</form>
 			</section>
 			<br />
 			<section>
 				<form>
+					<details>
+						<summary>
+							Spent Addresses (<span data-id="spent-count">0</span>)
+							<small>addresses with spent outputs</small>
+						</summary>
+						<pre><code
+                        data-id="spent">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+					</details>
 					<label
-						>Output
-						<pre><code data-id="output">N/A</code></pre>
+						>Unused Payment Addresses
+						<small>base58check-encoded pkh</small>
+						<pre><code
+                        data-id="receive-addresses">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+					</label>
+					<label
+						>Unused Change Addresses
+						<small>base58check-encoded pkh</small>
+						<pre><code
+                        data-id="change-addresses">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
 					</label>
 				</form>
 			</section>
@@ -179,229 +277,6 @@
 			</footer>
 		</main>
 
-		<script>
-			'use strict';
-
-			const MIN_BALANCE = 100001 * 1000;
-			let network = 'testnet';
-			let rpcBaseUrl = 'https://trpc.digitalcash.dev/';
-			let rpcBasicAuth = btoa(`api:null`);
-
-			function $(sel, el) {
-				return (el || document).querySelector(sel);
-			}
-
-			function $$(sel, el) {
-				return Array.from((el || document).querySelectorAll(sel));
-			}
-
-			async function rpc(method, ...params) {
-				// typically http://localhost:19998/
-				let payload = JSON.stringify({ method, params });
-				let resp = await fetch(rpcBaseUrl, {
-					method: 'POST',
-					headers: {
-						Authorization: `Basic ${rpcBasicAuth}`,
-						'Content-Type': 'application/json',
-					},
-					body: payload,
-				});
-
-				let data = await resp.json();
-				if (data.error) {
-					let err = new Error(data.error.message);
-					Object.assign(err, data.error);
-					throw err;
-				}
-
-				return data.result;
-			}
-
-			function dbGet(key, defVal) {
-				let dataJson = localStorage.getItem(key);
-				if (!dataJson) {
-					dataJson = JSON.stringify(defVal);
-				}
-
-				let data;
-				try {
-					data = JSON.parse(dataJson);
-				} catch (e) {
-					data = defVal;
-				}
-				return data;
-			}
-
-			function dbSet(key, val) {
-				if (val === null) {
-					localStorage.removeItem(key);
-					return;
-				}
-
-				let dataJson = JSON.stringify(val);
-				localStorage.setItem(key, dataJson);
-			}
-
-			function removeElement(arr, val) {
-				let index = arr.indexOf(val);
-				if (index !== -1) {
-					arr.splice(index, 1);
-				}
-			}
-
-			async function init() {
-				let phrases = dbGet('wallet-phrases', []);
-				let primaryPhrase = phrases[0];
-				if (!primaryPhrase) {
-					primaryPhrase = await DashPhrase.generate(128);
-					dbSet('wallet-phrases', [primaryPhrase]);
-				}
-
-				let primarySalt = '';
-				let primarySeedBytes = await DashPhrase.toSeed(
-					primaryPhrase,
-					primarySalt,
-				);
-				let primarySeedHex = DashKeys.utils.bytesToHex(primarySeedBytes);
-				$('[data-id=wallet-phrase]').value = primaryPhrase;
-				$('[data-id=wallet-seed]').innerText = primarySeedHex;
-
-				let accountIndex = 0;
-				let coinType = 5; // DASH
-				let versions = DashHd.MAINNET;
-				if (network === `testnet`) {
-					coinType = 1; // testnet (for all coins)
-					versions = DashHd.TESTNET;
-				}
-				$('[data-id=wallet-account]').value =
-					`m/44'/${coinType}'/${accountIndex}'`;
-
-				let walletId;
-				let xprvKey;
-				let usage = DashHd.RECEIVE;
-				{
-					let walletKey = await DashHd.fromSeed(primarySeedBytes);
-					walletId = await DashHd.toId(walletKey);
-
-					let accountKey = await walletKey.deriveAccount(0, {
-						purpose: 44, // BIP-44 (default)
-						coinType: coinType,
-						versions: versions,
-					});
-					xprvKey = await accountKey.deriveXKey(usage);
-				}
-
-				let keys = [];
-				let previousIndex = 0;
-				let last = previousIndex + 50;
-				for (let i = previousIndex; i < last; i += 1) {
-					let key;
-					try {
-						key = await xprvKey.deriveAddress(i); // xprvKey from step 2
-					} catch (e) {
-						// to make up for skipping on error
-						last += 1;
-						continue;
-					}
-
-					let wif = await DashHd.toWif(key.privateKey, { version: 'testnet' });
-					let address = await DashHd.toAddr(key.publicKey, {
-						version: 'testnet',
-					});
-					let hdpath = `m/44'/${coinType}'/${accountIndex}'/${usage}`; // accountIndex from step 2
-					keys.push({
-						walletId: walletId,
-						index: i,
-						hdpath: hdpath, // useful for multi-account indexing
-						address: address, // XrZJJfEKRNobcuwWKTD3bDu8ou7XSWPbc9
-						wif: wif, // XCGKuZcKDjNhx8DaNKK4xwMMNzspaoToT6CafJAbBfQTi57buhLK
-						key: key,
-					});
-				}
-
-				{
-					let deltasMap = {};
-					let addresses = [];
-					let spent = [];
-					for (let key of keys) {
-						let info = dbGet(key.address);
-						let isSpent = info && info.deltas?.length && !info.balance;
-						if (isSpent) {
-							spent.push(info.address);
-							removeElement(addresses, info.address);
-							continue; // used address (only check on manual sync)
-						}
-						addresses.push(key.address);
-					}
-					let deltaLists = await Promise.all([
-						// See
-						// - <https://trpc.digitalcash.dev/#?method=getaddressdeltas&params=[{"addresses":["ybLxVb3aspSHFgxM1qTyuBSXnjAqLFEG8P"]}]&submit>
-						// - <https://trpc.digitalcash.dev/#?method=getaddressmempool&params=[{"addresses":["ybLxVb3aspSHFgxM1qTyuBSXnjAqLFEG8P"]}]&submit>
-						await rpc('getaddressdeltas', { addresses }),
-						// TODO check for proof of instantsend / acceptance
-						await rpc('getaddressmempool', { addresses }),
-					]);
-					for (let deltaList of deltaLists) {
-						for (let delta of deltaList) {
-							console.log('DEBUG delta', delta);
-							removeElement(addresses, delta.address);
-							if (!deltasMap[delta.address]) {
-								deltasMap[delta.address] = { balance: 0, deltas: [] };
-							}
-							deltasMap[delta.address].deltas.push(delta);
-							deltasMap[delta.address].balance += delta.satoshis;
-						}
-					}
-
-					const SATS = 100000000;
-					let totalBalance = 0;
-					let balances = [];
-					let addrs = Object.keys(deltasMap);
-					for (let addr of addrs) {
-						let info = deltasMap[addr];
-						console.log('DEBUG delta info', info);
-						dbSet(addr, info);
-						if (info.balance === 0) {
-							continue;
-						}
-						totalBalance += info.balance;
-
-						let amount = info.balance / SATS;
-						let amountStr = amount.toFixed(8);
-						balances.push(`${addr}: ${info.deltas.length}: ${amountStr}`);
-					}
-					let totalAmount = totalBalance / SATS;
-
-					$('[data-id=total-balance]').innerText = totalAmount.toFixed(4);
-					$('[data-id=balances]').innerText = balances.join('\n');
-					$('[data-id=addresses]').innerText = addresses.join('\n');
-
-					$('body').removeAttribute('hidden');
-
-					if (totalBalance < MIN_BALANCE) {
-						setTimeout(function () {
-							window.alert(
-								'Error: Balance too low. Please fill up at CN 💸 and/or DCG 💸.',
-							);
-						}, 300);
-					}
-				}
-			}
-
-			async function main() {
-				if (network === `testnet`) {
-					let $testnets = $$('[data-network=testnet]');
-					for (let $testnet of $testnets) {
-						$testnet.removeAttribute('hidden');
-					}
-				}
-
-				await init();
-			}
-
-			main().catch(function (err) {
-				console.error(`Error in main:`, err);
-			});
-		</script>
+		<script src="./wallet-app.js"></script>
 	</body>
 </html>
