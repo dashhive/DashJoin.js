@@ -398,8 +398,88 @@
 								</th>
 								<th data-name="need">0</th>
 							</tr>
+							<tr data-denom="10000">
+								<th>
+									<small><em>Collateral</em></small>
+								</th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="0"
+									/>
+								</th>
+								<th data-name="have">0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="5"
+									/>
+								</th>
+								<th data-name="need">0</th>
+							</tr>
 						</tbody>
 					</table>
+
+					<hr />
+					<label
+						>Send Memo
+						<small>hex-encoded op_return</small>
+						<br />
+						<label style="display: inline-block"
+							><input
+								type="radio"
+								name="memo-encoding"
+								value="hex"
+								onchange="document.querySelector('[name=memo]').placeholder = 'ex: 48656c6c6f2c20576f726c6421'"
+								checked="checked"
+							/>
+							hex
+						</label>
+						<label style="display: inline-block"
+							><input
+								type="radio"
+								name="memo-encoding"
+								value="string"
+								onchange="document.querySelector('[name=memo]').placeholder = 'ex: Hello, World!'"
+							/>
+							string (utf-8)
+						</label>
+						<input
+							type="text"
+							name="memo"
+							placeholder="ex: 48656c6c6f2c20576f726c6421"
+						/>
+					</label>
+					<small
+						>Share: <a href="" data-id="memo-link" target="_blank"></a
+					></small>
+					<pre><code data-id="memo-txid"><em>output: txid</em></code></pre>
+					<button type="button" onclick="App.sendMemo(event)">Send Memo</button>
+
+					<hr />
+					<label
+						>Address for WIF Export
+						<small>base58check-encoded pkh</small>
+						<input
+							type="text"
+							data-id="export-address"
+							placeholder="ex: ybLxVb3aspSHFgxM1qTyuBSXnjAqLFEG8P"
+						/>
+					</label>
+					<pre><code data-id="export-wif"><em>output: private key as wif</em></code></pre>
+					<button type="submit" onclick="App.exportWif(event)">
+						Export WIF
+					</button>
 				</form>
 			</section>
 			<br />

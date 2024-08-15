@@ -25,6 +25,7 @@
 
 	let network = 'testnet';
 	let rpcBaseUrl = 'https://trpc.digitalcash.dev/';
+	let rpcExplorer = 'https://trpc.digitalcash.dev/';
 	let rpcBasicAuth = btoa(`api:null`);
 
 	let addresses = [];
@@ -126,7 +127,7 @@
 		localStorage.setItem(key, dataJson);
 	}
 
-	function getAllUtxos() {
+	function getAllUtxos(opts) {
 		let utxos = [];
 		let spendableAddrs = Object.keys(deltasMap);
 		for (let address of spendableAddrs) {
@@ -135,13 +136,22 @@
 				continue;
 			}
 			for (let coin of info.deltas) {
-				if (coin.reserved) {
+				if (coin.reserved > 0) {
 					continue;
 				}
+
+				let addressInfo = keysMap[coin.address];
 				Object.assign(coin, {
 					outputIndex: coin.index,
 					denom: DashJoin.getDenom(coin.satoshis),
+					pubKeyHash: addressInfo.pubKeyHash,
 				});
+				if (opts?.denom === false) {
+					if (coin.denom) {
+						continue;
+					}
+				}
+
 				utxos.push(coin);
 			}
 		}
@@ -188,7 +198,7 @@
 		let dust = totalSats - totalSigSats;
 		dust += fee;
 
-		$('[data-id=send-amount]').value = totalAmount.toFixed(4);
+		$('[data-id=send-amount]').value = toFixed(totalAmount, 4);
 		//$('[data-id=send-dust]').value = dust;
 		$('[data-id=send-dust]').textContent = dust;
 	};
@@ -238,7 +248,7 @@
 			// but this is quick-n-dirty just to get an alert rather than
 			// checking error types and translating cthe error message
 			let available = balance / SATS;
-			let availableStr = available.toFixed(4);
+			let availableStr = toFixed(available, 4);
 			let err = new Error(
 				`requested to send '${amountStr}' when only '${availableStr}' is available`,
 			);
@@ -256,12 +266,12 @@
 
 		amount = output.satoshis / SATS;
 		$('[data-id=send-dust]').textContent = draft.tx.feeTarget;
-		$('[data-id=send-amount]').textContent = amount.toFixed(8);
+		$('[data-id=send-amount]').textContent = toFixed(amount, 8);
 
 		let signedTx = await dashTx.legacy.finalizePresorted(draft.tx);
 		console.log('DEBUG signed tx', signedTx);
 		{
-			let amountStr = amount.toFixed(4);
+			let amountStr = toFixed(amount, 4);
 			let confirmed = window.confirm(`Really send ${amountStr} to ${address}?`);
 			if (!confirmed) {
 				return;
@@ -269,6 +279,84 @@
 		}
 		void (await rpc('sendrawtransaction', signedTx.transaction));
 		void (await commitWalletTx(signedTx));
+	};
+
+	App.exportWif = async function (event) {
+		event.preventDefault();
+
+		let address = $('[data-id=export-address]').value;
+		let privKey = await keyUtils.getPrivateKey({ address });
+		let wif = await DashKeys.privKeyToWif(privKey, { version: network });
+
+		$('[data-id=export-wif]').textContent = wif;
+	};
+
+	App.sendMemo = async function (event) {
+		event.preventDefault();
+
+		let msg;
+
+		/** @type {String?} */
+		let memo = $('[name=memo]').value || '';
+		/** @type {String?} */
+		let message = null;
+		let memoEncoding = $('[name=memo-encoding]:checked').value || 'hex';
+		if (memoEncoding !== 'hex') {
+			message = memo;
+			memo = null;
+		}
+		let satoshis = 0;
+		msg = memo || message;
+
+		let outputs = [{ satoshis, memo, message }];
+		let changeOutput = {
+			address: '',
+			pubKeyHash: '',
+			satoshis: 0,
+			reserved: 0,
+		};
+
+		let utxos = getAllUtxos({ denom: false });
+		let txInfo = await DashTx.createLegacyTx(utxos, outputs, changeOutput);
+		if (txInfo.changeIndex >= 0) {
+			let realChange = txInfo.outputs[txInfo.changeIndex];
+			// TODO reserve address
+			realChange.address = changeAddrs.shift();
+			let pkhBytes = await DashKeys.addrToPkh(realChange.address, {
+				version: network,
+			});
+			realChange.pubKeyHash = DashKeys.utils.bytesToHex(pkhBytes);
+		}
+
+		let signedTx = await dashTx.hashAndSignAll(txInfo);
+		{
+			let confirmed = window.confirm(
+				`Really send '${memoEncoding}' memo '${msg}'?`,
+			);
+			if (!confirmed) {
+				return;
+			}
+		}
+		let txid = await rpc('sendrawtransaction', signedTx.transaction);
+		$('[data-id=memo-txid]').textContent = txid;
+		let link = `${rpcExplorer}#?method=getrawtransaction&params=["${txid}",1]&submit`;
+		$('[data-id=memo-link]').textContent = link;
+		$('[data-id=memo-link]').href = link;
+		void (await commitWalletTx(signedTx));
+	};
+
+	App.sendCollateral = async function (event) {
+		// at least the collateral amount
+		let dustF = Math.random() * DashJoin.COLLATERAL;
+		dustF = dustF / 10;
+		dustF += DashJoin.COLLATERAL;
+
+		let dust = Math.floor(dustF);
+		let utxos = getAllUtxos();
+		let memo = { satoshis: dust, memo: '\0' };
+		let draftTx = await draftWalletTx(utxos, null, memo);
+		draftTx.outputs[0].satoshis = 0;
+		draftTx.feeTarget += dust;
 	};
 
 	async function draftWalletTx(utxos, inputs, output) {
@@ -293,7 +381,12 @@
 			if (output.pubKeyHash) {
 				continue;
 			}
-			if (!output.address) {
+			if (output.memo) {
+				draftTx.feeTarget += output.satoshis;
+				output.satoshis = 0;
+				continue;
+			}
+			if (!output.address && typeof output.memo !== 'string') {
 				let err = new Error(`output is missing 'address' and 'pubKeyHash'`);
 				window.alert(err.message);
 				throw err;
@@ -330,6 +423,10 @@
 			dbSet(input.address, null);
 		}
 		for (let output of signedTx.outputs) {
+			let isMemo = !output.address;
+			if (isMemo) {
+				continue;
+			}
 			updatedAddrs.push(output.address);
 			removeElement(addresses, output.address);
 			removeElement(receiveAddrs, output.address);
@@ -340,12 +437,13 @@
 		await updateDeltas(updatedAddrs);
 
 		let txid = await DashTx.getId(signedTx.transaction);
+		let now = Date.now();
 		for (let input of signedTx.inputs) {
 			let coin = selectCoin(input.address, input.txid, input.outputIndex);
 			if (!coin) {
 				continue;
 			}
-			coin.reserved = true; // mark as spent-ish
+			coin.reserved = now; // mark as spent-ish
 		}
 		for (let i = 0; i < signedTx.outputs.length; i += 1) {
 			let output = signedTx.outputs[i];
@@ -463,6 +561,9 @@
 			});
 			let hdpath = `m/44'/${coinType}'/${accountIndex}'/${usage}`; // accountIndex from step 2
 
+			// TODO put this somewhere safe
+			// let descriptor = `pkh([${walletId}/${partialPath}/0/${index}])`;
+
 			addresses.push(address);
 			if (usage === DashHd.RECEIVE) {
 				receiveAddrs.push(address);
@@ -532,6 +633,14 @@
 			want: 5,
 			need: 0,
 		},
+		// {
+		// 	denom: 10000,
+		// 	priority: 0,
+		// 	have: 0,
+		// 	want: 100,
+		// 	need: 0,
+		// 	collateral: true,
+		// },
 	];
 	function getCashDrawer() {
 		let slots = dbGet('cash-drawer-control', []);
@@ -618,11 +727,10 @@
 		}
 
 		let cjAmount = cjBalance / SATS;
-		$('[data-id=cj-balance]').textContent = cjAmount.toFixed(8);
+		$('[data-id=cj-balance]').textContent = toFixed(cjAmount, 8);
 	}
 
 	App.denominateCoins = async function (event) {
-		console.log('DENOMINATE COINS');
 		event.preventDefault();
 
 		{
@@ -639,14 +747,11 @@
 		}
 
 		let slots = dbGet('cash-drawer-control');
-		console.log('slots', slots);
 
 		let priorityGroups = groupSlotsByPriorityAndAmount(slots);
-		console.log('priorityGroups', priorityGroups);
 
 		let priorities = Object.keys(priorityGroups);
 		priorities.sort(sortNumberDesc);
-		console.log('priorities', priorities);
 
 		for (let priority of priorities) {
 			let slots = priorityGroups[priority].slice(0);
@@ -655,12 +760,10 @@
 			for (;;) {
 				let slot = slots.shift();
 				if (!slot) {
-					console.log('e: no slot');
 					break;
 				}
 				let isNeeded = slot.need >= 1;
 				if (!isNeeded) {
-					console.log('s: not needed', slot.denom);
 					continue;
 				}
 
@@ -672,8 +775,9 @@
 					continue;
 				}
 
+				let now = Date.now();
 				for (let coin of coins) {
-					coin.reserved = true;
+					coin.reserved = now;
 				}
 				slot.need -= 1;
 
@@ -710,7 +814,7 @@
 		{
 			console.log('DEBUG confirming signed tx', signedTx);
 			let amount = output.satoshis / SATS;
-			let amountStr = amount.toFixed(4);
+			let amountStr = toFixed(amount, 4);
 			let confirmed = window.confirm(
 				`Really send ${amountStr} to ${output.address}?`,
 			);
@@ -836,7 +940,7 @@
 				utxo.outputIndex,
 			].join(',');
 			$('[data-name=address]', clone).textContent = utxo.address;
-			$('[data-name=amount]', clone).textContent = utxo.amount.toFixed(4);
+			$('[data-name=amount]', clone).textContent = toFixed(utxo.amount, 4);
 			if (utxo.denom) {
 				$('[data-name=amount]', clone).style.fontStyle = 'italic';
 				$('[data-name=amount]', clone).style.fontWeight = 'bold';
@@ -852,7 +956,7 @@
 
 		let totalBalance = DashTx.sum(utxos);
 		let totalAmount = totalBalance / SATS;
-		$('[data-id=total-balance]').innerText = totalAmount.toFixed(4);
+		$('[data-id=total-balance]').innerText = toFixed(totalAmount, 4);
 
 		let tableBody = $('[data-id=coins-table]');
 		tableBody.textContent = '';
@@ -869,6 +973,9 @@
 	}
 
 	function siftDenoms() {
+		if (!denomsMap[DashJoin.COLLATERAL]) {
+			denomsMap[DashJoin.COLLATERAL] = {};
+		}
 		for (let denom of DashJoin.DENOMS) {
 			if (!denomsMap[denom]) {
 				denomsMap[denom] = {};
@@ -885,6 +992,13 @@
 			for (let coin of info.deltas) {
 				let denom = DashJoin.getDenom(coin.satoshis);
 				if (!denom) {
+					let halfCollateral = DashJoin.COLLATERAL / 2;
+					let fitsCollateral =
+						coin.satoshis >= halfCollateral &&
+						coin.satoshis < DashJoin.DENOM_LOWEST;
+					if (fitsCollateral) {
+						denomsMap[DashJoin.COLLATERAL][coin.address] = coin;
+					}
 					continue;
 				}
 
@@ -892,6 +1006,18 @@
 				denomsMap[denom][coin.address] = coin;
 			}
 		}
+	}
+
+	/**
+	 * @param {Number} f - the number
+	 * @param {Number} d - how many digits to truncate (round down) at
+	 */
+	function toFixed(f, d) {
+		let order = Math.pow(10, d);
+		let t = f * order;
+		t = Math.floor(t);
+		f = t / order;
+		return f.toFixed(d);
 	}
 
 	async function main() {
