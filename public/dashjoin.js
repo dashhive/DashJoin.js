@@ -22,7 +22,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		for (let denom of reverseDenoms) {
 			let isDenom = sats === denom;
 			if (isDenom) {
-				return isDenom;
+				return denom;
 			}
 		}
 
