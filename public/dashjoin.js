@@ -4,8 +4,10 @@ var DashJoin = ('object' === typeof module && exports) || {};
 
 	const DENOM_LOWEST = 100001;
 	const PREDENOM_MIN = DENOM_LOWEST + 193;
+	const COLLATERAL = 10000; // DENOM_LOWEST / 10
 
 	DashJoin.DENOM_LOWEST = DENOM_LOWEST;
+	DashJoin.COLLATERAL = COLLATERAL;
 	DashJoin.PREDENOM_MIN = PREDENOM_MIN;
 	DashJoin.DENOMS = [
 		100001, //      0.00100001
