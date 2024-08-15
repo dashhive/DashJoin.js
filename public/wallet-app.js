@@ -138,7 +138,10 @@
 				if (coin.reserved) {
 					continue;
 				}
-				Object.assign(coin, { outputIndex: coin.index });
+				Object.assign(coin, {
+					outputIndex: coin.index,
+					denom: DashJoin.getDenom(coin.satoshis),
+				});
 				utxos.push(coin);
 			}
 		}
@@ -751,6 +754,23 @@
 		return 0;
 	}
 
+	function sortCoinsByDenomAndSatsDesc(a, b) {
+		if (a.denom < b.denom) {
+			return 1;
+		}
+		if (a.denom > b.denom) {
+			return -1;
+		}
+
+		if (a.satoshis < b.satoshis) {
+			return 1;
+		}
+		if (a.satoshis > b.satoshis) {
+			return -1;
+		}
+		return 0;
+	}
+
 	async function updateDeltas(addrs) {
 		for (let address of addrs) {
 			let info = dbGet(address);
@@ -794,43 +814,43 @@
 	}
 
 	function renderCoins() {
-		let totalBalance = 0;
-		//let balances = [];
 		let addrs = Object.keys(deltasMap);
-		let elementStrs = [];
-		let template = $('[data-id=coin-row-tmpl]').content;
 		for (let addr of addrs) {
 			let info = deltasMap[addr];
-			console.log('DEBUG delta info', info);
 			dbSet(addr, info);
-			if (info.balance === 0) {
-				continue;
-			}
-			totalBalance += info.balance;
-			//let amount = delta.balance / SATS;
-			//let amountStr = amount.toFixed(8);
-			// balances.push(`${addr}: ${info.deltas.length}: ${amountStr}`);
-
-			for (let delta of info.deltas) {
-				let amount = delta.satoshis / SATS;
-				Object.assign(delta, { amount: amount });
-
-				let clone = document.importNode(template, true);
-				$('[data-name=coin]', clone).value = [
-					delta.address,
-					delta.txid,
-					delta.index,
-				].join(',');
-				$('[data-name=address]', clone).textContent = delta.address;
-				$('[data-name=amount]', clone).textContent = delta.amount.toFixed(4);
-				$('[data-name=txid]', clone).textContent = delta.txid;
-				$('[data-name=output-index]', clone).textContent = delta.index;
-
-				elementStrs.push(clone.firstElementChild.outerHTML);
-				//tableBody.appendChild(clone);
-			}
 		}
 
+		let utxos = getAllUtxos();
+		utxos.sort(sortCoinsByDenomAndSatsDesc);
+
+		let elementStrs = [];
+		let template = $('[data-id=coin-row-tmpl]').content;
+		for (let utxo of utxos) {
+			let amount = utxo.satoshis / SATS;
+			Object.assign(utxo, { amount: amount });
+
+			let clone = document.importNode(template, true);
+			$('[data-name=coin]', clone).value = [
+				utxo.address,
+				utxo.txid,
+				utxo.outputIndex,
+			].join(',');
+			$('[data-name=address]', clone).textContent = utxo.address;
+			$('[data-name=amount]', clone).textContent = utxo.amount.toFixed(4);
+			if (utxo.denom) {
+				$('[data-name=amount]', clone).style.fontStyle = 'italic';
+				$('[data-name=amount]', clone).style.fontWeight = 'bold';
+			} else {
+				//
+			}
+			$('[data-name=txid]', clone).textContent = utxo.txid;
+			$('[data-name=output-index]', clone).textContent = utxo.index;
+
+			elementStrs.push(clone.firstElementChild.outerHTML);
+			//tableBody.appendChild(clone);
+		}
+
+		let totalBalance = DashTx.sum(utxos);
 		let totalAmount = totalBalance / SATS;
 		$('[data-id=total-balance]').innerText = totalAmount.toFixed(4);
 
