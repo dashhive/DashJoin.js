@@ -16,6 +16,7 @@
 	let Secp256k1 = window.nobleSecp256k1;
 
 	let DashJoin = window.DashJoin;
+	let DashP2P = window.DashP2P;
 
 	let App = {};
 	window.App = App;
@@ -24,9 +25,9 @@
 	const MIN_BALANCE = 100001 * 1000;
 
 	let network = 'testnet';
-	let rpcBaseUrl = 'https://trpc.digitalcash.dev/';
+	let rpcBasicAuth = `api:null`;
+	let rpcBaseUrl = `https://${rpcBasicAuth}@trpc.digitalcash.dev/`;
 	let rpcExplorer = 'https://trpc.digitalcash.dev/';
-	let rpcBasicAuth = btoa(`api:null`);
 
 	let addresses = [];
 	let changeAddrs = [];
@@ -81,25 +82,8 @@
 	console.log('DEBUG dashTx instance', dashTx);
 
 	async function rpc(method, ...params) {
-		// typically http://localhost:19998/
-		let payload = JSON.stringify({ method, params });
-		let resp = await fetch(rpcBaseUrl, {
-			method: 'POST',
-			headers: {
-				Authorization: `Basic ${rpcBasicAuth}`,
-				'Content-Type': 'application/json',
-			},
-			body: payload,
-		});
-
-		let data = await resp.json();
-		if (data.error) {
-			let err = new Error(data.error.message);
-			Object.assign(err, data.error);
-			throw err;
-		}
-
-		return data.result;
+		let result = await DashTx.utils.rpc(rpcBaseUrl, method, ...params);
+		return result;
 	}
 
 	function dbGet(key, defVal) {
@@ -1039,9 +1023,62 @@
 		}
 
 		await init();
+
 		siftDenoms();
 		renderCashDrawer();
 		App.syncCashDrawer();
+
+		App._rawmnlist = await rpc('masternodelist');
+		App._chaininfo = await rpc('getblockchaininfo');
+		console.log(App._rawmnlist);
+		App._evonodes = DashJoin.utils._evonodeMapToList(App._rawmnlist);
+		App._evonode = App._evonodes.at(-1);
+		console.info('[info] chosen evonode:');
+		console.log(JSON.stringify(App._evonode, null, 2));
+
+		let p2p = DashP2P.create();
+
+		let p2pWebProxyUrl = 'wss://ubuntu-127.scratch-dev.digitalcash.dev/ws';
+		let query = {
+			access_token: 'secret',
+			hostname: App._evonode.hostname,
+			port: App._evonode.port,
+		};
+		let searchParams = new URLSearchParams(query);
+		let search = searchParams.toString();
+		let wsc = new WebSocket(`${p2pWebProxyUrl}?${search}`);
+
+		wsc.addEventListener('message', async function (wsevent) {
+			let ab = await wsevent.data.arrayBuffer();
+			let bytes = new Uint8Array(ab);
+			console.log('ws.onmessage => p2p.write(bytes)', bytes.length);
+			p2p.write(bytes);
+		});
+		wsc.addEventListener('open', async function () {
+			// p2p.initWebSocket(wsc);
+
+			let payload = DashP2P.packers.version({
+				addr_recv_ip: App._evonode.hostname,
+				addr_recv_port: App._evonode.port,
+				start_height: App._chaininfo.blocks,
+			});
+			let command = 'version';
+			let messageBytes = DashP2P.packers.message({ network, command, payload });
+			wsc.send(messageBytes);
+		});
+
+		for (;;) {
+			let msg = await p2p.accept([
+				'*',
+				'inv',
+				'ping',
+				'pong',
+				'version',
+				'verack',
+			]);
+			console.log('p2p.accept():');
+			console.log(msg);
+		}
 	}
 
 	main().catch(function (err) {
