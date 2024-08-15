@@ -145,7 +145,9 @@ var DashP2P = ('object' === typeof module && exports) || {};
 				p2p.header = Parsers.header(chunk);
 			} catch (e) {
 				p2p.state = 'error';
-				p2p.error = new Error('header parse error');
+				p2p.error = new Error(`header parse error: ${e.message}`);
+				console.error(e);
+				console.error(chunk);
 				return;
 			}
 
@@ -209,8 +211,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		SIZES.PAYLOAD_SIZE + // 4
 		SIZES.CHECKSUM; // 4
 	Sizes.HEADER_SIZE = TOTAL_HEADER_SIZE; // 24
-
-	Parsers.PING_SIZE = SIZES.NONCE;
+	Sizes.PING_SIZE = SIZES.NONCE; // same as pong
 
 	Packers.PROTOCOL_VERSION = 70227;
 	Packers.NETWORKS = {};
@@ -370,6 +371,41 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			message.set(payload, offset);
 		}
 		return message;
+	};
+
+	Packers.verack = function ({ network }) {
+		let verackBytes = Packers.message({
+			network: network,
+			command: 'verack',
+			payload: null,
+		});
+		return verackBytes;
+	};
+
+	/**
+	 * In this case the only bytes are the nonce
+	 * Use a .subarray(offset) to define an offset.
+	 * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
+	 * @param {Object} opts
+	 * @param {NetworkName} opts.network - "mainnet", "testnet", etc
+	 * @param {Uint8Array?} [opts.message]
+	 * @param {Uint8Array} opts.nonce
+	 */
+	Packers.pong = function ({ network, message = null, nonce }) {
+		// const command = 'pong';
+
+		if (!message) {
+			let pongSize = Sizes.HEADER_SIZE + Sizes.PING_SIZE;
+			message = new Uint8Array(pongSize);
+		}
+
+		let payload = message.subarray(Sizes.HEADER_SIZE);
+		payload.set(nonce, 0);
+
+		// void CJPacker.packMessage({ network, command, bytes: message });
+		// return message;
+
+		return payload;
 	};
 
 	/**

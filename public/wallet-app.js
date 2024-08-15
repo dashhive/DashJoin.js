@@ -1056,28 +1056,77 @@
 		});
 		wsc.addEventListener('open', async function () {
 			// p2p.initWebSocket(wsc);
+			{
+				let payload = DashP2P.packers.version({
+					addr_recv_ip: App._evonode.hostname,
+					addr_recv_port: App._evonode.port,
+					start_height: App._chaininfo.blocks,
+				});
+				let command = 'version';
+				let versionBytes = DashP2P.packers.message({
+					network,
+					command,
+					payload,
+				});
+				wsc.send(versionBytes);
+			}
 
-			let payload = DashP2P.packers.version({
-				addr_recv_ip: App._evonode.hostname,
-				addr_recv_port: App._evonode.port,
-				start_height: App._chaininfo.blocks,
-			});
-			let command = 'version';
-			let messageBytes = DashP2P.packers.message({ network, command, payload });
-			wsc.send(messageBytes);
+			{
+				let verackBytes = DashP2P.packers.verack({ network: network });
+				console.log('wsc.send(verackBytes)');
+				wsc.send(verackBytes);
+			}
 		});
 
+		// initialize connection
+		// {
+		// 	let versionReq = DashP2P.packers.version({
+		// 		addr_recv_ip: App._evonode.hostname,
+		// 		addr_recv_port: App._evonode.port,
+		// 		start_height: App._chaininfo.blocks,
+		// 	});
+		// 	wsc.send(versionReq);
+		// 	void (await p2p.accept(['version']));
+		// }
+		// {
+		// }
+		// let msg = await p2p.accept(['verack']);
+		// for (;;) {
+		// 	let msg = await p2p.accept(['ping', 'inv']);
+		// 	if (msg.header.command === 'ping') {
+		// 		let pongBytes = DashP2P.packers.pong({
+		// 			network: network,
+		// 			nonce: msg.payload,
+		// 		});
+		// 		wsc.send(pongBytes);
+		// 	}
+		// }
+
 		for (;;) {
-			let msg = await p2p.accept([
-				'*',
-				'inv',
-				'ping',
-				'pong',
-				'version',
-				'verack',
-			]);
-			console.log('p2p.accept():');
-			console.log(msg);
+			let subs = ['*', 'inv', 'ping', 'pong', 'version', 'verack'];
+			let msg = await p2p.accept(subs);
+			let command = msg.header.command;
+			console.log('p2p.accept():', command);
+			let isSub = subs.includes(command);
+			if (isSub) {
+				console.log(msg);
+			}
+
+			// if (command === 'verack') {
+			// 	let verackBytes = DashP2P.packers.verack({ network: network });
+			// 	console.log('wsc.send(verackBytes)');
+			// 	wsc.send(verackBytes);
+			// } else
+			if (command === 'ping') {
+				let pongBytes = DashP2P.packers.pong({
+					network: network,
+					nonce: msg.payload,
+				});
+				console.log('wsc.send(pongBytes)');
+				wsc.send(pongBytes);
+			} else if (command === 'inv') {
+				console.log('(ignore inv)');
+			}
 		}
 	}
 

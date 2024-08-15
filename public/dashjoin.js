@@ -2,12 +2,14 @@ var DashJoin = ('object' === typeof module && exports) || {};
 (function (window, DashJoin) {
 	'use strict';
 
-	// let DashTx = window.DashTx || require('dashtx');
+	let DashP2P = window.DashP2P || require('dashp2p');
 
 	const DENOM_LOWEST = 100001;
 	const PREDENOM_MIN = DENOM_LOWEST + 193;
 	const COLLATERAL = 10000; // DENOM_LOWEST / 10
 	const PAYLOAD_SIZE_MAX = 4 * 1024 * 1024;
+
+	const DSQ_SIZE = 1; // 1-byte bool
 
 	// https://github.com/dashpay/dash/blob/v19.x/src/coinjoin/coinjoin.h#L39
 	// const COINJOIN_ENTRY_MAX_SIZE = 9; // real
@@ -27,6 +29,10 @@ var DashJoin = ('object' === typeof module && exports) || {};
 	let reverseDenoms = DashJoin.DENOMS.slice(0);
 	reverseDenoms.reverse();
 
+	let Packers = {};
+	let Parsers = {};
+	let Utils = {};
+
 	// Ask Niles if there's an layman-ish obvious way to do this
 	DashJoin.getDenom = function (sats) {
 		for (let denom of reverseDenoms) {
@@ -39,9 +45,39 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		return 0;
 	};
 
-	DashJoin.utils = {};
+	/**
+	 * Turns on or off DSQ messages (necessary for CoinJoin, but off by default)
+	 * @param {Object} opts
+	 * @param {NetworkName} opts.network - "mainnet", "testnet", etc
+	 * @param {Uint8Array?} [opts.message]
+	 * @param {Boolean?} [opts.send]
+	 */
+	Packers.senddsq = function ({ network, message = null, send = true }) {
+		// const command = 'senddsq';
+		// if (!message) {
+		// 	let dsqSize = DashP2P.sizes.HEADER_SIZE + DSQ_SIZE;
+		// 	message = new Uint8Array(dsqSize);
+		// }
 
-	DashJoin.utils.hexToBytes = function (hex) {
+		let payload = new Uint8Array(1);
+		if (send) {
+			payload.set([0x01], 0);
+		} else {
+			payload.set([0x00], 0);
+		}
+
+		// let payload = message.subarray(DashP2P.sizes.HEADER_SIZE);
+		// payload.set(sendByte, 0);
+		// void DashP2P.packers.message({ network, command, bytes: message });
+		// return {
+		// 	message,
+		// 	payload,
+		// };
+
+		return payload;
+	};
+
+	Utils.hexToBytes = function (hex) {
 		let bufLen = hex.length / 2;
 		let u8 = new Uint8Array(bufLen);
 
@@ -64,7 +100,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		return u8;
 	};
 
-	DashJoin.utils.bytesToHex = function (u8) {
+	Utils.bytesToHex = function (u8) {
 		/** @type {Array<String>} */
 		let hex = [];
 
@@ -76,7 +112,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		return hex.join('');
 	};
 
-	DashJoin.utils._evonodeMapToList = function (evonodesMap) {
+	Utils._evonodeMapToList = function (evonodesMap) {
 		console.log('[debug] get evonode list...');
 		let evonodes = [];
 		{
@@ -104,7 +140,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		}
 
 		// void shuffle(evonodes);
-		evonodes.sort(DashJoin.utils.sortMnListById);
+		evonodes.sort(Utils.sortMnListById);
 		return evonodes;
 	};
 
@@ -114,7 +150,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 	 * @param {Object} b
 	 * @param {String} b.id
 	 */
-	DashJoin.utils.sortMnListById = function (a, b) {
+	Utils.sortMnListById = function (a, b) {
 		if (a.id > b.id) {
 			return 1;
 		}
@@ -123,6 +159,10 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		}
 		return 0;
 	};
+
+	DashJoin.packers = Packers;
+	DashJoin.parsers = Parsers;
+	DashJoin.utils = Utils;
 
 	//@ts-ignore
 	window.DashJoin = DashJoin;
