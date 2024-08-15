@@ -249,6 +249,26 @@
 		console.log('DEBUG Amount:', amount);
 
 		let output = { satoshis, address };
+		let draft = await draftWalletTx(utxos, inputs, output);
+
+		amount = output.satoshis / SATS;
+		$('[data-id=send-dust]').textContent = draft.tx.feeTarget;
+		$('[data-id=send-amount]').textContent = amount.toFixed(8);
+
+		let signedTx = await dashTx.legacy.finalizePresorted(draft.tx);
+		console.log('DEBUG signed tx', signedTx);
+		{
+			let amountStr = amount.toFixed(4);
+			let confirmed = window.confirm(`Really send ${amountStr} to ${address}?`);
+			if (!confirmed) {
+				return;
+			}
+		}
+		void (await rpc('sendrawtransaction', signedTx.transaction));
+		void (await commitWalletTx(signedTx));
+	};
+
+	async function draftWalletTx(utxos, inputs, output) {
 		let draftTx = dashTx.legacy.draftSingleOutput({ utxos, inputs, output });
 		console.log('DEBUG draftTx', draftTx);
 
@@ -285,24 +305,16 @@
 
 		draftTx.inputs.sort(DashTx.sortInputs);
 		draftTx.outputs.sort(DashTx.sortOutputs);
-		amount = output.satoshis / SATS;
 
-		$('[data-id=send-dust]').textContent = draftTx.feeTarget;
-		$('[data-id=send-amount]').textContent = amount.toFixed(8);
+		return {
+			tx: draftTx,
+			change: changeOutput,
+		};
+	}
 
-		let tx = await dashTx.legacy.finalizePresorted(draftTx);
-		console.log('DEBUG signed tx', tx);
-		{
-			let amountStr = amount.toFixed(4);
-			let confirmed = window.confirm(`Really send ${amountStr} to ${address}?`);
-			if (!confirmed) {
-				return;
-			}
-		}
-		void (await rpc('sendrawtransaction', tx.transaction));
-
+	async function commitWalletTx(signedTx) {
 		let updatedAddrs = [];
-		for (let input of tx.inputs) {
+		for (let input of signedTx.inputs) {
 			updatedAddrs.push(input.address);
 			let knownSpent = spentAddrs.includes(input.address);
 			if (!knownSpent) {
@@ -314,7 +326,7 @@
 			delete deltasMap[input.address];
 			dbSet(input.address, null);
 		}
-		for (let output of tx.outputs) {
+		for (let output of signedTx.outputs) {
 			updatedAddrs.push(output.address);
 			removeElement(addresses, output.address);
 			removeElement(receiveAddrs, output.address);
@@ -322,11 +334,38 @@
 			delete deltasMap[output.address];
 			dbSet(output.address, null);
 		}
-
 		await updateDeltas(updatedAddrs);
+
+		let txid = await DashTx.getId(signedTx.transaction);
+		for (let input of signedTx.inputs) {
+			let coin = selectCoin(input.address, input.txid, input.outputIndex);
+			if (!coin) {
+				continue;
+			}
+			coin.reserved = true; // mark as spent-ish
+		}
+		for (let i = 0; i < signedTx.outputs.length; i += 1) {
+			let output = signedTx.outputs[i];
+			let info = deltasMap[output.address];
+			if (!info) {
+				info = { balance: 0, deltas: [] };
+				deltasMap[output.address] = info;
+			}
+			let memCoin = selectCoin(output.address, txid, i);
+			if (!memCoin) {
+				memCoin = {
+					address: output.address,
+					satoshis: output.satoshis,
+					txid: txid,
+					index: i,
+				};
+				info.deltas.push(memCoin);
+			}
+		}
+
 		renderAddresses();
 		renderCoins();
-	};
+	}
 
 	function renderAddresses() {
 		$('[data-id=spent-count]').textContent = spentAddrs.length;
@@ -579,7 +618,7 @@
 		$('[data-id=cj-balance]').textContent = cjAmount.toFixed(8);
 	}
 
-	App.denominateCoins = function (event) {
+	App.denominateCoins = async function (event) {
 		console.log('DENOMINATE COINS');
 		event.preventDefault();
 
@@ -635,16 +674,50 @@
 				}
 				slot.need -= 1;
 
-                // TODO DashTx.
+				// TODO DashTx.
 				console.log('Found coins to make denom', slot.denom, coins);
+				let roundRobiner = createRoundRobin(slots, slot);
+				// roundRobiner();
 
-				if (slot.need >= 1) {
-					// round-robin same priority
-					slots.push(slot);
-				}
+				let address = receiveAddrs.shift();
+				let satoshis = slot.denom;
+				let output = { satoshis, address };
+
+				void (await confirmAndBroadcastAndCompleteTx(coins, output).then(
+					roundRobiner,
+				));
 			}
 		}
 	};
+
+	function createRoundRobin(slots, slot) {
+		return function () {
+			if (slot.need >= 1) {
+				// round-robin same priority
+				slots.push(slot);
+			}
+		};
+	}
+
+	async function confirmAndBroadcastAndCompleteTx(inputs, output) {
+		let utxos = null;
+		let draft = await draftWalletTx(utxos, inputs, output);
+
+		let signedTx = await dashTx.legacy.finalizePresorted(draft.tx);
+		{
+			console.log('DEBUG confirming signed tx', signedTx);
+			let amount = output.satoshis / SATS;
+			let amountStr = amount.toFixed(4);
+			let confirmed = window.confirm(
+				`Really send ${amountStr} to ${output.address}?`,
+			);
+			if (!confirmed) {
+				return;
+			}
+		}
+		void (await rpc('sendrawtransaction', signedTx.transaction));
+		void (await commitWalletTx(signedTx));
+	}
 
 	function groupSlotsByPriorityAndAmount(slots) {
 		let priorityGroups = {};
@@ -795,6 +868,7 @@
 					continue;
 				}
 
+				console.log('DEBUG denom', denom, coin);
 				denomsMap[denom][coin.address] = coin;
 			}
 		}
@@ -811,6 +885,7 @@
 		await init();
 		siftDenoms();
 		renderCashDrawer();
+		App.syncCashDrawer();
 	}
 
 	main().catch(function (err) {
