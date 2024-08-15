@@ -353,10 +353,17 @@
 
 		let dust = Math.floor(dustF);
 		let utxos = getAllUtxos();
-		let memo = { satoshis: dust, memo: '\0' };
-		let draftTx = await draftWalletTx(utxos, null, memo);
-		draftTx.outputs[0].satoshis = 0;
-		draftTx.feeTarget += dust;
+		let memo = { satoshis: dust, memo: '' };
+		let draft = await draftWalletTx(utxos, null, memo);
+		console.log('draftTx');
+		console.log(draft);
+		draft.tx.outputs[0].satoshis = 0;
+		draft.tx.feeTarget += dust;
+
+		draft.tx.inputs.sort(DashTx.sortInputs);
+		draft.tx.outputs.sort(DashTx.sortOutputs);
+		let signedTx = await dashTx.legacy.finalizePresorted(draft.tx);
+		console.log(signedTx);
 	};
 
 	async function draftWalletTx(utxos, inputs, output) {
@@ -386,17 +393,20 @@
 				output.satoshis = 0;
 				continue;
 			}
-			if (!output.address && typeof output.memo !== 'string') {
-				let err = new Error(`output is missing 'address' and 'pubKeyHash'`);
-				window.alert(err.message);
-				throw err;
+			if (!output.address) {
+				if (typeof output.memo !== 'string') {
+					let err = new Error(`output is missing 'address' and 'pubKeyHash'`);
+					window.alert(err.message);
+					throw err;
+				}
+			} else {
+				let pkhBytes = await DashKeys.addrToPkh(output.address, {
+					version: network,
+				});
+				Object.assign(output, {
+					pubKeyHash: DashKeys.utils.bytesToHex(pkhBytes),
+				});
 			}
-			let pkhBytes = await DashKeys.addrToPkh(output.address, {
-				version: network,
-			});
-			Object.assign(output, {
-				pubKeyHash: DashKeys.utils.bytesToHex(pkhBytes),
-			});
 		}
 
 		draftTx.inputs.sort(DashTx.sortInputs);
