@@ -158,7 +158,9 @@
 					<table>
 						<thead>
 							<tr>
-								<th><input onchange="toggleAll(event)" type="checkbox" /></th>
+								<th>
+									<input onchange="App.toggleAll(event)" type="checkbox" />
+								</th>
 								<th>Amount</th>
 								<th>Address</th>
 								<th>TXID</th>
@@ -173,7 +175,9 @@
 							<th></th>
 							<th>
 								<small
-									><button type="button">Denominate Selected</button></small
+									><button type="button" onclick="App.denominateCoins(event)">
+										Denominate Selected
+									</button></small
 								>
 							</th>
 							<th></th>
@@ -214,7 +218,9 @@
 							/>
 						</label>
 						<small
-							><button type="button" onclick="setMax(event)">Max</button></small
+							><button type="button" onclick="App.setMax(event)">
+								Max
+							</button></small
 						>
 						<small><span data-id="send-dust">200</span> dust</small>
 						<!-- <label -->
@@ -239,7 +245,7 @@
 						/>
 					</label>
 
-					<button type="submit" onclick="sendDash(event)">Send DASH</button>
+					<button type="submit" onclick="App.sendDash(event)">Send DASH</button>
 
 					<hr />
 					<label
@@ -262,8 +268,8 @@
 								<th>
 									<input
 										name="priority"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -274,8 +280,8 @@
 								<th>
 									<input
 										name="want"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -289,8 +295,8 @@
 								<th>
 									<input
 										name="priority"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -301,8 +307,8 @@
 								<th>
 									<input
 										name="want"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -316,8 +322,8 @@
 								<th>
 									<input
 										name="priority"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -328,8 +334,8 @@
 								<th>
 									<input
 										name="want"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -343,8 +349,8 @@
 								<th>
 									<input
 										name="priority"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -355,8 +361,8 @@
 								<th>
 									<input
 										name="want"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -370,8 +376,8 @@
 								<th>
 									<input
 										name="priority"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"
@@ -382,8 +388,8 @@
 								<th>
 									<input
 										name="want"
-										onkeyup="syncCashDrawer(event)"
-										onchange="syncCashDrawer(event)"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
 										type="number"
 										step="1"
 										min="0"

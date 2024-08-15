@@ -17,6 +17,9 @@
 
 	let DashJoin = window.DashJoin;
 
+	let App = {};
+	window.App = App;
+
 	const SATS = 100000000;
 	const MIN_BALANCE = 100001 * 1000;
 
@@ -28,6 +31,7 @@
 	let changeAddrs = [];
 	let receiveAddrs = [];
 	let spentAddrs = [];
+	let spendableAddrs = [];
 	let deltasMap = {};
 	let keysMap = {};
 	let denomsMap = {};
@@ -73,6 +77,7 @@
 		},
 	};
 	let dashTx = DashTx.create(keyUtils);
+	console.log('DEBUG dashTx instance', dashTx);
 
 	async function rpc(method, ...params) {
 		// typically http://localhost:19998/
@@ -121,6 +126,25 @@
 		localStorage.setItem(key, dataJson);
 	}
 
+	function getAllUtxos() {
+		let utxos = [];
+		let spendableAddrs = Object.keys(deltasMap);
+		for (let address of spendableAddrs) {
+			let info = deltasMap[address];
+			if (info.balance === 0) {
+				continue;
+			}
+			for (let coin of info.deltas) {
+				if (coin.reserved) {
+					continue;
+				}
+				Object.assign(coin, { outputIndex: coin.index });
+				utxos.push(coin);
+			}
+		}
+		return utxos;
+	}
+
 	function removeElement(arr, val) {
 		let index = arr.indexOf(val);
 		if (index !== -1) {
@@ -128,7 +152,7 @@
 		}
 	}
 
-	window.toggleAll = function (event) {
+	App.toggleAll = function (event) {
 		let checked = event.target.checked;
 
 		let $table = event.target.closest('table');
@@ -138,7 +162,7 @@
 		return true;
 	};
 
-	window.setMax = function (event) {
+	App.setMax = function (event) {
 		let totalSats = 0;
 		let addrs = Object.keys(deltasMap);
 		let fee = 100;
@@ -166,7 +190,7 @@
 		$('[data-id=send-dust]').textContent = dust;
 	};
 
-	window.sendDash = async function (event) {
+	App.sendDash = async function (event) {
 		event.preventDefault();
 
 		let amountStr = $('[data-id=send-amount]').value || 0;
@@ -197,24 +221,13 @@
 				let [address, txid, indexStr] = $coin.value.split(',');
 				let index = parseInt(indexStr, 10);
 				let coin = selectCoin(address, txid, index);
-				balance += coin.satoshis;
 				Object.assign(coin, { outputIndex: coin.index });
 				inputs.push(coin);
 			}
+			balance = DashTx.sum(inputs);
 		} else {
-			utxos = [];
-			let spendables = Object.keys(deltasMap);
-			for (let address of spendables) {
-				let info = deltasMap[address];
-				if (info.balance === 0) {
-					continue;
-				}
-				for (let coin of info.deltas) {
-					balance += coin.satoshis;
-					Object.assign(coin, { outputIndex: coin.index });
-					utxos.push(coin);
-				}
-			}
+			utxos = getAllUtxos();
+			balance = DashTx.sum(utxos);
 		}
 
 		if (balance < satoshis) {
@@ -486,7 +499,7 @@
 		}
 		return slots;
 	}
-	window.syncCashDrawer = function (event) {
+	App.syncCashDrawer = function (event) {
 		let isDirty = false;
 
 		let slots = getCashDrawer();
@@ -512,6 +525,17 @@
 			}
 		}
 
+		for (let slot of slots) {
+			let addrs = Object.keys(denomsMap[slot.denom]);
+			let have = addrs.length;
+			let need = slot.want - have;
+			need = Math.max(0, need);
+			if (need !== slot.need) {
+				isDirty = true;
+				slot.need = need;
+			}
+		}
+
 		if (isDirty) {
 			dbSet('cash-drawer-control', slots);
 		}
@@ -527,8 +551,8 @@
 			let $row = $(`[data-denom="${slot.denom}"]`);
 			let addrs = Object.keys(denomsMap[slot.denom]);
 			let have = addrs.length;
-			let need = slot.want - have;
-			need = Math.max(0, need);
+			slot.need = slot.want - have;
+			slot.need = Math.max(0, slot.need);
 
 			let priority = $('[name=priority]', $row).value;
 			if (priority) {
@@ -544,7 +568,7 @@
 			}
 
 			$('[data-name=have]', $row).textContent = have;
-			$('[data-name=need]', $row).textContent = need;
+			$('[data-name=need]', $row).textContent = slot.need;
 
 			for (let addr of addrs) {
 				cjBalance += denomsMap[slot.denom][addr].satoshis;
@@ -553,6 +577,105 @@
 
 		let cjAmount = cjBalance / SATS;
 		$('[data-id=cj-balance]').textContent = cjAmount.toFixed(8);
+	}
+
+	App.denominateCoins = function (event) {
+		console.log('DENOMINATE COINS');
+		event.preventDefault();
+
+		{
+			let addrs = Object.keys(deltasMap);
+			spendableAddrs.length = 0;
+
+			for (let address of addrs) {
+				let info = deltasMap[address];
+				if (info.balance === 0) {
+					continue;
+				}
+				spendableAddrs.push(address);
+			}
+		}
+
+		let slots = dbGet('cash-drawer-control');
+		console.log('slots', slots);
+
+		let priorityGroups = groupSlotsByPriorityAndAmount(slots);
+		console.log('priorityGroups', priorityGroups);
+
+		let priorities = Object.keys(priorityGroups);
+		priorities.sort(sortNumberDesc);
+		console.log('priorities', priorities);
+
+		for (let priority of priorities) {
+			let slots = priorityGroups[priority].slice(0);
+			slots.sort(sortSlotsByDenomDesc);
+
+			for (;;) {
+				let slot = slots.shift();
+				if (!slot) {
+					console.log('e: no slot');
+					break;
+				}
+				let isNeeded = slot.need >= 1;
+				if (!isNeeded) {
+					console.log('s: not needed', slot.denom);
+					continue;
+				}
+
+				let utxos = getAllUtxos();
+				let coins = DashTx._legacySelectOptimalUtxos(utxos, slot.denom);
+				let sats = DashTx.sum(coins);
+				if (sats < slot.denom) {
+					console.log(`not enough coins for ${slot.denom}`);
+					continue;
+				}
+
+				for (let coin of coins) {
+					coin.reserved = true;
+				}
+				slot.need -= 1;
+
+                // TODO DashTx.
+				console.log('Found coins to make denom', slot.denom, coins);
+
+				if (slot.need >= 1) {
+					// round-robin same priority
+					slots.push(slot);
+				}
+			}
+		}
+	};
+
+	function groupSlotsByPriorityAndAmount(slots) {
+		let priorityGroups = {};
+		for (let slot of slots) {
+			if (!priorityGroups[slot.priority]) {
+				priorityGroups[slot.priority] = [];
+			}
+			priorityGroups[slot.priority].push(slot);
+		}
+
+		return priorityGroups;
+	}
+
+	function sortNumberDesc(a, b) {
+		if (Number(a) < Number(b)) {
+			return 1;
+		}
+		if (Number(a) > Number(b)) {
+			return -1;
+		}
+		return 0;
+	}
+
+	function sortSlotsByDenomDesc(a, b) {
+		if (a.denom < b.denom) {
+			return 1;
+		}
+		if (a.denom > b.denom) {
+			return -1;
+		}
+		return 0;
 	}
 
 	async function updateDeltas(addrs) {
