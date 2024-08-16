@@ -1104,9 +1104,10 @@
 
 		for (;;) {
 			let subs = ['*', 'inv', 'ping', 'pong', 'version', 'verack'];
-			let msg = await p2p.accept(subs);
+			let conn = p2p.listen(subs);
+			let msg = await conn.accept();
 			let command = msg.header.command;
-			console.log('p2p.accept():', command);
+			console.log('conn.accept():', command);
 			let isSub = subs.includes(command);
 			if (isSub) {
 				console.log(msg);
