@@ -662,42 +662,38 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array} bytes
 	 */
 	Parsers.header = function (bytes) {
-		// let buffer = Buffer.from(bytes);
-		// console.log(
-		// 	new Date(),
-		// 	'[debug] parseHeader(bytes)',
-		// 	buffer.length,
-		// 	buffer.toString('hex'),
-		// );
-		// console.log(buffer.toString('utf8'));
-		// bytes = new Uint8Array(buffer);
-
 		if (bytes.length < Sizes.HEADER_SIZE) {
-			// console.log(
-			// 	`[DEBUG] malformed header`,
-			// 	buffer.toString('utf8'),
-			// 	buffer.toString('hex'),
-			// );
 			let msg = `developer error: header should be ${Sizes.HEADER_SIZE}+ bytes (optional payload), not ${bytes.length}`;
 			throw new Error(msg);
 		}
 		let dv = new DataView(bytes.buffer);
 
-		let commandStart = 4;
-		let payloadSizeStart = 16;
-		let checksumStart = 20;
+		let index = 0;
 
-		let magicBytes = bytes.slice(0, commandStart);
+		let magicBytes = bytes.subarray(index, index + SIZES.MAGIC_BYTES);
+		index += SIZES.MAGIC_BYTES; // +4 = 4
 
-		let commandEnd = bytes.indexOf(0x00, commandStart);
-		if (commandEnd >= payloadSizeStart) {
-			throw new Error('command name longer than 12 bytes');
+		let commandBuf = bytes.subarray(index, index + SIZES.COMMAND_NAME);
+		let command = '';
+		{
+			let commandEnd = bytes.indexOf(0x00, commandBuf);
+			if (commandEnd !== -1) {
+				commandBuf = commandBuf.subarray(0, commandEnd);
+			}
+			try {
+				command = textDecoder.decode(commandBuf);
+			} catch (e) {
+				// invalid command name
+				throw e;
+			}
 		}
-		let commandBuf = bytes.slice(commandStart, commandEnd);
-		let command = textDecoder.decode(commandBuf);
+		index += SIZES.COMMAND_NAME; // +12 = 16
 
-		let payloadSize = dv.getUint32(payloadSizeStart, DV_LITTLE_ENDIAN);
-		let checksum = bytes.slice(checksumStart, checksumStart + 4);
+		let payloadSize = dv.getUint32(index, DV_LITTLE_ENDIAN);
+		index += 1; // +1 = 17
+
+		let checksum = bytes.subarray(index, index + SIZES.CHUCKSUM);
+		//index += SIZES.CHECKSUM // +4 = 21 (ends at 20)
 
 		let headerMessage = {
 			magicBytes,
@@ -706,10 +702,6 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			checksum,
 		};
 
-		// if (command !== 'inv') {
-		// 	console.log(new Date(), headerMessage);
-		// }
-		// console.log();
 		return headerMessage;
 	};
 	Parsers.SIZES = SIZES;
