@@ -148,8 +148,8 @@ var DashP2P = ('object' === typeof module && exports) || {};
 
 			void (await evstream.once('version'));
 			console.log('%c[[version]] PROCESSED', 'color: red');
-			void (await evstream.once('verack'));
-			console.log('%c[[verack]] PROCESSED', 'color: red');
+			// void (await evstream.once('verack'));
+			// console.log('%c[[verack]] PROCESSED', 'color: red');
 
 			(async function () {
 				for (;;) {
@@ -551,7 +551,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		addr_recv_port, // required to match
 		addr_trans_services = [],
 		addr_trans_ip = '127.0.0.1',
-		addr_trans_port = 65535,
+		addr_trans_port = Math.ceil(65535 * Math.random()),
 		start_height,
 		nonce = null,
 		user_agent = null,
@@ -998,9 +998,9 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			}
 
 			if (eventname) {
-				p.events = [eventname];
+				p._events = [eventname];
 			} else if (defaultEvents?.length) {
-				p.events = defaultEvents;
+				p._events = defaultEvents;
 			} else {
 				let err = new Error(
 					`call stream.createSubscriber(['*']) or conn.once('*') for default events`,
@@ -1008,7 +1008,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 				Object.assign(err, { code: 'E_NO_EVENTS' });
 				throw err;
 			}
-			console.log('%c[[RESUB]]', 'color: red; font-weight: bold;', p.events);
+			console.log('%c[[RESUB]]', 'color: red; font-weight: bold;', p._events);
 
 			return await p._next();
 		};

@@ -43,8 +43,9 @@
 			// let address;
 			let address = txInput.address;
 			if (!address) {
-				let pkhBytes = DashKeys.utils.hexToBytes(txInput.pubKeyHash);
-				address = await DashKeys.pkhToAddr(pkhBytes, { version: network });
+				return null;
+				// let pkhBytes = DashKeys.utils.hexToBytes(txInput.pubKeyHash);
+				// address = await DashKeys.pkhToAddr(pkhBytes, { version: network });
 			}
 
 			let yourKeyData = keysMap[address];
@@ -116,26 +117,30 @@
 		let spendableAddrs = Object.keys(deltasMap);
 		for (let address of spendableAddrs) {
 			let info = deltasMap[address];
-			if (info.balance === 0) {
-				continue;
-			}
-			for (let coin of info.deltas) {
-				if (coin.reserved > 0) {
-					continue;
-				}
+			info.balance = DashTx.sum(info.deltas);
 
+			for (let coin of info.deltas) {
 				let addressInfo = keysMap[coin.address];
 				Object.assign(coin, {
 					outputIndex: coin.index,
 					denom: DashJoin.getDenom(coin.satoshis),
+					publicKey: addressInfo.publicKey,
 					pubKeyHash: addressInfo.pubKeyHash,
 				});
+
+				if (coin.reserved > 0) {
+					continue;
+				}
+
 				if (opts?.denom === false) {
 					if (coin.denom) {
 						continue;
 					}
 				}
 
+				if (info.balance === 0) {
+					break;
+				}
 				utxos.push(coin);
 			}
 		}
@@ -1084,7 +1089,8 @@
 			);
 		});
 
-		function cleanup() {
+		function cleanup(err) {
+			console.error('WebSocket Error:', err);
 			delete App.peers[evonode.host];
 			for (let denom of DashJoin.DENOMS) {
 				delete App.coinjoinQueues[denom][evonode.host];
@@ -1186,8 +1192,9 @@
 			});
 			p2p.send(dsiBytes);
 			let msg = await evstream.once('dsf');
-			let dsf = DashJoin.parsers.dsf(msg.payload);
-			console.log('DEBUG dsf', dsf);
+			console.log('DEBUG dsf %c[[MSG]]', 'color: blue', msg);
+			let dsfTxRequest = DashJoin.parsers.dsf(msg.payload);
+			console.log('DEBUG dsf', dsfTxRequest, inputs);
 
 			makeSelectedInputsSignable(dsfTxRequest, inputs);
 			let txSigned = await dashTx.hashAndSignAll(dsfTxRequest);
@@ -1231,6 +1238,8 @@
 
 				let sigHashType = DashTx.SIGHASH_ALL | DashTx.SIGHASH_ANYONECANPAY; //jshint ignore:line
 
+				console.log(sighashInput);
+				console.log(input);
 				sighashInput.index = input.index;
 				sighashInput.address = input.address;
 				sighashInput.satoshis = input.satoshis;
@@ -1275,6 +1284,8 @@
 		}
 	}
 
+	App.peers = {};
+
 	async function main() {
 		if (network === `testnet`) {
 			let $testnets = $$('[data-network=testnet]');
@@ -1293,8 +1304,17 @@
 		App._chaininfo = await rpc('getblockchaininfo');
 		console.log(App._rawmnlist);
 		App._evonodes = DashJoin.utils._evonodeMapToList(App._rawmnlist);
-		App._evonode = App._evonodes.at(-13);
-		console.info('[info] chosen evonode:');
+		// 35.166.18.166:19999
+		let index = 5;
+		// let index = Math.floor(Math.random() * App._evonodes.length);
+		// App._evonode = App._evonodes[index];
+		App._evonode = App._evonodes.at(index);
+		// App._evonode = {
+		// 	host: '35.166.18.166:19999',
+		// 	hostname: '35.166.18.166',
+		// 	port: '19999',
+		// };
+		console.info('[info] chosen evonode:', index);
 		console.log(JSON.stringify(App._evonode, null, 2));
 
 		App.coinjoinQueues = {
@@ -1304,7 +1324,6 @@
 			100001000: {}, //   1.00001000
 			1000010000: {}, // 10.00010000
 		};
-		App.peers = {};
 
 		void (await connectToPeer(App._evonode, App._chaininfo.blocks));
 	}

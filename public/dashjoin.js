@@ -394,6 +394,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		let session_id = DashTx.utils.bytesToHex(sessionId);
 		offset += Sizes.SESSION_ID;
 
+		console.log('DEBUG [[dsf]] bytes', DashTx.utils.bytesToHex(bytes));
 		let transactionUnsigned = bytes.subarray(offset);
 		let transaction_unsigned = DashTx.utils.bytesToHex(transactionUnsigned);
 		console.log('DEBUG [[dsf]] tx', transaction_unsigned);
@@ -405,6 +406,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 			inputs: txRequest.inputs,
 			outputs: txRequest.outputs,
 			locktime: txRequest.locktime,
+			transaction_unsigned: transaction_unsigned,
 		};
 		return dsfTxRequest;
 	};
