@@ -289,30 +289,10 @@
 			message = memo;
 			memo = null;
 		}
-		let satoshis = 0;
+		let burn = 0;
 		msg = memo || message;
 
-		let outputs = [{ satoshis, memo, message }];
-		let changeOutput = {
-			address: '',
-			pubKeyHash: '',
-			satoshis: 0,
-			reserved: 0,
-		};
-
-		let utxos = getAllUtxos({ denom: false });
-		let txInfo = await DashTx.createLegacyTx(utxos, outputs, changeOutput);
-		if (txInfo.changeIndex >= 0) {
-			let realChange = txInfo.outputs[txInfo.changeIndex];
-			// TODO reserve address
-			realChange.address = changeAddrs.shift();
-			let pkhBytes = await DashKeys.addrToPkh(realChange.address, {
-				version: network,
-			});
-			realChange.pubKeyHash = DashKeys.utils.bytesToHex(pkhBytes);
-		}
-
-		let signedTx = await dashTx.hashAndSignAll(txInfo);
+		let signedTx = await App._signMemo({ burn, memo, message });
 		{
 			let confirmed = window.confirm(
 				`Really send '${memoEncoding}' memo '${msg}'?`,
@@ -329,25 +309,59 @@
 		void (await commitWalletTx(signedTx));
 	};
 
-	App.sendCollateral = async function (event) {
-		// at least the collateral amount
-		let dustF = Math.random() * DashJoin.COLLATERAL;
-		dustF = dustF / 10;
-		dustF += DashJoin.COLLATERAL;
+	App._signMemo = async function ({
+		burn = 0,
+		memo = null,
+		message = null,
+		collateral = 0,
+	}) {
+		let satoshis = burn;
+		satoshis += collateral; // temporary, for fee calculations only
 
-		let dust = Math.floor(dustF);
-		let utxos = getAllUtxos();
-		let memo = { satoshis: dust, memo: '' };
-		let draft = await draftWalletTx(utxos, null, memo);
-		console.log('draftTx');
-		console.log(draft);
-		draft.tx.outputs[0].satoshis = 0;
-		draft.tx.feeTarget += dust;
+		let memoOutput = { satoshis, memo, message };
+		let outputs = [memoOutput];
+		let changeOutput = {
+			address: '',
+			pubKeyHash: '',
+			satoshis: 0,
+			reserved: 0,
+		};
 
-		draft.tx.inputs.sort(DashTx.sortInputs);
-		draft.tx.outputs.sort(DashTx.sortOutputs);
-		let signedTx = await dashTx.legacy.finalizePresorted(draft.tx);
-		console.log(signedTx);
+		let utxos = getAllUtxos({ denom: false });
+		let txInfo = DashTx.createLegacyTx(utxos, outputs, changeOutput);
+		if (txInfo.changeIndex >= 0) {
+			let realChange = txInfo.outputs[txInfo.changeIndex];
+			realChange.address = changeAddrs.shift();
+			let pkhBytes = await DashKeys.addrToPkh(realChange.address, {
+				version: network,
+			});
+			realChange.pubKeyHash = DashKeys.utils.bytesToHex(pkhBytes);
+		}
+		memoOutput.satoshis -= collateral; // adjusting for fee
+
+		let now = Date.now();
+		for (let input of txInfo.inputs) {
+			input.reserved = now;
+		}
+		for (let output of txInfo.outputs) {
+			output.reserved = now;
+		}
+
+		txInfo.inputs.sort(DashTx.sortInputs);
+		txInfo.outputs.sort(DashTx.sortOutputs);
+
+		let signedTx = await dashTx.hashAndSignAll(txInfo);
+		return signedTx;
+	};
+
+	App._signCollateral = async function (collateral = DashJoin.MIN_COLLATERAL) {
+		let signedTx = App._signMemo({
+			burn: 0,
+			memo: '',
+			message: null,
+			collateral: DashJoin.MIN_COLLATERAL,
+		});
+		return signedTx;
 	};
 
 	async function draftWalletTx(utxos, inputs, output) {
@@ -967,8 +981,8 @@
 	}
 
 	function siftDenoms() {
-		if (!denomsMap[DashJoin.COLLATERAL]) {
-			denomsMap[DashJoin.COLLATERAL] = {};
+		if (!denomsMap[DashJoin.MIN_COLLATERAL]) {
+			denomsMap[DashJoin.MIN_COLLATERAL] = {};
 		}
 		for (let denom of DashJoin.DENOMS) {
 			if (!denomsMap[denom]) {
@@ -986,12 +1000,12 @@
 			for (let coin of info.deltas) {
 				let denom = DashJoin.getDenom(coin.satoshis);
 				if (!denom) {
-					let halfCollateral = DashJoin.COLLATERAL / 2;
+					let halfCollateral = DashJoin.MIN_COLLATERAL / 2;
 					let fitsCollateral =
 						coin.satoshis >= halfCollateral &&
 						coin.satoshis < DashJoin.DENOM_LOWEST;
 					if (fitsCollateral) {
-						denomsMap[DashJoin.COLLATERAL][coin.address] = coin;
+						denomsMap[DashJoin.MIN_COLLATERAL][coin.address] = coin;
 					}
 					continue;
 				}
@@ -1181,6 +1195,7 @@
 				inputs: signedInputs,
 			});
 			p2p.send(dssBytes);
+			void (await evstream.once('dsc'));
 		}
 
 		return dsfTxRequest;
@@ -1280,22 +1295,66 @@
 		App.peers = {};
 
 		void (await connectToPeer(App._evonode, App._chaininfo.blocks));
-
-		// collateral, denominated
-		// let collateralTxInfo = await getCollateralTx();
-		// // let keys = await getPrivateKeys(collateralTxInfo.inputs);
-		// // let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
-		// let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo);
-		// let collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
-
-		// await createCoinJoinSession(
-		// 	App.evonode,
-		// 	// inputs, // [{address, txid, pubKeyHash, ...getPrivateKeyInfo }]
-		// 	// outputs, // [{ pubKeyHash, satoshis }]
-		// 	// dsaCollateralTx, // any tx with fee >= 0.00010000
-		// 	// dsiCollateralTx, // any tx with fee >= 0.00010000
-		// );
 	}
+
+	App.createCoinJoinSession = async function () {
+		let $coins = $$('[data-name=coin]:checked');
+		if (!$coins.length) {
+			let msg =
+				'Use the Coins table to select which coins to include in the CoinJoin session.';
+			window.alert(msg);
+			return;
+		}
+
+		let inputs = [];
+		let outputs = [];
+		let denom;
+		for (let $coin of $coins) {
+			let [address, txid, indexStr] = $coin.value.split(',');
+			let index = parseInt(indexStr, 10);
+			let coin = selectCoin(address, txid, index);
+			coin.denom = DashJoin.getDenom(coin.satoshis);
+			if (!coin.denom) {
+				let msg = 'CoinJoin requires 10s-Denominated coins, shown in BOLD.';
+				window.alert(msg);
+				return;
+			}
+			if (!denom) {
+				denom = coin.denom;
+			}
+			if (coin.denom !== denom) {
+				let msg =
+					'CoinJoin requires all coins to be of the same denomination (ex: three 0.01, or two 1.0, but not a mix of the two).';
+				window.alert(msg);
+				return;
+			}
+			Object.assign(coin, { outputIndex: coin.index });
+			inputs.push(coin);
+
+			let output = {
+				address: receiveAddrs.shift(),
+				satoshis: denom,
+				pubKeyHash: '',
+			};
+			let pkhBytes = await DashKeys.addrToPkh(output.address, {
+				version: network,
+			});
+			output.pubKeyHash = DashKeys.utils.bytesToHex(pkhBytes);
+			outputs.push(output);
+		}
+
+		let collateralTxes = [
+			await App._signCollateral(DashJoin.MIN_COLLATERAL),
+			await App._signCollateral(DashJoin.MIN_COLLATERAL),
+		];
+
+		await createCoinJoinSession(
+			App._evonode,
+			inputs, // [{address, txid, pubKeyHash, ...getPrivateKeyInfo }]
+			outputs, // [{ pubKeyHash, satoshis }]
+			collateralTxes, // any tx with fee >= 0.00010000
+		);
+	};
 
 	main().catch(function (err) {
 		console.error(`Error in main:`, err);

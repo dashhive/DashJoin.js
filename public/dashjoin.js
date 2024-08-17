@@ -9,7 +9,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 
 	const DENOM_LOWEST = 100001;
 	const PREDENOM_MIN = DENOM_LOWEST + 193;
-	const COLLATERAL = 10000; // DENOM_LOWEST / 10
+	const MIN_COLLATERAL = 10000; // DENOM_LOWEST / 10
 
 	let STANDARD_DENOMINATIONS_MAP = {
 		//  0.00100001
@@ -44,7 +44,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 	// const COINJOIN_ENTRY_MAX_SIZE = 2; // just for testing right now
 
 	DashJoin.DENOM_LOWEST = DENOM_LOWEST;
-	DashJoin.COLLATERAL = COLLATERAL;
+	DashJoin.MIN_COLLATERAL = MIN_COLLATERAL;
 	DashJoin.PREDENOM_MIN = PREDENOM_MIN;
 	DashJoin.DENOMS = [
 		100001, //      0.00100001
@@ -81,8 +81,15 @@ var DashJoin = ('object' === typeof module && exports) || {};
 	Sizes.READY = 1; // 1-byte bool
 	Sizes.SIG = 97;
 
-	// Sizes.DSSU = 16;
-	// Sizes.SESSION_ID = 4;
+	Sizes.DSSU = 16;
+	Sizes.SESSION_ID = 4;
+	Sizes.MESSAGE_ID = 4;
+
+	/////////////////////
+	//                 //
+	//     Packers     //
+	//                 //
+	/////////////////////
 
 	/**
 	 * Turns on or off DSQ messages (necessary for CoinJoin, but off by default)
@@ -223,8 +230,8 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		const command = 'dss';
 
 		if (!inputs?.length) {
-			// TODO make better
-			throw new Error('you must provide some inputs');
+			let msg = `'dss' should receive signed inputs as requested in 'dsi' and accepted in 'dsf', but got 0 inputs`;
+			throw new Error(msg);
 		}
 
 		let txInputsHex = DashTx.serializeInputs(inputs);
@@ -237,6 +244,12 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		void DashP2P.packers.message({ network, command, bytes });
 		return bytes;
 	};
+
+	/////////////////////
+	//                 //
+	//     Parsers     //
+	//                 //
+	/////////////////////
 
 	/**
 	 * @param {Uint8Array} bytes
@@ -256,15 +269,9 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		//@ts-ignore - correctness of denomination must be checked higher up
 		let denomination = STANDARD_DENOMINATIONS_MAP[denomination_id];
 
-		/**
-		 * Grab the protxhash
-		 */
 		let protxhash_bytes = bytes.subarray(offset, offset + Sizes.PROTX);
 		offset += Sizes.PROTX;
 
-		/**
-		 * Grab the time
-		 */
 		let timestamp64n = dv.getBigInt64(offset, DV_LITTLE_ENDIAN);
 		offset += Sizes.TIME;
 		let timestamp_unix = Number(timestamp64n);
@@ -272,9 +279,6 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		let timestampDate = new Date(timestampMs);
 		let timestamp = timestampDate.toISOString();
 
-		/**
-		 * Grab the fReady
-		 */
 		let ready = bytes[offset] > 0x00;
 		offset += Sizes.READY;
 
@@ -295,8 +299,114 @@ var DashJoin = ('object' === typeof module && exports) || {};
 		return dsqMessage;
 	};
 
-	// Utils.hexToBytes = DashTx.utils.hexToBytes;
-	// Utils.bytesToHex = DashTx.utils.bytesToHex;
+	Parsers._DSSU_MESSAGE_IDS = {
+		0x00: 'ERR_ALREADY_HAVE',
+		0x01: 'ERR_DENOM',
+		0x02: 'ERR_ENTRIES_FULL',
+		0x03: 'ERR_EXISTING_TX',
+		0x04: 'ERR_FEES',
+		0x05: 'ERR_INVALID_COLLATERAL',
+		0x06: 'ERR_INVALID_INPUT',
+		0x07: 'ERR_INVALID_SCRIPT',
+		0x08: 'ERR_INVALID_TX',
+		0x09: 'ERR_MAXIMUM',
+		0x0a: 'ERR_MN_LIST', // <--
+		0x0b: 'ERR_MODE',
+		0x0c: 'ERR_NON_STANDARD_PUBKEY', //	 (Not used)
+		0x0d: 'ERR_NOT_A_MN', //(Not used)
+		0x0e: 'ERR_QUEUE_FULL',
+		0x0f: 'ERR_RECENT',
+		0x10: 'ERR_SESSION',
+		0x11: 'ERR_MISSING_TX',
+		0x12: 'ERR_VERSION',
+		0x13: 'MSG_NOERR',
+		0x14: 'MSG_SUCCESS',
+		0x15: 'MSG_ENTRIES_ADDED',
+		0x16: 'ERR_SIZE_MISMATCH',
+	};
+
+	Parsers._DSSU_STATES = {
+		0x00: 'IDLE',
+		0x01: 'QUEUE',
+		0x02: 'ACCEPTING_ENTRIES',
+		0x03: 'SIGNING',
+		0x04: 'ERROR',
+		0x05: 'SUCCESS',
+	};
+
+	Parsers._DSSU_STATUSES = {
+		0x00: 'REJECTED',
+		0x01: 'ACCEPTED',
+	};
+
+	// TODO DSSU type
+	/**
+	 * 4	nMsgSessionID		- Required		- Session ID
+	 * 4	nMsgState			- Required		- Current state of processing
+	 * 4	nMsgEntriesCount	- Required		- Number of entries in the pool (deprecated)
+	 * 4	nMsgStatusUpdate	- Required		- Update state and/or signal if entry was accepted or not
+	 * 4	nMsgMessageID		- Required		- ID of the typical masternode reply message
+	 */
+
+	/**
+	 * @param {Uint8Array} bytes
+	 */
+	Parsers.dssu = function (bytes) {
+		const STATE_SIZE = 4;
+		const STATUS_UPDATE_SIZE = 4;
+
+		if (bytes.length !== Sizes.DSSU) {
+			let msg = `developer error: a 'dssu' message is 16 bytes, but got ${bytes.length}`;
+			throw new Error(msg);
+		}
+		let dv = new DataView(bytes.buffer);
+		let offset = 0;
+
+		let session_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
+		offset += Sizes.SESSION_ID;
+
+		let state_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
+		offset += STATE_SIZE;
+
+		let status_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
+		offset += STATUS_UPDATE_SIZE;
+
+		let message_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
+
+		let dssuMessage = {
+			session_id: session_id,
+			state_id: state_id,
+			state: Parsers._DSSU_STATES[state_id],
+			status_id: status_id,
+			status: Parsers._DSSU_STATUSES[status_id],
+			message_id: message_id,
+			message: Parsers._DSSU_MESSAGE_IDS[message_id],
+		};
+		return dssuMessage;
+	};
+
+	/**
+	 * @param {Uint8Array} bytes
+	 */
+	Parsers.dsf = function (bytes) {
+		let offset = 0;
+		let sessionId = bytes.subarray(offset, Sizes.SESSION_ID);
+		let session_id = DashTx.utils.bytesToHex(sessionId);
+		offset += Sizes.SESSION_ID;
+
+		let transactionUnsigned = bytes.subarray(offset);
+		let transaction_unsigned = DashTx.utils.bytesToHex(transactionUnsigned);
+
+		let txRequest = DashTx.parseUnknown(transaction_unsigned);
+		let dsfTxRequest = {
+			session_id: session_id,
+			version: txRequest.version,
+			inputs: txRequest.inputs,
+			outputs: txRequest.outputs,
+			locktime: txRequest.locktime,
+		};
+		return dsfTxRequest;
+	};
 
 	Utils._evonodeMapToList = function (evonodesMap) {
 		console.log('[debug] get evonode list...');

@@ -60,7 +60,8 @@
 				margin: 0;
 				padding: 0;
 			}
-			fieldset label {
+			fieldset label,
+			fieldset button {
 				display: inline-block;
 			}
 		</style>
@@ -474,9 +475,14 @@
 							</tr>
 						</tbody>
 					</table>
-					<button type="button" onclick="App.denominateCoins(event)">
-						Denominate Coins
-					</button>
+					<fieldset>
+						<button type="button" onclick="App.denominateCoins(event)">
+							Denominate Coins
+						</button>
+						<button type="button" onclick="App.createCoinJoinSession(event)">
+							Run CoinJoin
+						</button>
+					</fieldset>
 				</form>
 			</section>
 			<br />
