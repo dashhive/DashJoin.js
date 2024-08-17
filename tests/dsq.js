@@ -4,12 +4,13 @@ let Assert = require('node:assert/strict');
 let Fs = require('node:fs/promises');
 let Path = require('node:path');
 
-let Parser = require('../parser.js');
+let DashP2P = require('../public/dashp2p.js');
+let DashJoin = require('../public/dashjoin.js');
 // TODO copy .utils.bytesToHex rather than depend on it
 let DashKeys = require('dashkeys');
 
 async function test() {
-	let totalSize = Parser.HEADER_SIZE + Parser.DSQ_SIZE;
+	let totalSize = DashP2P.sizes.HEADER + DashJoin.sizes.DSQ;
 	let fixtureDsqBytes = await readFixtureHex('dsq');
 	let fixtureDsqJson = require('../fixtures/dsq.json');
 
@@ -18,21 +19,21 @@ async function test() {
 		throw new Error(msg);
 	}
 
-	let header = Parser.parseHeader(fixtureDsqBytes);
+	let header = DashP2P.parsers.header(fixtureDsqBytes);
 	if (header.command !== 'dsq') {
 		throw new Error('sanity fail: loaded incorrect fixture');
 	}
 
-	if (header.payloadSize !== Parser.DSQ_SIZE) {
+	if (header.payloadSize !== DashJoin.sizes.DSQ) {
 		throw new Error('sanity fail: wrong payload size in header');
 	}
 
-	let payload = fixtureDsqBytes.subarray(Parser.HEADER_SIZE);
-	if (payload.length !== Parser.DSQ_SIZE) {
+	let payload = fixtureDsqBytes.subarray(DashP2P.sizes.HEADER);
+	if (payload.length !== DashJoin.sizes.DSQ) {
 		throw new Error('sanity fail: payload has trailing bytes');
 	}
 
-	let dsq = Parser.parseDsq(payload);
+	let dsq = DashJoin.parsers.dsq(payload);
 
 	// JSON-ify
 	dsq.protxhash = DashKeys.utils.bytesToHex(dsq.protxhash_bytes);

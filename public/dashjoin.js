@@ -458,6 +458,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 
 	DashJoin.packers = Packers;
 	DashJoin.parsers = Parsers;
+	DashJoin.sizes = Sizes;
 	DashJoin.utils = Utils;
 
 	//@ts-ignore
