@@ -19,6 +19,9 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		message: 'promise stream closed',
 	};
 
+	const PAYLOAD_SIZE_MAX = 4 * 1024 * 1024;
+	DashP2P.PAYLOAD_SIZE_MAX = PAYLOAD_SIZE_MAX;
+
 	let SIZES = {
 		// header
 		MAGIC_BYTES: 4,
@@ -57,7 +60,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	let Utils = {};
 
 	DashP2P.create = function () {
-		const HEADER_SIZE = Sizes.HEADER_SIZE;
+		const HEADER_SIZE = Sizes.HEADER;
 
 		let p2p = {};
 		p2p.state = 'header';
@@ -324,8 +327,9 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		SIZES.COMMAND_NAME + // 12
 		SIZES.PAYLOAD_SIZE + // 4
 		SIZES.CHECKSUM; // 4
-	Sizes.HEADER_SIZE = TOTAL_HEADER_SIZE; // 24
-	Sizes.PING_SIZE = SIZES.NONCE; // same as pong
+	Sizes.HEADER = TOTAL_HEADER_SIZE; // 24
+	Sizes.PING = SIZES.NONCE; // same as pong
+	Sizes.VERACK = 0;
 
 	Packers.PROTOCOL_VERSION = 70227;
 	Packers.NETWORKS = {};
@@ -435,16 +439,16 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		}
 
 		let payloadLength = payload?.byteLength || 0;
-		let messageSize = Sizes.HEADER_SIZE + payloadLength;
+		let messageSize = Sizes.HEADER + payloadLength;
 		let offset = 0;
 
 		let embeddedPayload = false;
 		let message = bytes;
 		if (message) {
 			if (!payload) {
-				payload = message.subarray(Sizes.HEADER_SIZE);
+				payload = message.subarray(Sizes.HEADER);
 				payloadLength = payload.byteLength;
-				messageSize = Sizes.HEADER_SIZE + payloadLength;
+				messageSize = Sizes.HEADER + payloadLength;
 				embeddedPayload = true;
 			}
 		} else {
@@ -477,7 +481,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		message.set(payloadSizeBytes, offset);
 		offset += SIZES.PAYLOAD_SIZE;
 
-		let checksum = Packers.checksum(payload);
+		let checksum = Packers._checksum(payload);
 		message.set(checksum, offset);
 		offset += SIZES.CHECKSUM;
 
@@ -487,44 +491,33 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		return message;
 	};
 
-	Packers.verack = function ({ network = 'mainnet' }) {
-		let verackBytes = Packers.message({
-			network: network,
-			command: 'verack',
-			payload: null,
-		});
-		return verackBytes;
-	};
-
 	/**
-	 * In this case the only bytes are the nonce
-	 * Use a .subarray(offset) to define an offset.
-	 * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
-	 * @param {Object} opts
-	 * @param {NetworkName} opts.network - "mainnet", "testnet", etc
-	 * @param {Uint8Array?} [opts.message]
-	 * @param {Uint8Array} opts.nonce
+	 * Returns a correctly-sized buffer and subarray into the payload
+	 * @param {Uint8Array} bytes
+	 * @param {Uint16} payloadSize
 	 */
-	Packers.pong = function ({ network = 'mainnet', message = null, nonce }) {
-		const command = 'pong';
-
-		if (!message) {
-			let pongSize = Sizes.HEADER_SIZE + Sizes.PING_SIZE;
-			message = new Uint8Array(pongSize);
+	Packers._alloc = function (bytes, payloadSize) {
+		let messageSize = DashP2P.sizes.HEADER + payloadSize;
+		if (!bytes) {
+			bytes = new Uint8Array(messageSize);
+		} else if (bytes.length !== messageSize) {
+			if (bytes.length < messageSize) {
+				let msg = `the provided buffer is only ${bytes.length} bytes, but at least ${messageSize} are needed`;
+				throw new Error(msg);
+			}
+			bytes = bytes.subarray(0, messageSize);
 		}
 
-		let nonceBytes = message.subarray(Sizes.HEADER_SIZE);
-		nonceBytes.set(nonce, 0);
+		let payload = bytes.subarray(DashP2P.sizes.HEADER);
 
-		void Packers.message({ network, command, bytes: message });
-		return message;
+		return [bytes, payload];
 	};
 
 	/**
 	 * First 4 bytes of SHA256(SHA256(payload)) in internal byte order.
 	 * @param {Uint8Array} payload
 	 */
-	Packers.checksum = function (payload) {
+	Packers._checksum = function (payload) {
 		// TODO this should be node-specific in node for performance reasons
 		if (Crypto.createHash) {
 			let hash = Crypto.createHash('sha256').update(payload).digest();
@@ -549,6 +542,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	/* (it's simply very complex, okay?) */
 	Packers.version = function ({
 		network = 'mainnet',
+		message,
 		protocol_version = Packers.PROTOCOL_VERSION,
 		// alias of addr_trans_services
 		//services,
@@ -564,6 +558,8 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		relay = null,
 		mnauth_challenge = null,
 	}) {
+		const command = 'version';
+
 		if (!Array.isArray(addr_recv_services)) {
 			throw new Error('"addr_recv_services" must be an array');
 		}
@@ -590,7 +586,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		sizes.mnauthChallenge = SIZES.MNAUTH_CHALLENGE_NONEMPTY;
 		sizes.mnConnection = SIZES.MN_CONNECTION_NONEMPTY;
 
-		let TOTAL_SIZE =
+		let versionSize =
 			SIZES.VERSION +
 			SIZES.SERVICES +
 			SIZES.TIMESTAMP +
@@ -602,14 +598,15 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			SIZES.ADDR_TRANS_PORT +
 			SIZES.NONCE +
 			SIZES.USER_AGENT_BYTES +
-			sizes.userAgentString +
+			sizes.userAgentString + // calc
 			SIZES.START_HEIGHT +
-			sizes.relay +
-			sizes.mnauthChallenge +
-			sizes.mnConnection;
-		let payload = new Uint8Array(TOTAL_SIZE);
-		// Protocol version
+			sizes.relay + // calc
+			sizes.mnauthChallenge + // calc
+			sizes.mnConnection; // calc
 
+		let [bytes, payload] = Packers._alloc(message, versionSize);
+
+		// Protocol version
 		//@ts-ignore - protocol_version has a default value
 		let versionBytes = Utils._uint32ToBytesLE(protocol_version);
 		payload.set(versionBytes, 0);
@@ -761,12 +758,41 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		// 	payload.set([0x01], MNAUTH_CONNECTION_OFFSET);
 		// }
 
-		let versionMessage = Packers.message({
-			network: network,
-			command: 'version',
-			payload: payload,
-		});
-		return versionMessage;
+		void Packers.message({ network, command, bytes });
+		return bytes;
+	};
+
+	/**
+	 * No payload, just an ACK
+	 * @param {Object} opts
+	 * @param {NetworkName} opts.network - "mainnet", "testnet", etc
+	 * @param {Uint8Array?} [opts.message] - preallocated bytes
+	 */
+	Packers.verack = function ({ network = 'mainnet', message }) {
+		const command = 'verack';
+		let [bytes] = Packers._alloc(message, Sizes.VERACK);
+
+		void Packers.message({ network, command, bytes });
+		return bytes;
+	};
+
+	/**
+	 * In this case the only bytes are the nonce
+	 * Use a .subarray(offset) to define an offset.
+	 * (a manual offset will not work consistently, and .byteOffset is context-sensitive)
+	 * @param {Object} opts
+	 * @param {NetworkName} opts.network - "mainnet", "testnet", etc
+	 * @param {Uint8Array?} [opts.message]
+	 * @param {Uint8Array} opts.nonce
+	 */
+	Packers.pong = function ({ network = 'mainnet', message = null, nonce }) {
+		const command = 'pong';
+		let [bytes, payload] = Packers._alloc(message, Sizes.PING);
+
+		payload.set(nonce, 0);
+
+		void Packers.message({ network, command, bytes });
+		return bytes;
 	};
 
 	/**
@@ -781,8 +807,8 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array} bytes
 	 */
 	Parsers.header = function (bytes) {
-		if (bytes.length < Sizes.HEADER_SIZE) {
-			let msg = `developer error: header should be ${Sizes.HEADER_SIZE}+ bytes (optional payload), not ${bytes.length}`;
+		if (bytes.length < Sizes.HEADER) {
+			let msg = `developer error: header should be ${Sizes.HEADER}+ bytes (optional payload), not ${bytes.length}`;
 			throw new Error(msg);
 		}
 		let dv = new DataView(bytes.buffer);
@@ -824,6 +850,30 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		return headerMessage;
 	};
 	Parsers.SIZES = SIZES;
+
+	/**
+	 * @param {String} hex
+	 * @param {Uint8Array} payload
+	 */
+	Utils.hexToPayload = function (hex, payload) {
+		let i = 0;
+		let index = 0;
+		let lastIndex = hex.length - 2;
+		for (;;) {
+			if (i > lastIndex) {
+				break;
+			}
+
+			let h = hex.slice(i, i + 2);
+			let b = parseInt(h, 16);
+			payload[index] = b;
+
+			i += 2;
+			index += 1;
+		}
+
+		return payload;
+	};
 
 	Utils.EventStream = {};
 
