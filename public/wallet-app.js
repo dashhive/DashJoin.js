@@ -1014,7 +1014,7 @@
 		return f.toFixed(d);
 	}
 
-	async function connectToPeer(height, evonode) {
+	async function connectToPeer(evonode, height) {
 		if (App.peers[evonode.host]) {
 			return App.peers[evonode.host];
 		}
@@ -1040,7 +1040,7 @@
 
 		let senddsqBytes = DashJoin.packers.senddsq({ network: network });
 		console.log('[REQ: %csenddsq%c]', 'color: $55daba', 'color: inherit');
-		wsc.send(senddsqBytes);
+		p2p.send(senddsqBytes);
 
 		void p2p.createSubscriber(['dsq'], async function (evstream) {
 			let msg = await evstream.once('dsq');
@@ -1069,8 +1069,183 @@
 		}
 		wsc.addEventListener('error', cleanup);
 
-		App.peers[evonode.host] = { p2p };
+		App.peers[evonode.host] = p2p;
 		return App.peers[evonode.host];
+	}
+
+	// 0. 'dsq' broadcast puts a node in the local in-memory pool
+	// 1. 'dsa' requests to be allowed to join a session
+	// 2. 'dssu' accepts
+	//      + 'dsq' marks ready (in either order)
+	// 3. 'dsi' signals desired coins in and out
+	// 4. 'dsf' accepts specific coins in and out
+	// 5. 'dss' sends signed inputs paired to trusted outputs
+	// 6. 'dssu' updates status
+	//      + 'dsc' confirms the tx will broadcast soon
+	async function createCoinJoinSession(
+		evonode, // { host }
+		inputs, // [{address, txid, pubKeyHash, ...getPrivateKeyInfo }]
+		outputs, // [{ pubKeyHash, satoshis }]
+		collateralTxes, // (for dsa and dsi) any 2 txes having fees >=0.00010000 more than necessary
+	) {
+		let p2p = App.peers[evonode.host];
+		if (!p2p) {
+			throw new Error(`'${evonode.host}' is not connected`);
+		}
+
+		let denomination = inputs[0].satoshis;
+		for (let input of inputs) {
+			if (input.satoshis !== denomination) {
+				let msg = `utxo.satoshis (${input.satoshis}) must match requested denomination ${denomination}`;
+				throw new Error(msg);
+			}
+		}
+		for (let output of outputs) {
+			if (!output.sateshis) {
+				output.satoshis = denomination;
+				continue;
+			}
+			if (output.satoshis !== denomination) {
+				let msg = `output.satoshis (${output.satoshis}) must match requested denomination ${denomination}`;
+				throw new Error(msg);
+			}
+		}
+
+		// todo: pick a smaller size that matches the dss
+		let message = new Uint8Array(DashP2P.PAYLOAD_SIZE_MAX);
+		let evstream = p2p.createSubscriber(['dssu', 'dsq', 'dsf', 'dsc']);
+
+		{
+			let collateralTx = collateralTxes.shift();
+			let dsaBytes = DashJoin.packers.dsa({
+				network,
+				message,
+				denomination,
+				collateralTx,
+			});
+			p2p.send(dsaBytes);
+			for (;;) {
+				let msg = await evstream.once();
+
+				if (msg.command === 'dsq') {
+					let dsq = DashJoin.parsers.dsq(msg.payload);
+					if (dsq.denomination !== denomination) {
+						continue;
+					}
+					if (!dsq.ready) {
+						continue;
+					}
+					break;
+				}
+
+				if (msg.command === 'dssu') {
+					let dssu = DashJoin.parsers.dssu(msg.payload);
+					if (dssu.state === 'ERROR') {
+						evstream.close();
+						throw new Error();
+					}
+				}
+			}
+		}
+
+		let dsfTxRequest;
+		{
+			let collateralTx = collateralTxes.shift();
+			let dsiBytes = DashJoin.packers.dsi({
+				network,
+				message,
+				inputs,
+				collateralTx,
+				outputs,
+			});
+			p2p.send(dsiBytes);
+			let msg = await evstream.once('dsf');
+			let dsf = DashJoin.parsers.dsf(msg.payload);
+
+			dsfTxRequest = DashTx.parseUnknown(dsf.transaction_unsigned);
+			makeSelectedInputsSignable(dsfTxRequest, inputs);
+			let txSigned = await dashTx.hashAndSignAll(dsfTxRequest);
+
+			let signedInputs = [];
+			for (let input of txSigned.inputs) {
+				if (!input?.signature) {
+					continue;
+				}
+				signedInputs.push(input);
+			}
+			assertSelectedOutputs(dsfTxRequest, outputs, inputs.length);
+
+			let dssBytes = DashJoin.packers.dss({
+				network: network,
+				message: message,
+				inputs: signedInputs,
+			});
+			p2p.send(dssBytes);
+		}
+
+		return dsfTxRequest;
+	}
+
+	function makeSelectedInputsSignable(txRequest, inputs) {
+		// let selected = [];
+
+		for (let input of inputs) {
+			if (!input.publicKey) {
+				let msg = `coin '${input.address}:${input.txid}:${input.outputIndex}' is missing 'input.publicKey'`;
+				throw new Error(msg);
+			}
+			for (let sighashInput of txRequest.inputs) {
+				if (sighashInput.txid !== input.txid) {
+					continue;
+				}
+				if (sighashInput.outputIndex !== input.outputIndex) {
+					continue;
+				}
+
+				let sigHashType = DashTx.SIGHASH_ALL | DashTx.SIGHASH_ANYONECANPAY; //jshint ignore:line
+
+				sighashInput.index = input.index;
+				sighashInput.address = input.address;
+				sighashInput.satoshis = input.satoshis;
+				sighashInput.pubKeyHash = input.pubKeyHash;
+				// sighashInput.script = input.script;
+				sighashInput.publicKey = input.publicKey;
+				sighashInput.sigHashType = sigHashType;
+				// sighashInputs.push({
+				//      txId: input.txId || input.txid,
+				//      txid: input.txid || input.txId,
+				//      outputIndex: input.outputIndex,
+				//      pubKeyHash: input.pubKeyHash,
+				//      sigHashType: input.sigHashType,
+				// });
+
+				// selected.push(input);
+				break;
+			}
+		}
+
+		// return selected;
+	}
+
+	function assertSelectedOutputs(txRequest, outputs, count) {
+		let _count = 0;
+		for (let output of outputs) {
+			for (let sighashOutput of txRequest.outputs) {
+				if (sighashOutput.pubKeyHash !== output.pubKeyHash) {
+					continue;
+				}
+				if (sighashOutput.satoshis !== output.satoshis) {
+					continue;
+				}
+
+				_count += 1;
+			}
+		}
+
+		if (count !== _count) {
+			let msg = `expected ${count} matching outputs but found found ${_count}`;
+			throw new Error(msg);
+		}
 	}
 
 	async function main() {
@@ -1104,7 +1279,22 @@
 		};
 		App.peers = {};
 
-		void (await connectToPeer(App._chaininfo.blocks, App._evonode));
+		void (await connectToPeer(App._evonode, App._chaininfo.blocks));
+
+		// collateral, denominated
+		// let collateralTxInfo = await getCollateralTx();
+		// // let keys = await getPrivateKeys(collateralTxInfo.inputs);
+		// // let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo, keys);
+		// let txInfoSigned = await dashTx.hashAndSignAll(collateralTxInfo);
+		// let collateralTx = DashTx.utils.hexToBytes(txInfoSigned.transaction);
+
+		// await createCoinJoinSession(
+		// 	App.evonode,
+		// 	// inputs, // [{address, txid, pubKeyHash, ...getPrivateKeyInfo }]
+		// 	// outputs, // [{ pubKeyHash, satoshis }]
+		// 	// dsaCollateralTx, // any tx with fee >= 0.00010000
+		// 	// dsiCollateralTx, // any tx with fee >= 0.00010000
+		// );
 	}
 
 	main().catch(function (err) {
