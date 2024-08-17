@@ -1,6 +1,6 @@
 'use strict';
 
-let Packer = require('../packer.js');
+let DashJoin = require('../public/dashjoin.js');
 // TODO copy .utils.bytesToHex rather than depend on it
 let DashKeys = require('dashkeys');
 
@@ -30,7 +30,7 @@ let collateralTxHex =
 function test() {
 	let expectedHex = `${regtest}${command}${payloadSize}${checksum}${denomMask}${collateralTxHex}`;
 	let collateralTx = DashKeys.utils.hexToBytes(collateralTxHex);
-	let message = Packer.packAllow({ network, denomination, collateralTx });
+	let message = DashJoin.packers.dsa({ network, denomination, collateralTx });
 	let messageHex = DashKeys.utils.bytesToHex(message);
 	if (expectedHex.length !== messageHex.length) {
 		let length = expectedHex.length / 2;
@@ -39,13 +39,20 @@ function test() {
 		);
 	}
 	if (expectedHex !== messageHex) {
+        console.log();
+		console.log(`EXPECTED: (${expectedHex.length})`);
+		console.log(expectedHex);
+        console.log();
+		console.log(`ACTUAL: (${messageHex.length})`);
+		console.log(messageHex);
+        console.log();
 		throw new Error(
 			'bytes of dsa (allow / join request) messages do not match',
 		);
 	}
 
 	console.info(
-		`PASS: Packer.packAllow({ network, denomination, collateralTx }) matches`,
+		`PASS: DashJoin.packers.dsa({ network, denomination, collateralTx }) matches`,
 	);
 }
 

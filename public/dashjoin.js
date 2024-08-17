@@ -2,7 +2,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 (function (window, DashJoin) {
 	'use strict';
 
-	let DashP2P = window.DashP2P || require('dashp2p');
+	let DashP2P = window.DashP2P || require('./dashp2p.js');
 	let DashTx = window.DashTx || require('dashtx');
 
 	const DV_LITTLE_ENDIAN = true;
@@ -139,7 +139,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 			);
 		}
 
-		let dv = new DataView(payload.buffer);
+		let dv = new DataView(payload.buffer, payload.byteOffset);
 		let offset = 0;
 
 		dv.setUint32(offset, denomMask, DV_LITTLE_ENDIAN);
@@ -259,7 +259,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 			let msg = `developer error: 'dsq' must be ${Sizes.DSQ} bytes, but received ${bytes.length}`;
 			throw new Error(msg);
 		}
-		let dv = new DataView(bytes.buffer);
+		let dv = new DataView(bytes.buffer, bytes.byteOffset);
 
 		let offset = 0;
 
@@ -359,7 +359,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 			let msg = `developer error: a 'dssu' message is 16 bytes, but got ${bytes.length}`;
 			throw new Error(msg);
 		}
-		let dv = new DataView(bytes.buffer);
+		let dv = new DataView(bytes.buffer, bytes.byteOffset);
 		let offset = 0;
 
 		let session_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);

@@ -811,7 +811,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			let msg = `developer error: header should be ${Sizes.HEADER}+ bytes (optional payload), not ${bytes.length}`;
 			throw new Error(msg);
 		}
-		let dv = new DataView(bytes.buffer);
+		let dv = new DataView(bytes.buffer, bytes.byteOffset);
 
 		let index = 0;
 
@@ -1186,7 +1186,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		let padded = new Uint8Array((bytes.length + 9 + 63) & ~63);
 		padded.set(bytes);
 		padded[bytes.length] = 0x80;
-		let dv = new DataView(padded.buffer);
+		let dv = new DataView(padded.buffer, padded.byteOffset);
 		dv.setUint32(padded.length - 4, bytes.length << 3, false);
 
 		let w = new Uint32Array(64);
