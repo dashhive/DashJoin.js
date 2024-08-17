@@ -1,0 +1,33 @@
+{
+  "name": "wallet",
+  "version": "0.1.0",
+  "description": "Digital Cash Cryptocurrency DASH wallet",
+  "main": "index.html",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dashhive/DashJoin.js.git"
+  },
+  "keywords": [
+    "Digital",
+    "Cash",
+    "Cryptocurrency",
+    "DASH",
+    "wallet"
+  ],
+  "author": "AJ ONeal <aj@therootcompany.com> (https://therootcompany.com/)",
+  "license": "SEE LICENSE IN LICENSE",
+  "bugs": {
+    "url": "https://github.com/dashhive/DashJoin.js/issues"
+  },
+  "homepage": "https://github.com/dashhive/DashJoin.js#readme",
+  "dependencies": {
+    "@dashincubator/secp256k1": "^1.7.1-5",
+    "dashhd": "^3.3.3",
+    "dashkeys": "^1.1.5",
+    "dashphrase": "^1.4.0",
+    "dashtx": "^0.19.1"
+  }
+}

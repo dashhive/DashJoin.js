@@ -116,7 +116,9 @@ function test() {
 		let expectedStr = `${headerStr},${staticNonceStr}`;
 		let messageStr = messageBytes.toString();
 		if (expectedStr !== messageStr) {
-			throw new Error('complete messages did not match');
+			throw new Error(
+				`complete messages did not match: ${expectedStr} !== ${messageStr}`,
+			);
 		}
 	}
 
