@@ -4,12 +4,25 @@ var DashJoin = ('object' === typeof module && exports) || {};
 
 	let DashP2P = window.DashP2P || require('dashp2p');
 
+	const DV_LITTLE_ENDIAN = true;
+
 	const DENOM_LOWEST = 100001;
 	const PREDENOM_MIN = DENOM_LOWEST + 193;
 	const COLLATERAL = 10000; // DENOM_LOWEST / 10
 	const PAYLOAD_SIZE_MAX = 4 * 1024 * 1024;
 
-	const DSQ_SIZE = 1; // 1-byte bool
+	let STANDARD_DENOMINATIONS_MAP = {
+		//  0.00100001
+		0b00010000: 100001,
+		//  0.01000010
+		0b00001000: 1000010,
+		//  0.10000100
+		0b00000100: 10000100,
+		//  1.00001000
+		0b00000010: 100001000,
+		// 10.00010000
+		0b00000001: 1000010000,
+	};
 
 	// https://github.com/dashpay/dash/blob/v19.x/src/coinjoin/coinjoin.h#L39
 	// const COINJOIN_ENTRY_MAX_SIZE = 9; // real
@@ -31,6 +44,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 
 	let Packers = {};
 	let Parsers = {};
+	let Sizes = {};
 	let Utils = {};
 
 	// Ask Niles if there's an layman-ish obvious way to do this
@@ -52,29 +66,98 @@ var DashJoin = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array?} [opts.message]
 	 * @param {Boolean?} [opts.send]
 	 */
-	Packers.senddsq = function ({ network, message = null, send = true }) {
-		// const command = 'senddsq';
-		// if (!message) {
-		// 	let dsqSize = DashP2P.sizes.HEADER_SIZE + DSQ_SIZE;
-		// 	message = new Uint8Array(dsqSize);
-		// }
+	Packers.senddsq = function ({
+		network = 'mainnet',
+		message = null,
+		send = true,
+	}) {
+		const command = 'senddsq';
+		const SENDDSQ_SIZE = 1; // 1-byte bool
 
-		let payload = new Uint8Array(1);
+		if (!message) {
+			let dsqSize = DashP2P.sizes.HEADER_SIZE + SENDDSQ_SIZE;
+			message = new Uint8Array(dsqSize);
+		}
+
+		let payload = message.subarray(DashP2P.sizes.HEADER_SIZE);
 		if (send) {
 			payload.set([0x01], 0);
 		} else {
 			payload.set([0x00], 0);
 		}
 
-		// let payload = message.subarray(DashP2P.sizes.HEADER_SIZE);
-		// payload.set(sendByte, 0);
-		// void DashP2P.packers.message({ network, command, bytes: message });
-		// return {
-		// 	message,
-		// 	payload,
-		// };
+		void DashP2P.packers.message({ network, command, bytes: message });
+		return message;
+		// return { message, payload };
+	};
 
-		return payload;
+	Sizes.DSQ_SIZE = 142;
+	// DSQ stuff??
+	Sizes.DENOM = 4;
+	Sizes.PROTX = 32;
+	Sizes.TIME = 8;
+	Sizes.READY = 1;
+	Sizes.SIG = 97;
+	//
+
+	// Sizes.DSSU_SIZE = 16;
+	// Sizes.SESSION_ID_SIZE = 4;
+
+	/**
+	 * @param {Uint8Array} bytes
+	 */
+	Parsers.dsq = function (bytes) {
+		if (bytes.length !== Sizes.DSQ_SIZE) {
+			let msg = `developer error: 'dsq' must be ${Sizes.DSQ_SIZE} bytes, but received ${bytes.length}`;
+			throw new Error(msg);
+		}
+		let dv = new DataView(bytes.buffer);
+
+		let offset = 0;
+
+		let denomination_id = dv.getUint32(offset, DV_LITTLE_ENDIAN);
+		offset += Sizes.DENOM;
+
+		//@ts-ignore - correctness of denomination must be checked higher up
+		let denomination = STANDARD_DENOMINATIONS_MAP[denomination_id];
+
+		/**
+		 * Grab the protxhash
+		 */
+		let protxhash_bytes = bytes.subarray(offset, offset + Sizes.PROTX);
+		offset += Sizes.PROTX;
+
+		/**
+		 * Grab the time
+		 */
+		let timestamp64n = dv.getBigInt64(offset, DV_LITTLE_ENDIAN);
+		offset += Sizes.TIME;
+		let timestamp_unix = Number(timestamp64n);
+		let timestampMs = timestamp_unix * 1000;
+		let timestampDate = new Date(timestampMs);
+		let timestamp = timestampDate.toISOString();
+
+		/**
+		 * Grab the fReady
+		 */
+		let ready = bytes[offset] > 0x00;
+		offset += Sizes.READY;
+
+		let signature_bytes = bytes.subarray(offset, offset + Sizes.SIG);
+
+		let dsqMessage = {
+			denomination_id,
+			denomination,
+			protxhash_bytes,
+			// protxhash: '',
+			timestamp_unix,
+			timestamp,
+			ready,
+			signature_bytes,
+			// signature: '',
+		};
+
+		return dsqMessage;
 	};
 
 	Utils.hexToBytes = function (hex) {

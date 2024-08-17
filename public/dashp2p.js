@@ -12,7 +12,12 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	'use strict';
 
 	const DV_LITTLE_ENDIAN = true;
-	const EMPTY_CHECKSUM_BYTES = [0x5d, 0xf6, 0xe0, 0xe2];
+
+	let EMPTY_CHECKSUM_BYTES = [0x5d, 0xf6, 0xe0, 0xe2];
+	let E_CLOSE = {
+		code: 'E_CLOSE',
+		message: 'promise stream closed',
+	};
 
 	let SIZES = {
 		// header
@@ -66,14 +71,103 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		/** @type {Uint8Array?} */
 		p2p.payload = null;
 		let explicitEvents = ['version', 'verack', 'ping', 'pong'];
-		p2p._promiseStream = Utils.EventSocket.create(explicitEvents);
+		p2p._eventStream = Utils.EventStream.create(explicitEvents);
 
-		p2p.listen = p2p._promiseStream.listen;
+		p2p._wsc = null;
+		p2p.send = function (bytes) {
+			throw new Error('no socket has been initialized');
+		};
+		p2p.close = function () {
+			throw new Error('no socket has been initialized');
+		};
+		p2p._close = function (bytes) {
+			try {
+				p2p._eventStream.close();
+			} catch (e) {
+				console.error('error closing event stream:', e);
+			}
+		};
+
+		p2p.createSubscriber = p2p._eventStream.createSubscriber;
+
+		p2p.initWebSocket = async function (
+			wsc,
+			{ network, hostname, port, start_height },
+		) {
+			p2p._wsc = wsc;
+
+			p2p.send = function (bytes) {
+				return wsc.send(bytes);
+			};
+
+			p2p.close = function () {
+				try {
+					wsc.close();
+				} catch (e) {
+					console.error('error closing websocket:', e);
+				}
+				p2p._close(true);
+			};
+
+			wsc.addEventListener('message', async function (wsevent) {
+				let ab = await wsevent.data.arrayBuffer();
+				let bytes = new Uint8Array(ab);
+				console.log(
+					`%c ws.onmessage => p2p.processBytes(bytes) [${bytes.length}]`,
+					`color: #bada55`,
+				);
+				p2p.processBytes(bytes);
+			});
+
+			wsc.addEventListener('open', async function () {
+				{
+					let versionBytes = DashP2P.packers.version({
+						network: network,
+						addr_recv_ip: hostname,
+						addr_recv_port: port,
+						start_height: start_height,
+					});
+					console.log('DEBUG wsc.send(versionBytes)');
+					wsc.send(versionBytes);
+				}
+
+				{
+					let verackBytes = DashP2P.packers.verack({ network: network });
+					console.log('DEBUG wsc.send(verackBytes)');
+					wsc.send(verackBytes);
+				}
+			});
+
+			wsc.addEventListener('close', p2p.close);
+
+			let evstream = p2p.createSubscriber(['version', 'verack', 'ping']);
+			console.log('%c subscribed', 'color: red');
+
+			void (await evstream.once('version'));
+			console.log('%c[[version]] PROCESSED', 'color: red');
+			void (await evstream.once('verack'));
+			console.log('%c[[verack]] PROCESSED', 'color: red');
+
+			(async function () {
+				for (;;) {
+					let msg = await evstream.once('ping');
+					console.log('%c received ping', 'color: red');
+					let pongBytes = DashP2P.packers.pong({
+						network: network,
+						nonce: msg.payload,
+					});
+					console.log('%c[[PING]] wsc.send(pongBytes)', 'color: blue;');
+					wsc.send(pongBytes);
+				}
+			})().catch(DashP2P.createCatchClose(['ping']));
+
+			return;
+		};
 
 		/** @param {Uint8Array?} */
-		p2p.write = function (chunk) {
+		p2p.processBytes = function (chunk) {
 			if (p2p.state === 'error') {
-				p2p._promiseStream.rejectAll(p2p.error);
+				p2p._eventStream.rejectAll(p2p.error);
 
 				// in the case of UDP where we miss a packet,
 				// we can log the error but still resume on the next one.
@@ -83,48 +177,49 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			}
 
 			if (p2p.state === 'header') {
-				p2p.writeHeaderBytes(chunk);
+				p2p.processHeaderBytes(chunk);
 				return;
 			}
 
 			if (p2p.state === 'payload') {
-				p2p.writePayloadBytes(chunk);
+				p2p.processPayloadBytes(chunk);
 				return;
 			}
 
 			if (p2p.state === 'result') {
-				console.log(
-					'p2p.write() => result',
-					p2p.header.command,
-					p2p.payload?.length || null,
-				);
+				let cmd = p2p.header.command;
+				let len = p2p.payload?.length || 0;
+				console.info(`%c[[RCV: ${cmd}]]`, `color: purple`, len);
 				let msg = {
 					command: p2p.header.command,
 					header: p2p.header,
 					payload: p2p.payload,
 				};
-				p2p._promiseStream.resolveAll(msg.command, msg);
+				p2p._eventStream.emit(msg.command, msg);
 
 				p2p.state = 'header';
-				p2p.write(chunk);
+				p2p.processBytes(chunk);
 				return;
 			}
 
 			let err = new Error(`developer error: unknown state '${p2p.state}'`);
-			p2p._promiseStream.rejectAll(err);
+			p2p._eventStream.rejectAll(err);
 			p2p.state = 'header';
-			p2p.write(chunk);
+			p2p.processBytes(chunk);
 		};
 
 		/**
 		 * @param {Uint8Array?} chunk
 		 */
-		p2p.writeHeaderBytes = function (chunk) {
+		p2p.processHeaderBytes = function (chunk) {
 			if (chunk) {
 				p2p.chunks.push(chunk);
 				p2p.chunksLength += chunk.byteLength;
 			}
 			if (p2p.chunksLength < HEADER_SIZE) {
+				if (chunk) {
+					console.log('... partial header');
+				}
 				return;
 			}
 
@@ -145,6 +240,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			} catch (e) {
 				p2p.state = 'error';
 				p2p.error = new Error(`header parse error: ${e.message}`);
+				// TODO maybe throw away all chunks?
 				console.error(e);
 				console.error(chunk);
 				return;
@@ -162,24 +258,25 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			if (p2p.header.payloadSize === 0) {
 				// 'payload' is complete (skipped), on to the 'result'
 				p2p.state = 'result';
-				p2p.header.payload = null;
 				p2p.payload = null;
 			}
 
 			let nextChunk = p2p.chunks.pop();
-			p2p.write(nextChunk);
+			p2p.processBytes(nextChunk);
 		};
 
 		/**
 		 * @param {Uint8Array?} bytes
 		 */
-		p2p.writePayloadBytes = function (chunk) {
+		p2p.processPayloadBytes = function (chunk) {
 			if (chunk) {
 				p2p.chunks.push(chunk);
 				p2p.chunksLength += chunk.byteLength;
 			}
 			if (p2p.chunksLength < p2p.header.payloadSize) {
-				console.log('DEBUG: more payload than fits in one chunk...');
+				if (chunk) {
+					console.log('... partial payload');
+				}
 				return;
 			}
 
@@ -194,14 +291,32 @@ var DashP2P = ('object' === typeof module && exports) || {};
 				chunk = chunk.slice(0, p2p.header.payloadSize);
 			}
 			p2p.state = 'result';
-			p2p.header.payload = chunk;
 			p2p.payload = chunk;
 
 			let nextChunk = p2p.chunks.pop();
-			p2p.write(nextChunk);
+			p2p.processBytes(nextChunk);
 		};
 
 		return p2p;
+	};
+
+	DashP2P.createCatchClose = function (names) {
+		function catchClose(err) {
+			if (err.code !== 'E_CLOSE') {
+				console.error(
+					`error caused '${names}' event stream to close unexpectedly:`,
+				);
+				console.error(err);
+			}
+		}
+		return catchClose;
+	};
+
+	DashP2P.catchClose = function (err) {
+		if (err.code !== 'E_CLOSE') {
+			console.error(`error caused event stream to close unexpectedly:`);
+			console.error(err);
+		}
 	};
 
 	const TOTAL_HEADER_SIZE =
@@ -372,7 +487,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		return message;
 	};
 
-	Packers.verack = function ({ network }) {
+	Packers.verack = function ({ network = 'mainnet' }) {
 		let verackBytes = Packers.message({
 			network: network,
 			command: 'verack',
@@ -390,21 +505,19 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	 * @param {Uint8Array?} [opts.message]
 	 * @param {Uint8Array} opts.nonce
 	 */
-	Packers.pong = function ({ network, message = null, nonce }) {
-		// const command = 'pong';
+	Packers.pong = function ({ network = 'mainnet', message = null, nonce }) {
+		const command = 'pong';
 
 		if (!message) {
 			let pongSize = Sizes.HEADER_SIZE + Sizes.PING_SIZE;
 			message = new Uint8Array(pongSize);
 		}
 
-		let payload = message.subarray(Sizes.HEADER_SIZE);
-		payload.set(nonce, 0);
+		let nonceBytes = message.subarray(Sizes.HEADER_SIZE);
+		nonceBytes.set(nonce, 0);
 
-		// void CJPacker.packMessage({ network, command, bytes: message });
-		// return message;
-
-		return payload;
+		void Packers.message({ network, command, bytes: message });
+		return message;
 	};
 
 	/**
@@ -435,6 +548,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	/* jshint maxstatements:150 */
 	/* (it's simply very complex, okay?) */
 	Packers.version = function ({
+		network = 'mainnet',
 		protocol_version = Packers.PROTOCOL_VERSION,
 		// alias of addr_trans_services
 		//services,
@@ -647,7 +761,12 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		// 	payload.set([0x01], MNAUTH_CONNECTION_OFFSET);
 		// }
 
-		return payload;
+		let versionMessage = Packers.message({
+			network: network,
+			command: 'version',
+			payload: payload,
+		});
+		return versionMessage;
 	};
 
 	/**
@@ -676,7 +795,7 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		let commandBuf = bytes.subarray(index, index + SIZES.COMMAND_NAME);
 		let command = '';
 		{
-			let commandEnd = bytes.indexOf(0x00, commandBuf);
+			let commandEnd = commandBuf.indexOf(0x00);
 			if (commandEnd !== -1) {
 				commandBuf = commandBuf.subarray(0, commandEnd);
 			}
@@ -706,10 +825,10 @@ var DashP2P = ('object' === typeof module && exports) || {};
 	};
 	Parsers.SIZES = SIZES;
 
-	Utils.EventSocket = {};
+	Utils.EventStream = {};
 
 	/** @param {String} events */
-	Utils.EventSocket.create = function (explicitEvents) {
+	Utils.EventStream.create = function (explicitEvents) {
 		let stream = {};
 
 		stream._explicitEvents = explicitEvents;
@@ -719,13 +838,27 @@ var DashP2P = ('object' === typeof module && exports) || {};
 
 		/**
 		 * @param {Array<String>} events - ex: ['*', 'error'] for default events, or list by name
+		 * @param {Function} eventLoopFn - called in a loop until evstream.close()
 		 */
-		stream.listen = function (events = null) {
-			let conn = Utils.EventSocket.createConnection(stream, events);
-			return conn;
+		stream.createSubscriber = function (events, eventLoopFn) {
+			let conn = Utils.EventStream.createSubscriber(stream, events);
+			if (!eventLoopFn) {
+				return conn;
+			}
+
+			let go = async function (eventLoop, conn) {
+				for (;;) {
+					await eventLoop(conn);
+				}
+			};
+			go(eventLoopFn, conn).catch(DashP2P.createCatchClose(events));
+			return null;
 		};
 
-		stream.resolveAll = function (eventname, msg) {
+		stream.emit = function (eventname, msg) {
+			if (eventname === 'error') {
+				return stream.rejectAll(msg);
+			}
 			for (let p of stream._connections) {
 				let isSubscribed = p._events.includes(eventname);
 				if (isSubscribed) {
@@ -746,6 +879,9 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		};
 
 		stream.rejectAll = function (err) {
+			if (!(err instanceof Error)) {
+				throw new Error(`'error instanceof Error' must be true for errors`);
+			}
 			let handled = false;
 			for (let p of stream._connections) {
 				let handlesErrors = p._events.includes('error');
@@ -763,10 +899,16 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			}
 		};
 
+		stream.close = function () {
+			for (let conn of stream._connections) {
+				conn._close(true);
+			}
+		};
+
 		return stream;
 	};
 
-	Utils.EventSocket.createConnection = function (stream, defaultEvents = null) {
+	Utils.EventStream.createSubscriber = function (stream, defaultEvents = null) {
 		let p = {};
 		stream._connections.push(p);
 
@@ -781,11 +923,11 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			p._settled = false;
 			p._promise = new Promise(function (_resolve, _reject) {
 				p._resolve = function (msg) {
-					p._close(true);
+					// p._close(true);
 					_resolve(msg);
 				};
 				p._reject = function (err) {
-					p._close(true);
+					// p._close(true);
 					_reject(err);
 				};
 			});
@@ -794,13 +936,13 @@ var DashP2P = ('object' === typeof module && exports) || {};
 		};
 
 		/**
-		 * Accepts the next message of the given event name,
+		 * Waits for and returns the next message of the given event name,
 		 * or of any of the default event names.
 		 * @param {String} eventname - '*' for default events, 'error' for error, or others by name
 		 */
-		p.accept = async function (eventname) {
+		p.once = async function (eventname) {
 			if (p.closed) {
-				let err = new Error('cannot accept new events after close');
+				let err = new Error('cannot receive new events after close');
 				Object.assign(err, { code: 'E_ALREADY_CLOSED' });
 				throw err;
 			}
@@ -811,11 +953,12 @@ var DashP2P = ('object' === typeof module && exports) || {};
 				p.events = defaultEvents;
 			} else {
 				let err = new Error(
-					`call stream.listen(['*']) or conn.accept('*') for default events`,
+					`call stream.createSubscriber(['*']) or conn.once('*') for default events`,
 				);
 				Object.assign(err, { code: 'E_NO_EVENTS' });
 				throw err;
 			}
+			console.log('%c[[RESUB]]', 'color: red; font-weight: bold;', p.events);
 
 			return await p._next();
 		};
@@ -838,13 +981,13 @@ var DashP2P = ('object' === typeof module && exports) || {};
 			}
 
 			p._settled = true;
-			let err = new Error('promise stream closed');
-			Object.assign(err, { code: 'E_CLOSE' });
+			let err = new Error(E_CLOSE.message);
+			Object.assign(err, E_CLOSE);
 			p._reject(err);
 		};
 
 		/**
-		 * Causes `let msg = conn.accept()` to fail with E_CLOSE or E_ALREADY_CLOSED
+		 * Causes `let msg = conn.once()` to fail with E_CLOSE or E_ALREADY_CLOSED
 		 */
 		p.close = function () {
 			p._close(false);

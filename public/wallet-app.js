@@ -1014,6 +1014,65 @@
 		return f.toFixed(d);
 	}
 
+	async function connectToPeer(height, evonode) {
+		if (App.peers[evonode.host]) {
+			return App.peers[evonode.host];
+		}
+
+		let p2p = DashP2P.create();
+
+		let p2pWebProxyUrl = 'wss://ubuntu-127.scratch-dev.digitalcash.dev/ws';
+		let query = {
+			access_token: 'secret',
+			hostname: evonode.hostname,
+			port: evonode.port,
+		};
+		let searchParams = new URLSearchParams(query);
+		let search = searchParams.toString();
+		let wsc = new WebSocket(`${p2pWebProxyUrl}?${search}`);
+
+		await p2p.initWebSocket(wsc, {
+			network: network,
+			hostname: evonode.hostname,
+			port: evonode.port,
+			start_height: height,
+		});
+
+		let senddsqBytes = DashJoin.packers.senddsq({ network: network });
+		console.log('[REQ: %csenddsq%c]', 'color: $55daba', 'color: inherit');
+		wsc.send(senddsqBytes);
+
+		void p2p.createSubscriber(['dsq'], async function (evstream) {
+			let msg = await evstream.once('dsq');
+			let dsq = DashJoin.parsers.dsq(msg.payload);
+			let dsqStatus = {
+				// node info
+				host: evonode.host,
+				hostname: evonode.hostname,
+				port: evonode.port,
+				// dsq status
+				ready: dsq.ready,
+				timestamp: dsq.timestamp,
+				timestamp_unix: dsq.timestamp_unix,
+			};
+
+			App.coinjoinQueues[dsq.denomination][evonode.host] = dsqStatus;
+			console.log('%c[[DSQ]]', 'color: #bada55', dsqStatus);
+		});
+
+		function cleanup() {
+			delete App.peers[evonode.host];
+			for (let denom of DashJoin.DENOMS) {
+				delete App.coinjoinQueues[denom][evonode.host];
+			}
+			p2p.close();
+		}
+		wsc.addEventListener('error', cleanup);
+
+		App.peers[evonode.host] = { p2p };
+		return App.peers[evonode.host];
+	}
+
 	async function main() {
 		if (network === `testnet`) {
 			let $testnets = $$('[data-network=testnet]');
@@ -1036,99 +1095,16 @@
 		console.info('[info] chosen evonode:');
 		console.log(JSON.stringify(App._evonode, null, 2));
 
-		let p2p = DashP2P.create();
-
-		let p2pWebProxyUrl = 'wss://ubuntu-127.scratch-dev.digitalcash.dev/ws';
-		let query = {
-			access_token: 'secret',
-			hostname: App._evonode.hostname,
-			port: App._evonode.port,
+		App.coinjoinQueues = {
+			100001: {}, //      0.00100001
+			1000010: {}, //     0.01000010
+			10000100: {}, //    0.10000100
+			100001000: {}, //   1.00001000
+			1000010000: {}, // 10.00010000
 		};
-		let searchParams = new URLSearchParams(query);
-		let search = searchParams.toString();
-		let wsc = new WebSocket(`${p2pWebProxyUrl}?${search}`);
+		App.peers = {};
 
-		wsc.addEventListener('message', async function (wsevent) {
-			let ab = await wsevent.data.arrayBuffer();
-			let bytes = new Uint8Array(ab);
-			console.log('ws.onmessage => p2p.write(bytes)', bytes.length);
-			p2p.write(bytes);
-		});
-		wsc.addEventListener('open', async function () {
-			// p2p.initWebSocket(wsc);
-			{
-				let payload = DashP2P.packers.version({
-					addr_recv_ip: App._evonode.hostname,
-					addr_recv_port: App._evonode.port,
-					start_height: App._chaininfo.blocks,
-				});
-				let command = 'version';
-				let versionBytes = DashP2P.packers.message({
-					network,
-					command,
-					payload,
-				});
-				wsc.send(versionBytes);
-			}
-
-			{
-				let verackBytes = DashP2P.packers.verack({ network: network });
-				console.log('wsc.send(verackBytes)');
-				wsc.send(verackBytes);
-			}
-		});
-
-		// initialize connection
-		// {
-		// 	let versionReq = DashP2P.packers.version({
-		// 		addr_recv_ip: App._evonode.hostname,
-		// 		addr_recv_port: App._evonode.port,
-		// 		start_height: App._chaininfo.blocks,
-		// 	});
-		// 	wsc.send(versionReq);
-		// 	void (await p2p.accept(['version']));
-		// }
-		// {
-		// }
-		// let msg = await p2p.accept(['verack']);
-		// for (;;) {
-		// 	let msg = await p2p.accept(['ping', 'inv']);
-		// 	if (msg.header.command === 'ping') {
-		// 		let pongBytes = DashP2P.packers.pong({
-		// 			network: network,
-		// 			nonce: msg.payload,
-		// 		});
-		// 		wsc.send(pongBytes);
-		// 	}
-		// }
-
-		for (;;) {
-			let subs = ['*', 'inv', 'ping', 'pong', 'version', 'verack'];
-			let conn = p2p.listen(subs);
-			let msg = await conn.accept();
-			let command = msg.header.command;
-			console.log('conn.accept():', command);
-			let isSub = subs.includes(command);
-			if (isSub) {
-				console.log(msg);
-			}
-
-			// if (command === 'verack') {
-			// 	let verackBytes = DashP2P.packers.verack({ network: network });
-			// 	console.log('wsc.send(verackBytes)');
-			// 	wsc.send(verackBytes);
-			// } else
-			if (command === 'ping') {
-				let pongBytes = DashP2P.packers.pong({
-					network: network,
-					nonce: msg.payload,
-				});
-				console.log('wsc.send(pongBytes)');
-				wsc.send(pongBytes);
-			} else if (command === 'inv') {
-				console.log('(ignore inv)');
-			}
-		}
+		void (await connectToPeer(App._chaininfo.blocks, App._evonode));
 	}
 
 	main().catch(function (err) {
