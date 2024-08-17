@@ -351,17 +351,20 @@
 		txInfo.outputs.sort(DashTx.sortOutputs);
 
 		let signedTx = await dashTx.hashAndSignAll(txInfo);
+		console.log('memo signed', signedTx);
 		return signedTx;
 	};
 
 	App._signCollateral = async function (collateral = DashJoin.MIN_COLLATERAL) {
-		let signedTx = App._signMemo({
+		let signedTx = await App._signMemo({
 			burn: 0,
 			memo: '',
 			message: null,
 			collateral: DashJoin.MIN_COLLATERAL,
 		});
-		return signedTx;
+		console.log('collat signed', signedTx);
+		let signedTxBytes = DashTx.utils.hexToBytes(signedTx.transaction);
+		return signedTxBytes;
 	};
 
 	async function draftWalletTx(utxos, inputs, output) {
@@ -1065,13 +1068,20 @@
 				hostname: evonode.hostname,
 				port: evonode.port,
 				// dsq status
+				denomination: dsq.denomination,
 				ready: dsq.ready,
 				timestamp: dsq.timestamp,
 				timestamp_unix: dsq.timestamp_unix,
 			};
 
 			App.coinjoinQueues[dsq.denomination][evonode.host] = dsqStatus;
-			console.log('%c[[DSQ]]', 'color: #bada55', dsqStatus);
+			console.log(
+				'%c[[DSQ]]',
+				'color: #bada55',
+				dsqStatus.denomination,
+				dsqStatus.ready,
+				dsqStatus.host,
+			);
 		});
 
 		function cleanup() {
@@ -1131,12 +1141,14 @@
 
 		{
 			let collateralTx = collateralTxes.shift();
-			let dsaBytes = DashJoin.packers.dsa({
+			let dsa = {
 				network,
 				message,
 				denomination,
 				collateralTx,
-			});
+			};
+			let dsaBytes = DashJoin.packers.dsa(dsa);
+			console.log('DEBUG dsa, dsaBytes', dsa, dsaBytes);
 			p2p.send(dsaBytes);
 			for (;;) {
 				let msg = await evstream.once();
@@ -1175,8 +1187,8 @@
 			p2p.send(dsiBytes);
 			let msg = await evstream.once('dsf');
 			let dsf = DashJoin.parsers.dsf(msg.payload);
+			console.log('DEBUG dsf', dsf);
 
-			dsfTxRequest = DashTx.parseUnknown(dsf.transaction_unsigned);
 			makeSelectedInputsSignable(dsfTxRequest, inputs);
 			let txSigned = await dashTx.hashAndSignAll(dsfTxRequest);
 
@@ -1281,7 +1293,7 @@
 		App._chaininfo = await rpc('getblockchaininfo');
 		console.log(App._rawmnlist);
 		App._evonodes = DashJoin.utils._evonodeMapToList(App._rawmnlist);
-		App._evonode = App._evonodes.at(-1);
+		App._evonode = App._evonodes.at(-13);
 		console.info('[info] chosen evonode:');
 		console.log(JSON.stringify(App._evonode, null, 2));
 

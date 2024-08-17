@@ -396,6 +396,7 @@ var DashJoin = ('object' === typeof module && exports) || {};
 
 		let transactionUnsigned = bytes.subarray(offset);
 		let transaction_unsigned = DashTx.utils.bytesToHex(transactionUnsigned);
+		console.log('DEBUG [[dsf]] tx', transaction_unsigned);
 
 		let txRequest = DashTx.parseUnknown(transaction_unsigned);
 		let dsfTxRequest = {
