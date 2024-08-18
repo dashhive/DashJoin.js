@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Wallet - Digital Cash</title>
+		<link rel="stylesheet" href="./mvp.css" />
+		<script src="./node_modules/dashphrase/dashphrase.js"></script>
+		<script src="./node_modules/@dashincubator/secp256k1/secp256k1.js"></script>
+		<script src="./node_modules/dashkeys/dashkeys.js"></script>
+		<script src="./node_modules/dashhd/dashhd.js"></script>
+		<script src="./node_modules/dashtx/dashtx.js"></script>
+		<script src="./dashp2p.js"></script>
+		<script src="./dashjoin.js"></script>
+		<style>
+			nav {
+				margin-bottom: 0.3rem;
+			}
+			header {
+				padding-top: 0;
+				padding-bottom: 0.3rem;
+			}
+			header nav img {
+				margin: 0;
+			}
+			main {
+				padding-top: 0;
+			}
+			form {
+				width: 100%;
+				box-sizing: border-box;
+			}
+			hr,
+			footer hr {
+				margin-top: 1.2rem;
+				margin-bottom: 1.2rem;
+			}
+			footer {
+				padding: 1rem;
+			}
+			pre {
+				margin: 0;
+				padding: 0;
+			}
+			pre code {
+				margin: 0;
+				padding: 0.3rem 1rem 0.3rem 1rem;
+			}
+			code {
+				margin: 0.1rem;
+				padding: 0rem 0.3rem 0rem 0.3rem;
+			}
+			small button {
+				font-size: 0.75rem;
+				margin: 0;
+				padding: 0.2rem;
+			}
+			fieldset {
+				border-style: none;
+				margin: 0;
+				padding: 0;
+			}
+			fieldset label,
+			fieldset button {
+				display: inline-block;
+			}
+		</style>
+	</head>
+
+	<body hidden="hidden">
+		<header>
+			<nav>
+				<a href="./"
+					><img
+						alt="Digital Cash . dev"
+						src="https://github.com/user-attachments/assets/08cdbc66-58d7-4cc4-8cc2-a246b28cb0e2"
+						height="96"
+				/></a>
+				<h1>Digital Cash Wallet</h1>
+				<ul>
+					<li data-network="testnet" hidden>
+						<a
+							href="http://faucet.test.dash.crowdnode.io/"
+							target="_blank"
+							title="CrowdNode Faucet"
+							>CN 💸</a
+						>
+					</li>
+					<li data-network="testnet" hidden>
+						<a
+							href="http://faucet.testnet.networks.dash.org"
+							target="_blank"
+							title="Dash Core Group Faucet"
+							>DCG 💸</a
+						>
+					</li>
+					<li>
+						<a
+							href="https://github.com/dashhive/DashJoin.js/issues"
+							target="_blank"
+							title="Git Issues"
+							>Bugs 🐛</a
+						>
+					</li>
+					<li>
+						<a
+							href="https://github.com/dashhive/DashJoin.js.git"
+							target="_blank"
+							title="Git Source"
+							>Git 📦</a
+						>
+					</li>
+				</ul>
+			</nav>
+		</header>
+		<main>
+			<section>
+				<form id="wallet-form">
+					<label
+						>Wallet Phrase
+						<small>12-word seed</small>
+						<input
+							type="text"
+							data-id="wallet-phrase"
+							placeholder="ex: zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"
+						/>
+					</label>
+					<label
+						>Phrase Salt
+						<small>for advanced users only</small>
+						<input
+							type="text"
+							data-id="phrase-salt"
+							placeholder="ex: TREZOR"
+							value=""
+							disabled
+						/>
+					</label>
+					<label
+						>Wallet Seed <small>pbkdf2 bytes</small>
+						<br />
+						<pre><code
+                        data-id="wallet-seed">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+					</label>
+					<label
+						>HD Account
+						<small>bip-44 path</small>
+						<input
+							type="text"
+							data-id="wallet-account"
+							placeholder="ex: m/44'/5'/0'"
+							disabled
+						/>
+					</label>
+
+					<label
+						>Address for WIF Export
+						<small>base58check-encoded pkh</small>
+						<input
+							type="text"
+							data-id="export-address"
+							placeholder="ex: ybLxVb3aspSHFgxM1qTyuBSXnjAqLFEG8P"
+						/>
+					</label>
+					<pre><code data-id="export-wif"><em>output: private key as wif</em></code></pre>
+					<button type="submit" onclick="App.exportWif(event)">
+						Export WIF
+					</button>
+
+					<hr />
+					<label
+						>Coins (<code data-id="total-balance">0.0000</code>)
+						<small>unspent outputs</small>
+					</label>
+					<table>
+						<thead>
+							<tr>
+								<th>
+									<input onchange="App.toggleAll(event)" type="checkbox" />
+								</th>
+								<th>Amount</th>
+								<th>Address</th>
+								<th>TXID</th>
+								<th>Index</th>
+							</tr>
+						</thead>
+						<tbody data-id="coins-table">
+							<!-- tmpl-balance-row -->
+						</tbody>
+						<tfoot>
+							<th></th>
+							<th></th>
+							<th></th>
+							<th></th>
+							<th></th>
+						</tfoot>
+					</table>
+					<template data-id="coin-row-tmpl">
+						<tr>
+							<td class="select">
+								<input data-name="coin" type="checkbox" value="addr,txid,out" />
+							</td>
+							<td data-name="amount" style="font-family: monospace"></td>
+							<td
+								data-name="address"
+								style="font-family: monospace; font-size: 6pt"
+							></td>
+							<td
+								data-name="txid"
+								style="font-family: monospace; font-size: 6pt"
+							></td>
+							<td
+								data-name="output-index"
+								style="font-family: monospace; font-size: 6pt"
+							></td>
+						</tr>
+					</template>
+
+					<fieldset>
+						<label
+							>Send Amount
+							<small>0 + select coins for full transfer</small>
+							<input
+								type="number"
+								data-id="send-amount"
+								placeholder="ex: 1.0001"
+								step="0.0001"
+								min="0.0000"
+							/>
+						</label>
+						<small
+							><button type="button" onclick="App.setMax(event)">
+								Max
+							</button></small
+						>
+						<small><span data-id="send-dust">200</span> dust</small>
+						<!-- <label -->
+						<!-- 	>Dust Amount -->
+						<!-- 	<input -->
+						<!-- 		type="number" -->
+						<!-- 		data-id="send-dust" -->
+						<!-- 		placeholder="ex: 1.0001" -->
+						<!-- 		step="1" -->
+						<!-- 		min="200" -->
+						<!-- 		disabled -->
+						<!-- 	/> -->
+						<!-- </label> -->
+					</fieldset>
+					<label
+						>Send Address
+						<small>base58check-encoded pkh</small>
+						<input
+							type="text"
+							data-id="send-address"
+							placeholder="ex: ybLxVb3aspSHFgxM1qTyuBSXnjAqLFEG8P"
+						/>
+					</label>
+
+					<button type="submit" onclick="App.sendDash(event)">Send DASH</button>
+					<hr />
+					<label
+						>Send Memo
+						<small>hex-encoded op_return</small>
+						<br />
+						<label style="display: inline-block"
+							><input
+								type="radio"
+								name="memo-encoding"
+								value="hex"
+								onchange="document.querySelector('[name=memo]').placeholder = 'ex: 48656c6c6f2c20576f726c6421'"
+								checked="checked"
+							/>
+							hex
+						</label>
+						<label style="display: inline-block"
+							><input
+								type="radio"
+								name="memo-encoding"
+								value="string"
+								onchange="document.querySelector('[name=memo]').placeholder = 'ex: Hello, World!'"
+							/>
+							string (utf-8)
+						</label>
+						<input
+							type="text"
+							name="memo"
+							placeholder="ex: 48656c6c6f2c20576f726c6421"
+						/>
+					</label>
+					<small
+						>Share: <a href="" data-id="memo-link" target="_blank"></a
+					></small>
+					<pre><code data-id="memo-txid"><em>output: txid</em></code></pre>
+					<button type="button" onclick="App.sendMemo(event)">Send Memo</button>
+
+					<hr />
+					<label
+						>Cash Drawer (<code data-id="cj-balance">0.0000</code>)
+						<small>denominated coins</small>
+					</label>
+					<table>
+						<thead>
+							<tr>
+								<th>Denom</th>
+								<th>Priority</th>
+								<th>Have</th>
+								<th>Want</th>
+								<th>Need</th>
+							</tr>
+						</thead>
+						<tbody data-id="coins-table">
+							<tr data-denom="1000010000">
+								<th>10.000<span hidden>10000</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="1"
+									/>
+								</th>
+								<th data-name="have">0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="2"
+									/>
+								</th>
+								<th data-name="need">0</th>
+							</tr>
+							<tr data-denom="100001000">
+								<th>1.000<span hidden>01000</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="10"
+									/>
+								</th>
+								<th data-name="have">0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="10"
+									/>
+								</th>
+								<th data-name="need">0</th>
+							</tr>
+							<tr data-denom="10000100">
+								<th>0.100<span hidden>00100</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="10"
+									/>
+								</th>
+								<th data-name="have">0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="50"
+									/>
+								</th>
+								<th data-name="need">0</th>
+							</tr>
+							<tr data-denom="1000010">
+								<th>0.010<span hidden>00010</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="1"
+									/>
+								</th>
+								<th data-name="have">0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="20"
+									/>
+								</th>
+								<th data-name="need">0</th>
+							</tr>
+							<tr data-denom="100001">
+								<th>0.001<span hidden>00001</span></th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="0"
+									/>
+								</th>
+								<th data-name="have">0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="5"
+									/>
+								</th>
+								<th data-name="need">0</th>
+							</tr>
+							<tr data-denom="10000">
+								<th>
+									<small><em>Collateral</em></small>
+								</th>
+								<th>
+									<input
+										name="priority"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="0"
+									/>
+								</th>
+								<th data-name="have">0</th>
+								<th>
+									<input
+										name="want"
+										onkeyup="App.syncCashDrawer(event)"
+										onchange="App.syncCashDrawer(event)"
+										type="number"
+										step="1"
+										min="0"
+										value="5"
+									/>
+								</th>
+								<th data-name="need">0</th>
+							</tr>
+						</tbody>
+					</table>
+					<fieldset>
+						<button type="button" onclick="App.denominateCoins(event)">
+							Denominate Coins
+						</button>
+						<button type="button" onclick="App.createCoinJoinSession(event)">
+							Run CoinJoin
+						</button>
+					</fieldset>
+				</form>
+			</section>
+			<br />
+			<section>
+				<form>
+					<details>
+						<summary>
+							Spent Addresses (<span data-id="spent-count">0</span>)
+							<small>addresses with spent outputs</small>
+						</summary>
+						<pre><code
+                        data-id="spent">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+					</details>
+					<label
+						>Unused Payment Addresses
+						<small>base58check-encoded pkh</small>
+						<pre><code
+                        data-id="receive-addresses">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+					</label>
+					<label
+						>Unused Change Addresses
+						<small>base58check-encoded pkh</small>
+						<pre><code
+                        data-id="change-addresses">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code></pre>
+					</label>
+				</form>
+			</section>
+			<footer>
+				<hr />
+				<p>
+					© Dash Incubator
+					<a href="https://github.com/dashhive/" target="_blank"
+						>github.com/dashhive/</a
+					><br />
+				</p>
+			</footer>
+		</main>
+
+		<script src="./wallet-app.js"></script>
+	</body>
+</html>

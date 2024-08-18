@@ -1,34 +1,24 @@
 {
-  "name": "dashjoin",
-  "version": "1.0.0",
-  "description": "JavaScript reference implementation of CoinJoin",
-  "main": "index.js",
-  "files": [
-      "*.js"
-  ],
+  "name": "wallet",
+  "version": "0.1.0",
+  "description": "Digital Cash Cryptocurrency DASH wallet",
+  "main": "index.html",
   "scripts": {
-    "bump": "npm version -m \"chore(release): bump to v%s\"",
-    "fmt": "npm run prettier",
-    "lint": "npm run jshint",
-    "--------": "-------------------------------------------------",
-    "jshint": "npx -p jshint@2.x -- jshint -c ./.jshintrc ./*.js",
-    "prettier": "npx -p prettier@3.x -- prettier -w '**/*.{js,md}'",
-    "tsc": "npx -p typescript@4.x -- tsc -p ./jsconfig.json",
-    "---------": "------------------------------------------------",
-    "test": "node ./tests/"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/dashhive/DashJoin.js.git"
+    "url": "git+https://github.com/dashhive/DashJoin.js.git"
   },
   "keywords": [
-    "Dash",
-    "CoinJoin",
-    "PrivateSend",
-    "Crpytocurrency"
+    "Digital",
+    "Cash",
+    "Cryptocurrency",
+    "DASH",
+    "wallet"
   ],
-  "author": "AJ ONeal <aj@therootcompany.com> (https://therootcompany.com)",
-  "license": "MIT",
+  "author": "AJ ONeal <aj@therootcompany.com> (https://therootcompany.com/)",
+  "license": "SEE LICENSE IN LICENSE",
   "bugs": {
     "url": "https://github.com/dashhive/DashJoin.js/issues"
   },
@@ -36,10 +26,8 @@
   "dependencies": {
     "@dashincubator/secp256k1": "^1.7.1-5",
     "dashhd": "^3.3.3",
-    "dashkeys": "^1.1.4",
+    "dashkeys": "^1.1.5",
     "dashphrase": "^1.4.0",
-    "dashrpc": "^19.0.1",
-    "dashtx": "^0.18.1",
-    "dotenv": "^16.4.5"
+    "dashtx": "^0.19.1"
   }
 }
