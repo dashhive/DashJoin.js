@@ -1044,7 +1044,7 @@
 
 		let p2p = DashP2P.create();
 
-		let p2pWebProxyUrl = 'wss://ubuntu-127.scratch-dev.digitalcash.dev/ws';
+		let p2pWebProxyUrl = 'wss://tp2p.digitalcash.dev/ws';
 		let query = {
 			access_token: 'secret',
 			hostname: evonode.hostname,
